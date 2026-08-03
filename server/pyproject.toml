@@ -1,0 +1,41 @@
+[project]
+name = "godot-2d-mcp"
+version = "0.1.0"
+description = "MCP server for comprehensive Godot 2D editor automation"
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Godot 2D MCP contributors" }]
+dependencies = [
+    "fastmcp>=3.4.0,<3.5.0",
+    "pydantic>=2.10,<3.0",
+    "websockets>=14.0,<17.0",
+]
+
+[project.scripts]
+godot-2d-mcp = "godot_2d_mcp.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "pytest-asyncio>=0.24",
+    "ruff>=0.12",
+]
+
+[build-system]
+requires = ["setuptools>=75.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "W"]
