@@ -21,6 +21,7 @@ var _session_id := ""
 var _reconnect_delay := INITIAL_RECONNECT_DELAY
 var _reconnect_remaining := 0.0
 var _last_state_signature := ""
+var _state_event_forced := false
 var _scene_revision := 0
 var _stopping := false
 
@@ -46,6 +47,11 @@ func _process(delta: float) -> void:
 			_emit_state_change_if_needed()
 			if dispatcher != null:
 				for response in dispatcher.tick(_response_meta()):
+					if bool(response.get("_scene_mutated", false)):
+						response.erase("_scene_mutated")
+						_scene_revision += 1
+						_state_event_forced = true
+					response["meta"] = _response_meta()
 					_send_json(response)
 		WebSocketPeer.STATE_CLOSED:
 			if is_connected:
@@ -143,11 +149,12 @@ func _emit_state_change_if_needed() -> void:
 	var signature := "%s|%s|%s" % [
 		state["readiness"], state["current_scene"], state["play_state"]
 	]
-	if signature == _last_state_signature:
+	if signature == _last_state_signature and not _state_event_forced:
 		return
 	if not _last_state_signature.is_empty() and state["current_scene"] != _current_scene_from_signature():
 		_scene_revision += 1
 	_last_state_signature = signature
+	_state_event_forced = false
 	_send_json(
 		{
 			"type": "state_changed",

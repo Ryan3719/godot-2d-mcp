@@ -23,7 +23,7 @@ jobs:
       - name: Sync dependencies
         run: uv sync --project server --locked --dev
       - name: Test
-        run: uv run --project server pytest
+        run: uv run --project server pytest server/tests
       - name: Lint
         run: uv run --project server ruff check server scripts/godot_smoke.py
 

@@ -51,3 +51,80 @@ async def test_hierarchy_rejects_unbounded_page() -> None:
 
     with pytest.raises(ValueError, match="limit"):
         await service.scene_get_hierarchy(limit=1001)
+
+
+@pytest.mark.asyncio
+async def test_node_create_forwards_scene_guard_and_session() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+
+    result = await service.node_create(
+        type_name="Button",
+        name="ConfirmButton",
+        parent_path="/Main/UI",
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
+
+    assert result == {"command": "node_create"}
+    assert bridge.calls == [
+        (
+            "node_create",
+            {
+                "type": "Button",
+                "name": "ConfirmButton",
+                "parent_path": "/Main/UI",
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_node_set_properties_forwards_one_atomic_payload() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    properties = {"text": "Start", "position": {"x": 24, "y": 48}}
+
+    await service.node_set_properties(
+        path="/Main/UI/StartButton",
+        properties=properties,
+    )
+
+    assert bridge.calls == [
+        (
+            "node_set_properties",
+            {"path": "/Main/UI/StartButton", "properties": properties},
+            None,
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_node_set_properties_rejects_empty_or_unbounded_updates() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="non-empty"):
+        await service.node_set_properties("/Main", {})
+    with pytest.raises(ValueError, match="at most 64"):
+        await service.node_set_properties(
+            "/Main",
+            {f"property_{index}": index for index in range(65)},
+        )
+
+
+@pytest.mark.asyncio
+async def test_scene_commands_forward_to_godot() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+
+    await service.scene_undo(scene_file="res://main.tscn")
+    await service.scene_redo(scene_file="res://main.tscn")
+    await service.scene_save(scene_file="res://main.tscn")
+
+    assert bridge.calls == [
+        ("scene_undo", {"scene_file": "res://main.tscn"}, None),
+        ("scene_redo", {"scene_file": "res://main.tscn"}, None),
+        ("scene_save", {"scene_file": "res://main.tscn"}, None),
+    ]

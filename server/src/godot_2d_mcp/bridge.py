@@ -103,7 +103,9 @@ class GodotWebSocketBridge:
 
         if response.status == "error":
             raise GodotCommandError(response)
-        return response.data
+        result = dict(response.data)
+        result["meta"] = response.meta.model_dump()
+        return result
 
     async def _handle_connection(self, websocket: ServerConnection) -> None:
         session_id = ""

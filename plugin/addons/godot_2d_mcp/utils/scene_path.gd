@@ -17,4 +17,9 @@ static func resolve(path: String, scene_root: Node) -> Node:
 		clean_path = clean_path.trim_prefix(root_path + "/")
 	elif clean_path.begins_with("/"):
 		return null
-	return scene_root.get_node_or_null(NodePath(clean_path))
+	var resolved := scene_root.get_node_or_null(NodePath(clean_path))
+	if resolved == null:
+		return null
+	if resolved != scene_root and not scene_root.is_ancestor_of(resolved):
+		return null
+	return resolved

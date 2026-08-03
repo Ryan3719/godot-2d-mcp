@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.1.0"
+const PLUGIN_VERSION := "0.2.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 
 const ConnectionScript := preload("res://addons/godot_2d_mcp/transport/connection.gd")
@@ -9,6 +9,7 @@ const DispatcherScript := preload("res://addons/godot_2d_mcp/dispatcher.gd")
 const DockScript := preload("res://addons/godot_2d_mcp/ui/mcp_dock.gd")
 const EditorHandlerScript := preload("res://addons/godot_2d_mcp/handlers/editor_handler.gd")
 const SceneHandlerScript := preload("res://addons/godot_2d_mcp/handlers/scene_handler.gd")
+const NodeHandlerScript := preload("res://addons/godot_2d_mcp/handlers/node_handler.gd")
 const ClassHandlerScript := preload("res://addons/godot_2d_mcp/handlers/class_handler.gd")
 
 var _connection: Node
@@ -51,12 +52,20 @@ func _exit_tree() -> void:
 
 func _register_handlers() -> void:
 	var editor_handler: RefCounted = EditorHandlerScript.new()
-	var scene_handler: RefCounted = SceneHandlerScript.new()
+	var scene_handler: RefCounted = SceneHandlerScript.new(get_undo_redo())
+	var node_handler: RefCounted = NodeHandlerScript.new(get_undo_redo())
 	var class_handler: RefCounted = ClassHandlerScript.new()
-	_handlers.assign([editor_handler, scene_handler, class_handler])
+	_handlers.assign([editor_handler, scene_handler, node_handler, class_handler])
 
 	_dispatcher.register("editor_get_state", editor_handler.get_state)
 	_dispatcher.register("scene_get_hierarchy", scene_handler.get_hierarchy)
+	_dispatcher.register("scene_save", scene_handler.save_scene)
+	_dispatcher.register("scene_undo", scene_handler.undo_scene)
+	_dispatcher.register("scene_redo", scene_handler.redo_scene)
+	_dispatcher.register("node_get_properties", node_handler.get_properties)
+	_dispatcher.register("node_create", node_handler.create_node)
+	_dispatcher.register("node_set_properties", node_handler.set_properties)
+	_dispatcher.register("node_delete", node_handler.delete_node)
 	_dispatcher.register("class_search", class_handler.search)
 
 
