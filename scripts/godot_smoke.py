@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Run a real Godot editor against the Python WebSocket bridge."""
 
 from __future__ import annotations
