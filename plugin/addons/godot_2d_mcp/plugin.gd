@@ -1,0 +1,80 @@
+@tool
+extends EditorPlugin
+
+const PLUGIN_VERSION := "0.1.0"
+const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
+
+const ConnectionScript := preload("res://addons/godot_2d_mcp/transport/connection.gd")
+const DispatcherScript := preload("res://addons/godot_2d_mcp/dispatcher.gd")
+const DockScript := preload("res://addons/godot_2d_mcp/ui/mcp_dock.gd")
+const EditorHandlerScript := preload("res://addons/godot_2d_mcp/handlers/editor_handler.gd")
+const SceneHandlerScript := preload("res://addons/godot_2d_mcp/handlers/scene_handler.gd")
+const ClassHandlerScript := preload("res://addons/godot_2d_mcp/handlers/class_handler.gd")
+
+var _connection: Node
+var _dispatcher: RefCounted
+var _dock: Control
+var _handlers: Array[RefCounted] = []
+
+
+func _enter_tree() -> void:
+	var ws_port := _ensure_ws_port_setting()
+	_dispatcher = DispatcherScript.new()
+	_register_handlers()
+
+	_connection = ConnectionScript.new()
+	_connection.name = "Godot2DMcpConnection"
+	_connection.dispatcher = _dispatcher
+	_connection.plugin_version = PLUGIN_VERSION
+	_connection.ws_port = ws_port
+	add_child(_connection)
+
+	_dock = DockScript.new()
+	_dock.setup(_connection, ws_port)
+	add_control_to_dock(DOCK_SLOT_RIGHT_BL, _dock)
+
+
+func _exit_tree() -> void:
+	if _dock != null:
+		remove_control_from_docks(_dock)
+		_dock.free()
+		_dock = null
+	if _connection != null:
+		_connection.teardown()
+		_connection.free()
+		_connection = null
+	if _dispatcher != null:
+		_dispatcher.clear()
+		_dispatcher = null
+	_handlers.clear()
+
+
+func _register_handlers() -> void:
+	var editor_handler: RefCounted = EditorHandlerScript.new()
+	var scene_handler: RefCounted = SceneHandlerScript.new()
+	var class_handler: RefCounted = ClassHandlerScript.new()
+	_handlers.assign([editor_handler, scene_handler, class_handler])
+
+	_dispatcher.register("editor_get_state", editor_handler.get_state)
+	_dispatcher.register("scene_get_hierarchy", scene_handler.get_hierarchy)
+	_dispatcher.register("class_search", class_handler.search)
+
+
+func _ensure_ws_port_setting() -> int:
+	var environment_port := OS.get_environment("GODOT_2D_MCP_WS_PORT")
+	if environment_port.is_valid_int():
+		var parsed_port := int(environment_port)
+		if parsed_port >= 1024 and parsed_port <= 65535:
+			return parsed_port
+	var settings := EditorInterface.get_editor_settings()
+	if not settings.has_setting(WS_PORT_SETTING):
+		settings.set_setting(WS_PORT_SETTING, 9500)
+	settings.add_property_info(
+		{
+			"name": WS_PORT_SETTING,
+			"type": TYPE_INT,
+			"hint": PROPERTY_HINT_RANGE,
+			"hint_string": "1024,65535,1",
+		}
+	)
+	return int(settings.get_setting(WS_PORT_SETTING))

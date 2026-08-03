@@ -1,0 +1,21 @@
+# Local Godot source checkout used only as an API reference.
+/godot/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/
+dist/
+build/
+*.egg-info/
+
+# Godot
+.godot/
+*.tmp
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
