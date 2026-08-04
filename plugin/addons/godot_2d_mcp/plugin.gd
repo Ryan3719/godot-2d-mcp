@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.2.0"
+const PLUGIN_VERSION := "0.3.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 
 const ConnectionScript := preload("res://addons/godot_2d_mcp/transport/connection.gd")
@@ -66,6 +66,10 @@ func _register_handlers() -> void:
 	_dispatcher.register("node_create", node_handler.create_node)
 	_dispatcher.register("node_set_properties", node_handler.set_properties)
 	_dispatcher.register("node_delete", node_handler.delete_node)
+	_dispatcher.register("node_rename", node_handler.rename_node)
+	_dispatcher.register("node_duplicate", node_handler.duplicate_node)
+	_dispatcher.register("node_reparent", node_handler.reparent_node)
+	_dispatcher.register("node_move", node_handler.move_node)
 	_dispatcher.register("class_search", class_handler.search)
 
 

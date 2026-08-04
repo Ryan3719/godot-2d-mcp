@@ -3,6 +3,7 @@ extends RefCounted
 
 const Errors := preload("res://addons/godot_2d_mcp/utils/errors.gd")
 const MutationGuard := preload("res://addons/godot_2d_mcp/utils/mutation_guard.gd")
+const NodePathMigration := preload("res://addons/godot_2d_mcp/utils/node_path_migration.gd")
 const ScenePath := preload("res://addons/godot_2d_mcp/utils/scene_path.gd")
 const TypePolicy := preload("res://addons/godot_2d_mcp/utils/type_policy.gd")
 const VariantCodec := preload("res://addons/godot_2d_mcp/utils/variant_codec.gd")
@@ -248,6 +249,12 @@ func delete_node(params: Dictionary) -> Dictionary:
 	var editability := _require_locally_owned(node, scene_root, "delete")
 	if editability != null:
 		return editability
+	var subtree_check := _require_local_subtree(node, scene_root, "delete")
+	if subtree_check != null:
+		return subtree_check
+	var deletion_check := NodePathMigration.validate_removal(scene_root, node)
+	if deletion_check.has("_error"):
+		return deletion_check
 
 	var parent := node.get_parent()
 	var child_index := node.get_index(false)
@@ -274,6 +281,309 @@ func delete_node(params: Dictionary) -> Dictionary:
 	}
 
 
+func rename_node(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_node(params)
+	if resolved.has("_error"):
+		return resolved
+	var node: Node = resolved["node"]
+	var scene_root: Node = resolved["scene_root"]
+	if node == scene_root:
+		return Errors.make(
+			"SCENE_ROOT_PROTECTED",
+			"The edited scene root cannot be renamed because it anchors scene paths"
+		)
+	var editability := _require_locally_owned(node, scene_root, "rename")
+	if editability != null:
+		return editability
+	var subtree_check := _require_local_subtree(node, scene_root, "rename")
+	if subtree_check != null:
+		return subtree_check
+
+	var new_name := str(params.get("name", "")).strip_edges()
+	var name_error := _validate_node_name(new_name)
+	if name_error != null:
+		return name_error
+	var old_name := String(node.name)
+	var old_path := ScenePath.from_node(node, scene_root)
+	if old_name == new_name:
+		return {
+			"path": old_path,
+			"old_path": old_path,
+			"name": new_name,
+			"unchanged": true,
+			"undoable": false,
+		}
+	var parent := node.get_parent()
+	if _has_sibling_name(parent, new_name, node):
+		return _name_conflict_error(new_name)
+
+	var migration := NodePathMigration.plan(scene_root, node, parent, new_name)
+	if migration.has("_error"):
+		return migration
+	_undo_redo.create_action(
+		"Godot 2D MCP: Rename %s to %s" % [old_name, new_name],
+		UndoRedo.MERGE_DISABLE,
+		scene_root
+	)
+	_undo_redo.add_do_method(node, "set_name", new_name)
+	_add_do_migration(migration)
+	_add_undo_migration(migration)
+	_undo_redo.add_undo_method(node, "set_name", old_name)
+	_undo_redo.commit_action()
+
+	return {
+		"path": ScenePath.from_node(node, scene_root),
+		"old_path": old_path,
+		"name": String(node.name),
+		"migrated_node_paths": migration["property_records"].size(),
+		"migrated_animation_tracks": migration["track_records"].size(),
+		"undoable": true,
+		"_scene_mutated": true,
+	}
+
+
+func duplicate_node(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_node(params)
+	if resolved.has("_error"):
+		return resolved
+	var node: Node = resolved["node"]
+	var scene_root: Node = resolved["scene_root"]
+	if node == scene_root:
+		return Errors.make("SCENE_ROOT_PROTECTED", "The edited scene root cannot be duplicated")
+	var editability := _require_locally_owned(node, scene_root, "duplicate")
+	if editability != null:
+		return editability
+	var subtree_check := _require_local_subtree(node, scene_root, "duplicate")
+	if subtree_check != null:
+		return subtree_check
+
+	var parent := node.get_parent()
+	var requested_name := str(params.get("name", "")).strip_edges()
+	if not requested_name.is_empty():
+		var name_error := _validate_node_name(requested_name)
+		if name_error != null:
+			return name_error
+		if _has_sibling_name(parent, requested_name, node):
+			return _name_conflict_error(requested_name)
+
+	var duplicate := node.duplicate()
+	if duplicate == null:
+		return Errors.make("DUPLICATION_FAILED", "Godot failed to duplicate node: %s" % node.name)
+	if duplicate.get_script() != node.get_script():
+		duplicate.free()
+		return Errors.make(
+			"DUPLICATION_SCRIPT_INIT_FAILED",
+			"The node script could not be duplicated safely",
+			false,
+			"Use a script with a parameterless _init or create a new node explicitly."
+		)
+	if not requested_name.is_empty():
+		duplicate.name = requested_name
+	var duplicated_nodes := _collect_subtree(duplicate)
+	_undo_redo.create_action(
+		"Godot 2D MCP: Duplicate %s" % node.name,
+		UndoRedo.MERGE_DISABLE,
+		scene_root
+	)
+	_undo_redo.add_do_method(parent, "add_child", duplicate, true)
+	for duplicated_node in duplicated_nodes:
+		_undo_redo.add_do_method(duplicated_node, "set_owner", scene_root)
+	_undo_redo.add_do_reference(duplicate)
+	_undo_redo.add_undo_method(parent, "remove_child", duplicate)
+	_undo_redo.commit_action()
+
+	return {
+		"path": ScenePath.from_node(duplicate, scene_root),
+		"source_path": ScenePath.from_node(node, scene_root),
+		"name": String(duplicate.name),
+		"type": duplicate.get_class(),
+		"copied_node_count": duplicated_nodes.size(),
+		"undoable": true,
+		"_scene_mutated": true,
+	}
+
+
+func reparent_node(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_node(params)
+	if resolved.has("_error"):
+		return resolved
+	var node: Node = resolved["node"]
+	var scene_root: Node = resolved["scene_root"]
+	if node == scene_root:
+		return Errors.make("SCENE_ROOT_PROTECTED", "The edited scene root cannot be reparented")
+	var editability := _require_locally_owned(node, scene_root, "reparent")
+	if editability != null:
+		return editability
+	var subtree_check := _require_local_subtree(node, scene_root, "reparent")
+	if subtree_check != null:
+		return subtree_check
+
+	var new_parent_path := str(params.get("new_parent_path", ""))
+	if new_parent_path.is_empty():
+		return Errors.make("MISSING_PARAMETER", "new_parent_path is required")
+	var new_parent := ScenePath.resolve(new_parent_path, scene_root)
+	if new_parent == null:
+		return Errors.make(
+			"NODE_NOT_FOUND",
+			"New parent node not found: %s" % new_parent_path,
+			false,
+			"Use scene_get_hierarchy to refresh node paths."
+		)
+	if not TypePolicy.is_supported_node_class(new_parent.get_class()):
+		return Errors.make(
+			"UNSUPPORTED_2D_TYPE",
+			"New parent is outside the supported 2D policy: %s" % new_parent.get_class()
+		)
+	var parent_editability := _require_locally_owned(new_parent, scene_root, "reparent under")
+	if parent_editability != null:
+		return parent_editability
+	if node == new_parent or node.is_ancestor_of(new_parent):
+		return Errors.make("NODE_CYCLE", "A node cannot be reparented below itself or its descendant")
+
+	var old_parent := node.get_parent()
+	if old_parent == new_parent:
+		return Errors.make(
+			"PARENT_UNCHANGED",
+			"Node already belongs to the requested parent",
+			false,
+			"Use node_move to change sibling order."
+		)
+	if _has_sibling_name(new_parent, String(node.name), node):
+		return _name_conflict_error(String(node.name))
+	var requested_index := int(params.get("index", -1))
+	if requested_index < -1 or requested_index > new_parent.get_child_count(false):
+		return Errors.make(
+			"INDEX_OUT_OF_RANGE",
+			"index must be between -1 and %d" % new_parent.get_child_count(false)
+		)
+
+	var migration := NodePathMigration.plan(scene_root, node, new_parent, String(node.name))
+	if migration.has("_error"):
+		return migration
+	var old_path := ScenePath.from_node(node, scene_root)
+	var old_index := node.get_index(false)
+	var owner_records := _capture_owners(node)
+	var keep_global_transform := bool(params.get("keep_global_transform", true))
+	var node_2d: Node2D = node if node is Node2D else null
+	var control: Control = node if node is Control else null
+	var old_transform := Transform2D.IDENTITY
+	var old_global_transform := Transform2D.IDENTITY
+	var old_position := Vector2.ZERO
+	var old_global_position := Vector2.ZERO
+	if keep_global_transform:
+		if node_2d != null:
+			old_transform = node_2d.transform
+			old_global_transform = node_2d.global_transform
+		elif control != null:
+			old_position = control.position
+			old_global_position = control.global_position
+	_undo_redo.create_action(
+		"Godot 2D MCP: Reparent %s" % node.name,
+		UndoRedo.MERGE_DISABLE,
+		scene_root
+	)
+	_undo_redo.add_do_method(old_parent, "remove_child", node)
+	_undo_redo.add_do_method(new_parent, "add_child", node, true)
+	if requested_index >= 0:
+		_undo_redo.add_do_method(new_parent, "move_child", node, requested_index)
+	for record in owner_records:
+		_undo_redo.add_do_method(record["node"], "set_owner", record["owner"])
+	if keep_global_transform:
+		if node_2d != null:
+			_undo_redo.add_do_method(node_2d, "set_global_transform", old_global_transform)
+		elif control != null:
+			_undo_redo.add_do_method(control, "set_global_position", old_global_position)
+	_add_do_migration(migration)
+	_undo_redo.add_undo_method(new_parent, "remove_child", node)
+	_undo_redo.add_undo_method(old_parent, "add_child", node, true)
+	_undo_redo.add_undo_method(old_parent, "move_child", node, old_index)
+	for record in owner_records:
+		_undo_redo.add_undo_method(record["node"], "set_owner", record["owner"])
+	if keep_global_transform:
+		if node_2d != null:
+			_undo_redo.add_undo_method(node_2d, "set_transform", old_transform)
+		elif control != null:
+			_undo_redo.add_undo_method(control, "set_position", old_position)
+	_add_undo_migration(migration)
+	_undo_redo.commit_action()
+
+	return {
+		"path": ScenePath.from_node(node, scene_root),
+		"old_path": old_path,
+		"old_parent_path": ScenePath.from_node(old_parent, scene_root),
+		"new_parent_path": ScenePath.from_node(new_parent, scene_root),
+		"index": node.get_index(false),
+		"kept_global_transform": keep_global_transform,
+		"migrated_node_paths": migration["property_records"].size(),
+		"migrated_animation_tracks": migration["track_records"].size(),
+		"undoable": true,
+		"_scene_mutated": true,
+	}
+
+
+func move_node(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_node(params)
+	if resolved.has("_error"):
+		return resolved
+	var node: Node = resolved["node"]
+	var scene_root: Node = resolved["scene_root"]
+	if node == scene_root:
+		return Errors.make("SCENE_ROOT_PROTECTED", "The edited scene root cannot be reordered")
+	var editability := _require_locally_owned(node, scene_root, "reorder")
+	if editability != null:
+		return editability
+	if not params.has("index"):
+		return Errors.make("MISSING_PARAMETER", "index is required")
+	var new_index := int(params["index"])
+	var parent := node.get_parent()
+	var old_index := node.get_index(false)
+	var child_count := parent.get_child_count(false)
+	if new_index < 0 or new_index >= child_count:
+		return Errors.make(
+			"INDEX_OUT_OF_RANGE", "index must be between 0 and %d" % (child_count - 1)
+		)
+	if new_index == old_index:
+		return {
+			"path": ScenePath.from_node(node, scene_root),
+			"index": new_index,
+			"unchanged": true,
+			"undoable": false,
+		}
+	_undo_redo.create_action(
+		"Godot 2D MCP: Move %s" % node.name,
+		UndoRedo.MERGE_DISABLE,
+		scene_root
+	)
+	_undo_redo.add_do_method(parent, "move_child", node, new_index)
+	_undo_redo.add_undo_method(parent, "move_child", node, old_index)
+	_undo_redo.commit_action()
+	return {
+		"path": ScenePath.from_node(node, scene_root),
+		"old_index": old_index,
+		"index": new_index,
+		"undoable": true,
+		"_scene_mutated": true,
+	}
+
+
+func _add_do_migration(migration: Dictionary) -> void:
+	for record in migration["property_records"]:
+		_undo_redo.add_do_property(record["object"], record["property"], record["new_path"])
+	for record in migration["track_records"]:
+		_undo_redo.add_do_method(
+			record["animation"], "track_set_path", record["track_index"], record["new_path"]
+		)
+
+
+func _add_undo_migration(migration: Dictionary) -> void:
+	for record in migration["property_records"]:
+		_undo_redo.add_undo_property(record["object"], record["property"], record["old_path"])
+	for record in migration["track_records"]:
+		_undo_redo.add_undo_method(
+			record["animation"], "track_set_path", record["track_index"], record["old_path"]
+		)
+
+
 func _capture_owners(root: Node) -> Array[Dictionary]:
 	var records: Array[Dictionary] = []
 	var stack: Array[Node] = [root]
@@ -284,6 +594,18 @@ func _capture_owners(root: Node) -> Array[Dictionary]:
 		for index in range(children.size() - 1, -1, -1):
 			stack.append(children[index])
 	return records
+
+
+func _collect_subtree(root: Node) -> Array[Node]:
+	var nodes: Array[Node] = []
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var node: Node = stack.pop_back()
+		nodes.append(node)
+		var children := node.get_children(false)
+		for index in range(children.size() - 1, -1, -1):
+			stack.append(children[index])
+	return nodes
 
 
 func _resolve_node(params: Dictionary, require_writable: bool = true) -> Dictionary:
@@ -344,4 +666,48 @@ func _require_locally_owned(node: Node, scene_root: Node, operation: String) -> 
 		"Cannot %s node '%s' because it belongs to an instanced scene" % [operation, node.name],
 		false,
 		"Edit the source PackedScene or target its locally owned instance root."
+	)
+
+
+func _require_local_subtree(node: Node, scene_root: Node, operation: String) -> Variant:
+	for descendant in _collect_subtree(node):
+		if not TypePolicy.is_supported_node_class(descendant.get_class()):
+			return Errors.make(
+				"UNSUPPORTED_2D_TYPE",
+				"Cannot %s '%s' because its subtree contains unsupported node type %s"
+				% [operation, node.name, descendant.get_class()],
+				false,
+				"Use this tool only with a subtree made entirely of supported 2D nodes."
+			)
+		if descendant != scene_root and descendant.owner != scene_root:
+			return Errors.make(
+				"PACKED_SCENE_BOUNDARY",
+				"Cannot %s '%s' because its subtree contains an instanced scene" % [operation, node.name],
+				false,
+				"Edit the source PackedScene or operate on a fully local subtree."
+			)
+	return null
+
+
+func _validate_node_name(value: String) -> Variant:
+	if value.is_empty():
+		return Errors.make("MISSING_PARAMETER", "name is required")
+	if value.length() > 256 or value.validate_node_name() != value:
+		return Errors.make("INVALID_NODE_NAME", "Invalid node name: %s" % value)
+	return null
+
+
+func _has_sibling_name(parent: Node, name: String, ignored_node: Node) -> bool:
+	for sibling in parent.get_children(false):
+		if sibling != ignored_node and String(sibling.name) == name:
+			return true
+	return false
+
+
+func _name_conflict_error(name: String) -> Dictionary:
+	return Errors.make(
+		"NODE_NAME_CONFLICT",
+		"Parent already has a child named '%s'" % name,
+		false,
+		"Choose a unique sibling name."
 	)

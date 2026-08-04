@@ -21,6 +21,10 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "node_create",
         "node_set_properties",
         "node_delete",
+        "node_rename",
+        "node_duplicate",
+        "node_reparent",
+        "node_move",
         "scene_save",
         "scene_undo",
         "scene_redo",
@@ -30,4 +34,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["node_get_properties"].readOnlyHint is True
     assert annotations["node_create"].readOnlyHint is False
     assert annotations["node_delete"].destructiveHint is True
+    assert annotations["node_rename"].destructiveHint is False
+    assert annotations["node_duplicate"].readOnlyHint is False
+    assert annotations["node_reparent"].readOnlyHint is False
+    assert annotations["node_move"].readOnlyHint is False
     assert annotations["scene_save"].idempotentHint is True
