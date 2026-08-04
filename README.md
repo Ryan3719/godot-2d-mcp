@@ -2,7 +2,7 @@
 
 Godot 2D MCP connects Codex, Claude Code, and other MCP clients to a live Godot editor. The project is designed for comprehensive Godot 2D authoring while keeping editor mutations on Godot's main thread and inside its undo/redo system.
 
-The current `0.7.0` preview adds scene-embedded Theme authoring, system/project font binding, and project icon binding to safe 2D scene, signal, animation, layout, and local-style editing. Agents can configure reusable UI themes through Godot's native Theme model while retaining editor undo/redo before explicitly saving the scene.
+The current `0.8.0` preview adds semantic 2D collision authoring to safe scene, signal, animation, UI, and Theme editing. Agents can create every built-in `Shape2D` resource and configure collision layer/mask lists through Godot's native model while retaining editor undo/redo before explicitly saving the scene.
 
 ## Current capabilities
 
@@ -22,6 +22,8 @@ The current `0.7.0` preview adds scene-embedded Theme authoring, system/project 
 - `control_theme_get`, `control_theme_create`, and `control_theme_assign` for inspecting, creating, attaching, detaching, and undoing Control Theme assignments.
 - `control_theme_defaults_set` and `control_theme_defaults_clear` for embedded Theme default font, font size, and base scale configuration.
 - `control_theme_item_upsert` and `control_theme_item_clear` for embedded Theme colors, constants, font sizes, fonts, icons, and `StyleBoxFlat` items.
+- `collision_shape_get`, `collision_shape_set`, and `collision_shape_clear` for all built-in `Shape2D` resources on `CollisionShape2D` nodes.
+- `collision_object_get_layers` and `collision_object_set_layers` for `Area2D`/`PhysicsBody2D` collision layers and masks expressed as layer numbers 1 through 32.
 - `node_create`, `node_set_properties`, `node_delete`, `node_rename`, `node_duplicate`, `node_reparent`, and `node_move` with scene-file guards.
 - `signal_connect` and `signal_disconnect` for persistent local-node connections, including bounded JSON binding arguments, deferred, and one-shot options.
 - `animation_create`, `animation_delete`, `animation_track_upsert`, `animation_track_delete`, `animation_key_upsert`, and `animation_key_delete` for scene-embedded 2D/UI property animation.
@@ -68,7 +70,7 @@ Compound property values use JSON shapes inferred from the target Godot property
 
 Node changes mark the scene as unsaved and participate in the active scene's normal Godot undo history. Only `scene_save` writes the `.tscn` file.
 
-This preview creates built-in `ClassDB` node types only. It rejects structure edits that cross a PackedScene boundary or contain unsupported 3D nodes, deletions that would leave direct `NodePath` or animation-track references dangling, and renames or reparents requiring changes to external animation resources. Animation tools edit only scene-embedded `AnimationLibrary` and `Animation` resources, and create 2D/UI property value tracks only; external resources, imported tracks, method tracks, audio tracks, and arbitrary code execution remain out of scope. Layout tools reject Controls managed by a parent `Container`. Style tools create isolated local `StyleBoxFlat` overrides instead of changing shared Theme or external resources. Theme tools can assign an external `res://` Theme but deliberately never mutate it; only scene-embedded Themes are editable. Font items accept an existing project `Font` resource or an embedded `SystemFont` family list, while icon items only bind an existing project `Texture2D`. Signal tools only connect methods that already exist; they never generate or modify user script callbacks.
+This preview creates built-in `ClassDB` node types only. It rejects structure edits that cross a PackedScene boundary or contain unsupported 3D nodes, deletions that would leave direct `NodePath` or animation-track references dangling, and renames or reparents requiring changes to external animation resources. Animation tools edit only scene-embedded `AnimationLibrary` and `Animation` resources, and create 2D/UI property value tracks only; external resources, imported tracks, method tracks, audio tracks, and arbitrary code execution remain out of scope. Layout tools reject Controls managed by a parent `Container`. Style tools create isolated local `StyleBoxFlat` overrides instead of changing shared Theme or external resources. Theme tools can assign an external `res://` Theme but deliberately never mutate it; only scene-embedded Themes are editable. Font items accept an existing project `Font` resource or an embedded `SystemFont` family list, while icon items only bind an existing project `Texture2D`. Collision shape tools replace an existing `Shape2D` with an independent built-in resource rather than mutating an external or shared resource. Collision layer tools apply only to local `CollisionObject2D` nodes. Signal tools only connect methods that already exist; they never generate or modify user script callbacks.
 
 `node_rename` and `node_reparent` migrate direct scene-local `NodePath` properties plus tracks stored in built-in `AnimationPlayer` animations. The returned migration counts make that work visible to the caller. `node_reparent` accepts an optional sibling `index` and defaults `keep_global_transform` to `true`; set it to `false` when the node should inherit its new parent's visual transform instead.
 
@@ -77,6 +79,8 @@ For a button animation, use `animation_create` on an `AnimationPlayer`, then cal
 For a standalone Control, call `control_set_layout_preset` for a named placement such as `full_rect`, or use `control_set_layout` with exact `anchors` and `offsets`. `control_stylebox_flat_upsert` then applies `bg_color`, borders, corner radii, shadows, and other public `StyleBoxFlat` properties to a local state such as a Button's `normal` or `hover` style. Controls below a `Container` are intentionally rejected because the container owns their layout.
 
 For reusable UI styling, call `control_theme_create` on a locally owned parent Control, then set defaults with `control_theme_defaults_set` and add entries using `control_theme_item_upsert`. A Button color entry uses `item_type: "color"`, `theme_type: "Button"`, and `name: "font_color"`; a system font uses `{"source": "system", "families": ["sans-serif"]}`. Icons must be an existing project texture path such as `res://ui/play.svg`. Theme items cascade normally through the Control subtree. `control_theme_assign` may attach an external `res://` Theme, but it is inspection-only through this MCP so external resource files cannot be mutated accidentally.
+
+For a `StaticBody2D`, `CharacterBody2D`, `RigidBody2D`, or `Area2D`, create a locally owned `CollisionShape2D` child and call `collision_shape_set`. Shape names are `circle`, `rectangle`, `capsule`, `segment`, `separation_ray`, `world_boundary`, `convex_polygon`, and `concave_polygon`; every required geometry property must be supplied. `collision_object_set_layers` accepts human-readable lists such as `layers: [2, 5]` and `masks: [1, 3]`. It atomically maps them to Godot's 32-bit collision flags and can be undone from the editor history.
 
 ## Requirements
 

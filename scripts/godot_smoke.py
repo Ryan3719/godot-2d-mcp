@@ -63,12 +63,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         else:
             raise RuntimeError("Godot plugin did not connect within 10 seconds")
 
-        state = await app.service.editor_get_state()
+        state = await _wait_for_editor_ready(app)
         hierarchy = await app.service.scene_get_hierarchy(limit=20)
         classes = await app.service.class_search(query="Button", limit=20)
 
-        if state.get("readiness") != "ready":
-            raise RuntimeError(f"Unexpected editor readiness: {state.get('readiness')}")
         if hierarchy.get("total") != 5:
             raise RuntimeError(f"Unexpected scene node count: {hierarchy.get('total')}")
         if classes.get("total", 0) < 4:
@@ -880,8 +878,126 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if not redo_delete.get("changed"):
             raise RuntimeError("Deleted node was not removable by redo")
 
+        wall = await app.service.node_create(
+            type_name="StaticBody2D",
+            name="AgentWall",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        wall_path = wall["path"]
+        wall_shape = await app.service.node_create(
+            type_name="CollisionShape2D",
+            name="AgentWallShape",
+            parent_path=wall_path,
+            scene_file=scene_file,
+        )
+        wall_shape_path = wall_shape["path"]
+        initial_wall_shape = await app.service.collision_shape_get(
+            wall_shape_path,
+            scene_file=scene_file,
+        )
+        if initial_wall_shape["shape"] is not None:
+            raise RuntimeError("New CollisionShape2D unexpectedly had a Shape2D resource")
+        await _expect_godot_error(
+            app.service.collision_shape_set(
+                wall_shape_path,
+                shape_type="circle",
+                properties={"radius": 0.0},
+                scene_file=scene_file,
+            ),
+            "INVALID_SHAPE_GEOMETRY",
+        )
+        shape_specs = [
+            ("circle", {"radius": 12.0}, "CircleShape2D"),
+            ("rectangle", {"size": {"x": 96.0, "y": 32.0}}, "RectangleShape2D"),
+            (
+                "capsule",
+                {"radius": 8.0, "height": 32.0},
+                "CapsuleShape2D",
+            ),
+            (
+                "segment",
+                {"a": {"x": -12.0, "y": 0.0}, "b": {"x": 12.0, "y": 0.0}},
+                "SegmentShape2D",
+            ),
+            (
+                "separation_ray",
+                {"length": 24.0, "slide_on_slope": True},
+                "SeparationRayShape2D",
+            ),
+            (
+                "world_boundary",
+                {"normal": {"x": 0.0, "y": -1.0}, "distance": 16.0},
+                "WorldBoundaryShape2D",
+            ),
+            (
+                "convex_polygon",
+                {
+                    "points": [
+                        {"x": -12.0, "y": 8.0},
+                        {"x": 0.0, "y": -12.0},
+                        {"x": 12.0, "y": 8.0},
+                    ]
+                },
+                "ConvexPolygonShape2D",
+            ),
+            (
+                "concave_polygon",
+                {
+                    "segments": [
+                        {"x": -12.0, "y": 0.0},
+                        {"x": 12.0, "y": 0.0},
+                        {"x": 0.0, "y": -12.0},
+                        {"x": 0.0, "y": 12.0},
+                    ]
+                },
+                "ConcavePolygonShape2D",
+            ),
+        ]
+        for shape_type, shape_properties, expected_type in shape_specs:
+            shape_update = await app.service.collision_shape_set(
+                wall_shape_path,
+                shape_type=shape_type,
+                properties=shape_properties,
+                scene_file=scene_file,
+            )
+            if shape_update["shape"]["resource_type"] != expected_type:
+                raise RuntimeError(f"{shape_type} did not create {expected_type}")
+        cleared_shape = await app.service.collision_shape_clear(wall_shape_path, scene_file=scene_file)
+        if not cleared_shape["cleared"]:
+            raise RuntimeError("CollisionShape2D clear did not report a change")
+        undo_shape_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_shape_clear.get("changed"):
+            raise RuntimeError("Collision shape clear was not undoable")
+        restored_wall_shape = await app.service.collision_shape_get(
+            wall_shape_path,
+            scene_file=scene_file,
+        )
+        if restored_wall_shape["shape"]["resource_type"] != "ConcavePolygonShape2D":
+            raise RuntimeError("Undo did not restore the collision shape resource")
+        initial_layers = await app.service.collision_object_get_layers(wall_path, scene_file=scene_file)
+        if initial_layers["layers"] != [1] or initial_layers["masks"] != [1]:
+            raise RuntimeError("StaticBody2D did not expose default collision layers")
+        updated_layers = await app.service.collision_object_set_layers(
+            wall_path,
+            layers=[2, 5],
+            masks=[1, 3],
+            scene_file=scene_file,
+        )
+        if updated_layers["layers"] != [2, 5] or updated_layers["masks"] != [1, 3]:
+            raise RuntimeError("Collision layer number lists were not applied")
+        undo_layers = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_layers.get("changed"):
+            raise RuntimeError("Collision layer update was not undoable")
+        restored_layers = await app.service.collision_object_get_layers(wall_path, scene_file=scene_file)
+        if restored_layers["layers"] != [1] or restored_layers["masks"] != [1]:
+            raise RuntimeError("Undo did not restore collision layer values")
+        redo_layers = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_layers.get("changed"):
+            raise RuntimeError("Collision layer update was not redoable")
+
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 11 or _has_node(final_hierarchy, marker_path):
+        if final_hierarchy.get("total") != 13 or _has_node(final_hierarchy, marker_path):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
@@ -892,6 +1008,8 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             "AgentButton" not in saved_scene
             or "Created by MCP" not in saved_scene
             or "AgentMarkerCopy" not in saved_scene
+            or "AgentWall" not in saved_scene
+            or "ConcavePolygonShape2D" not in saved_scene
         ):
             raise RuntimeError("Saved scene does not contain the created Button")
 
@@ -911,6 +1029,21 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
     fatal_markers = ("SCRIPT ERROR", "Parse Error", "ERROR: Failed to load script")
     if any(marker in editor_output for marker in fatal_markers):
         raise RuntimeError(f"Godot reported script errors:\n{editor_output}")
+
+
+async def _wait_for_editor_ready(app: object, timeout_seconds: float = 30.0) -> dict:
+    """Wait for a newly imported isolated project to become writable."""
+    attempts = int(timeout_seconds / 0.1)
+    state: dict = {}
+    for _ in range(attempts):
+        state = await app.service.editor_get_state()
+        if state.get("readiness") == "ready":
+            return state
+        await asyncio.sleep(0.1)
+    raise RuntimeError(
+        "Editor did not become ready within "
+        f"{timeout_seconds:.0f} seconds; last state: {state}"
+    )
 
 
 def _property_value(result: dict, name: str) -> object:
