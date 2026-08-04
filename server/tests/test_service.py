@@ -1143,3 +1143,161 @@ async def test_navigation_polygon_tools_reject_invalid_payloads() -> None:
         )
     with pytest.raises(ValueError, match="index"):
         await service.navigation_polygon_outline_remove("/Main/NavigationRegion", True)
+
+
+@pytest.mark.asyncio
+async def test_tilemap_tools_forward_semantic_edits() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    cells = [
+        {
+            "coords": {"x": -2, "y": 3},
+            "source_id": 4,
+            "atlas_coords": {"x": 1, "y": 2},
+            "alternative_tile": 0,
+        }
+    ]
+
+    await service.tile_map_layer_get(
+        "/Main/Tiles", session_id="project@a1b2", scene_file="res://main.tscn"
+    )
+    await service.tile_map_layer_cells_get(
+        "/Main/Tiles", offset=10, limit=50, scene_file="res://main.tscn"
+    )
+    await service.tile_set_get("/Main/Tiles", scene_file="res://main.tscn")
+    await service.tile_set_create(
+        "/Main/Tiles", tile_size={"x": 32, "y": 16}, scene_file="res://main.tscn"
+    )
+    await service.tile_set_atlas_source_create(
+        "/Main/Tiles",
+        texture_path="res://tiles.svg",
+        source_id=4,
+        texture_region_size={"x": 32, "y": 32},
+        margins={"x": 1, "y": 2},
+        separation={"x": 3, "y": 4},
+        scene_file="res://main.tscn",
+    )
+    await service.tile_set_atlas_tile_create(
+        "/Main/Tiles",
+        source_id=4,
+        atlas_coords={"x": 1, "y": 2},
+        size={"x": 2, "y": 1},
+        scene_file="res://main.tscn",
+    )
+    await service.tile_map_layer_cells_set("/Main/Tiles", cells, scene_file="res://main.tscn")
+    await service.tile_map_layer_cells_clear(
+        "/Main/Tiles", [{"x": -2, "y": 3}], scene_file="res://main.tscn"
+    )
+    await service.tile_set_clear("/Main/Tiles", scene_file="res://main.tscn")
+
+    assert bridge.calls == [
+        (
+            "tile_map_layer_get",
+            {"path": "/Main/Tiles", "scene_file": "res://main.tscn"},
+            "project@a1b2",
+        ),
+        (
+            "tile_map_layer_cells_get",
+            {
+                "path": "/Main/Tiles",
+                "offset": 10,
+                "limit": 50,
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "tile_set_get",
+            {
+                "path": "/Main/Tiles",
+                "offset": 0,
+                "limit": 100,
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "tile_set_create",
+            {
+                "path": "/Main/Tiles",
+                "tile_size": {"x": 32, "y": 16},
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "tile_set_atlas_source_create",
+            {
+                "path": "/Main/Tiles",
+                "texture_path": "res://tiles.svg",
+                "source_id": 4,
+                "texture_region_size": {"x": 32, "y": 32},
+                "margins": {"x": 1, "y": 2},
+                "separation": {"x": 3, "y": 4},
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "tile_set_atlas_tile_create",
+            {
+                "path": "/Main/Tiles",
+                "source_id": 4,
+                "atlas_coords": {"x": 1, "y": 2},
+                "size": {"x": 2, "y": 1},
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "tile_map_layer_cells_set",
+            {"path": "/Main/Tiles", "cells": cells, "scene_file": "res://main.tscn"},
+            None,
+        ),
+        (
+            "tile_map_layer_cells_clear",
+            {
+                "path": "/Main/Tiles",
+                "coords": [{"x": -2, "y": 3}],
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "tile_set_clear",
+            {"path": "/Main/Tiles", "scene_file": "res://main.tscn"},
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_tilemap_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="limit"):
+        await service.tile_map_layer_cells_get("/Main/Tiles", limit=0)
+    with pytest.raises(ValueError, match="tile_size"):
+        await service.tile_set_create("/Main/Tiles", tile_size={"x": 0, "y": 16})
+    with pytest.raises(ValueError, match="texture_path"):
+        await service.tile_set_atlas_source_create("/Main/Tiles", texture_path="/tmp/tiles.png")
+    with pytest.raises(ValueError, match="source_id"):
+        await service.tile_set_atlas_tile_create(
+            "/Main/Tiles", source_id=-1, atlas_coords={"x": 0, "y": 0}
+        )
+    with pytest.raises(ValueError, match="alternative_tile"):
+        await service.tile_map_layer_cells_set(
+            "/Main/Tiles",
+            [
+                {
+                    "coords": {"x": 0, "y": 0},
+                    "source_id": 0,
+                    "atlas_coords": {"x": 0, "y": 0},
+                    "alternative_tile": -1,
+                }
+            ],
+        )
+    with pytest.raises(ValueError, match="duplicates"):
+        await service.tile_map_layer_cells_clear(
+            "/Main/Tiles", [{"x": 0, "y": 0}, {"x": 0, "y": 0}]
+        )

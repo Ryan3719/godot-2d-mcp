@@ -1512,8 +1512,112 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if not redo_navigation_link.get("changed"):
             raise RuntimeError("NavigationLink2D configuration was not redoable")
 
+        tile_map_layer = await app.service.node_create(
+            type_name="TileMapLayer",
+            name="AgentTileMap",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        tile_map_layer_path = tile_map_layer["path"]
+        initial_tile_map = await app.service.tile_map_layer_get(
+            tile_map_layer_path, scene_file=scene_file
+        )
+        if initial_tile_map["tile_set"] is not None or initial_tile_map["used_cells"] != 0:
+            raise RuntimeError("New TileMapLayer unexpectedly had TileSet data")
+        await _expect_godot_error(
+            app.service.tile_map_layer_cells_set(
+                tile_map_layer_path,
+                [
+                    {
+                        "coords": {"x": 0, "y": 0},
+                        "source_id": 3,
+                        "atlas_coords": {"x": 0, "y": 0},
+                        "alternative_tile": 0,
+                    }
+                ],
+                scene_file=scene_file,
+            ),
+            "TILE_SET_NOT_ASSIGNED",
+        )
+        created_tile_set = await app.service.tile_set_create(
+            tile_map_layer_path, tile_size={"x": 16, "y": 16}, scene_file=scene_file
+        )
+        if created_tile_set["tile_set"]["tile_size"] != {"x": 16, "y": 16}:
+            raise RuntimeError("TileSet creation did not set tile_size")
+        atlas_source = await app.service.tile_set_atlas_source_create(
+            tile_map_layer_path,
+            texture_path="res://test_icon.svg",
+            source_id=3,
+            scene_file=scene_file,
+        )
+        if atlas_source["source_id"] != 3:
+            raise RuntimeError("TileSetAtlasSource did not retain its requested source ID")
+        created_atlas_tile = await app.service.tile_set_atlas_tile_create(
+            tile_map_layer_path,
+            source_id=3,
+            atlas_coords={"x": 0, "y": 0},
+            scene_file=scene_file,
+        )
+        if created_atlas_tile["atlas_coords"] != {"x": 0, "y": 0}:
+            raise RuntimeError("TileSetAtlasSource did not create its atlas tile")
+        tile_set_state = await app.service.tile_set_get(tile_map_layer_path, scene_file=scene_file)
+        if (
+            tile_set_state["total"] != 1
+            or tile_set_state["sources"][0]["type"] != "TileSetAtlasSource"
+            or tile_set_state["sources"][0]["tiles_count"] != 1
+        ):
+            raise RuntimeError("tile_set_get did not return the atlas source state")
+        tile_cells = [
+            {
+                "coords": {"x": -1, "y": 2},
+                "source_id": 3,
+                "atlas_coords": {"x": 0, "y": 0},
+                "alternative_tile": 0,
+            },
+            {
+                "coords": {"x": 0, "y": 2},
+                "source_id": 3,
+                "atlas_coords": {"x": 0, "y": 0},
+                "alternative_tile": 0,
+            },
+        ]
+        tile_cells_update = await app.service.tile_map_layer_cells_set(
+            tile_map_layer_path, tile_cells, scene_file=scene_file
+        )
+        if tile_cells_update["changed_cells"] != 2 or tile_cells_update["used_cells"] != 2:
+            raise RuntimeError("TileMapLayer cells were not assigned")
+        tile_cells_state = await app.service.tile_map_layer_cells_get(
+            tile_map_layer_path, limit=10, scene_file=scene_file
+        )
+        if tile_cells_state["total"] != 2 or tile_cells_state["cells"] != tile_cells:
+            raise RuntimeError("tile_map_layer_cells_get did not return stable cell assignments")
+        cleared_tile_cells = await app.service.tile_map_layer_cells_clear(
+            tile_map_layer_path,
+            [{"x": -1, "y": 2}],
+            scene_file=scene_file,
+        )
+        if cleared_tile_cells["cleared_cells"] != 1 or cleared_tile_cells["used_cells"] != 1:
+            raise RuntimeError("TileMapLayer cell clear was not applied")
+        undo_tile_cell_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_tile_cell_clear.get("changed"):
+            raise RuntimeError("TileMapLayer cell clear was not undoable")
+        restored_tile_cells = await app.service.tile_map_layer_cells_get(
+            tile_map_layer_path, limit=10, scene_file=scene_file
+        )
+        if restored_tile_cells["total"] != 2:
+            raise RuntimeError("Undo did not restore TileMapLayer cells")
+        cleared_tile_set = await app.service.tile_set_clear(tile_map_layer_path, scene_file=scene_file)
+        if cleared_tile_set["tile_set"] is not None:
+            raise RuntimeError("TileSet resource was not detached")
+        undo_tile_set_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_tile_set_clear.get("changed"):
+            raise RuntimeError("TileSet clear was not undoable")
+        restored_tile_set = await app.service.tile_set_get(tile_map_layer_path, scene_file=scene_file)
+        if restored_tile_set["tile_set"] is None or restored_tile_set["total"] != 1:
+            raise RuntimeError("Undo did not restore the TileSet resource")
+
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 26 or _has_node(final_hierarchy, marker_path):
+        if final_hierarchy.get("total") != 27 or _has_node(final_hierarchy, marker_path):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
@@ -1530,6 +1634,8 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentShapeCast" not in saved_scene
             or "AgentNavigationLink" not in saved_scene
             or "NavigationPolygon" not in saved_scene
+            or "AgentTileMap" not in saved_scene
+            or "TileSetAtlasSource" not in saved_scene
         ):
             raise RuntimeError("Saved scene does not contain the created Button")
 

@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：阶段 0 已完成；阶段 1 已交付首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式与嵌入式 Theme 资源能力；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力（v0.12.0）
+状态：阶段 0 已完成；阶段 1 已交付首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式与嵌入式 Theme 资源能力；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力；阶段 4 已交付 TileMapLayer 与内嵌 TileSet Atlas 基础能力（v0.13.0）
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -137,10 +137,11 @@ Codex / Claude Code / MCP Client
 - `shape_cast_2d_get`、`shape_cast_2d_set`、`shape_cast_2d_shape_clear`，支持 `ShapeCast2D` 的持久查询配置与独立内嵌 `Shape2D` 的创建、替换、清除、撤销/重做。
 - `navigation_2d_get`、`navigation_2d_set`，支持 `NavigationRegion2D`、`NavigationAgent2D`、`NavigationObstacle2D`、`NavigationLink2D` 的安全语义配置；导航与避障位域使用 1-32 层编号数组。
 - `navigation_polygon_get`、`navigation_polygon_create`、`navigation_polygon_geometry_set`、`navigation_polygon_outline_set`、`navigation_polygon_outline_remove`、`navigation_polygon_make_from_outlines`、`navigation_polygon_clear`，支持 NavigationRegion2D 的内嵌 NavigationPolygon 创建、绑定、凸多边形索引、轮廓、轮廓构建、移除和解绑。
+- `tile_map_layer_get`、`tile_map_layer_cells_get`、`tile_set_get`、`tile_set_create`、`tile_set_clear`、`tile_set_atlas_source_create`、`tile_set_atlas_tile_create`、`tile_map_layer_cells_set`、`tile_map_layer_cells_clear`，支持 TileMapLayer 的内嵌 TileSet 创建/解绑、Atlas Source、基础 Atlas tile、分页 cells 读取、已验证的 cells 批量写入/清除与撤销重做。
 - 重命名和重新挂载时迁移场景内直接 `NodePath` 属性及内嵌 `AnimationPlayer` 动画轨道。
 - 重新挂载默认保持 `Node2D`/`Control` 的全局视觉位置，并允许调用方关闭该行为。
 
-当前结构编辑拒绝跨 PackedScene 边界、包含不受支持 3D 节点的子树，以及需要修改外部动画资源的操作；删除会预检直接 `NodePath` 和动画轨道，避免留下悬空引用。动画工具仅写入场景内嵌 `AnimationLibrary`/`Animation`，并且只创建或修改本地 2D/UI 节点的属性值轨道；外部资源、导入轨道和方法/音频/嵌套动画轨道仍属于后续阶段。布局工具拒绝由 `Container` 管理的子节点；样式工具只创建独立的节点本地 `StyleBoxFlat` override，不会修改共享 Theme 或外部资源。Theme 工具可绑定外部 `res://` Theme，但它们在 MCP 内只读；可写范围限于场景内嵌 Theme，因此全部 Theme 变更都能随场景撤销和重做。字体可绑定项目 `Font` 或新建内嵌 `SystemFont`，图标仅绑定项目中已有的 `Texture2D`。碰撞形状工具创建或复制独立内嵌的 `Shape2D` 后替换节点分配，不修改共享或外部 Shape2D；碰撞层工具只改动本地 `CollisionObject2D` 的 layer/mask。Area/Body/Joint 工具仅允许已核验的公开物理配置，并在写入前校验枚举、层位、端点类型与关键数值约束；RayCast/ShapeCast 工具仅保存配置和独立内嵌 Shape2D，不在静态编辑器中伪造运行时命中结果；导航节点工具支持 Region、Agent、Obstacle、Link 的安全配置与层位；NavigationPolygon 工具仅以复制后替换的内嵌资源方式写入凸多边形索引和轮廓，避免原地修改共享或外部资源，轮廓构建可同步执行。基于场景源几何的异步 Bake 仍属于后续批次。全部更新均在同一撤销事务中完成。TileMap 仍在后续阶段。信号工具仅操作场景内本地节点的持久化连接，并要求目标方法已存在，不会生成或修改脚本回调。这是为了避免 Agent 在无法证明安全的情况下静默破坏引用。自动脚本回调生成和完整 PackedScene 工作流仍属于后续阶段。
+当前结构编辑拒绝跨 PackedScene 边界、包含不受支持 3D 节点的子树，以及需要修改外部动画资源的操作；删除会预检直接 `NodePath` 和动画轨道，避免留下悬空引用。动画工具仅写入场景内嵌 `AnimationLibrary`/`Animation`，并且只创建或修改本地 2D/UI 节点的属性值轨道；外部资源、导入轨道和方法/音频/嵌套动画轨道仍属于后续阶段。布局工具拒绝由 `Container` 管理的子节点；样式工具只创建独立的节点本地 `StyleBoxFlat` override，不会修改共享 Theme 或外部资源。Theme 工具可绑定外部 `res://` Theme，但它们在 MCP 内只读；可写范围限于场景内嵌 Theme，因此全部 Theme 变更都能随场景撤销和重做。字体可绑定项目 `Font` 或新建内嵌 `SystemFont`，图标仅绑定项目中已有的 `Texture2D`。碰撞形状工具创建或复制独立内嵌的 `Shape2D` 后替换节点分配，不修改共享或外部 Shape2D；碰撞层工具只改动本地 `CollisionObject2D` 的 layer/mask。Area/Body/Joint 工具仅允许已核验的公开物理配置，并在写入前校验枚举、层位、端点类型与关键数值约束；RayCast/ShapeCast 工具仅保存配置和独立内嵌 Shape2D，不在静态编辑器中伪造运行时命中结果；导航节点工具支持 Region、Agent、Obstacle、Link 的安全配置与层位；NavigationPolygon 工具仅以复制后替换的内嵌资源方式写入凸多边形索引和轮廓，避免原地修改共享或外部资源，轮廓构建可同步执行。TileMap 基础工具创建内嵌 TileSet/Atlas Source/tiles，且每次资源修改都复制后替换，cells 写入批次则在一个编辑器撤销事务内完成。Atlas alternatives、terrain、custom data、碰撞、遮挡和导航层仍属于后续 TileMap 批次。基于场景源几何的异步 Bake 仍属于后续批次。全部更新均在同一撤销事务中完成。信号工具仅操作场景内本地节点的持久化连接，并要求目标方法已存在，不会生成或修改脚本回调。这是为了避免 Agent 在无法证明安全的情况下静默破坏引用。自动脚本回调生成和完整 PackedScene 工作流仍属于后续阶段。
 
 ## 6. 核心数据约定
 
