@@ -728,6 +728,32 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def light_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "light_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def light_occluder_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "light_occluder_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def tile_map_layer_get(
         self,
         path: str,
@@ -1272,6 +1298,56 @@ class GodotService:
         return await self.bridge.call(
             "navigation_polygon_clear",
             _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def light_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_light_2d_properties(properties)
+        return await self.bridge.call(
+            "light_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def light_occluder_2d_set(
+        self,
+        path: str,
+        layers: list[int] | None = None,
+        sdf_collision: bool | None = None,
+        polygon: dict[str, Any] | None = None,
+        clear: bool = False,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        if layers is None and sdf_collision is None and polygon is None and not clear:
+            raise ValueError("layers, sdf_collision, polygon, or clear must be supplied")
+        if layers is not None:
+            _validate_collision_layer_numbers(layers, "layers")
+        if sdf_collision is not None:
+            _validate_boolean(sdf_collision, "sdf_collision")
+        _validate_boolean(clear, "clear")
+        if clear and polygon is not None:
+            raise ValueError("clear cannot be combined with polygon")
+        if polygon is not None:
+            _validate_light_occluder_polygon(polygon)
+        return await self.bridge.call(
+            "light_occluder_2d_set",
+            _scene_params(
+                scene_file,
+                path=path,
+                layers=layers,
+                sdf_collision=sdf_collision,
+                polygon=polygon,
+                clear=clear,
+            ),
             session_id=session_id,
         )
 
@@ -2094,6 +2170,116 @@ def _validate_physics_configuration_properties(
         for name, property_value in properties.items()
     ):
         raise ValueError("properties must contain bounded JSON-compatible values")
+
+
+def _validate_light_2d_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "enabled",
+        "editor_only",
+        "color",
+        "energy",
+        "blend_mode",
+        "range_z_min",
+        "range_z_max",
+        "range_layer_min",
+        "range_layer_max",
+        "range_item_cull_layers",
+        "shadow_enabled",
+        "shadow_color",
+        "shadow_filter",
+        "shadow_filter_smooth",
+        "shadow_item_cull_layers",
+        "height",
+        "texture_path",
+        "offset",
+        "texture_scale",
+        "max_distance",
+    }
+    if not isinstance(properties, dict) or not properties:
+        raise ValueError("properties must be a non-empty object")
+    if len(properties) > 18:
+        raise ValueError("properties can contain at most 18 entries")
+    if any(not isinstance(name, str) or name not in allowed for name in properties):
+        raise ValueError("properties contains an unsupported light property")
+    if any(not _is_json_bind_value(value) for value in properties.values()):
+        raise ValueError("properties must contain bounded JSON-compatible values")
+
+    for name in ("enabled", "editor_only", "shadow_enabled"):
+        if name in properties:
+            _validate_boolean(properties[name], name)
+    for name in ("color", "shadow_color"):
+        if name in properties:
+            _validate_light_color(properties[name], name)
+    for name, supported in {
+        "blend_mode": {"add", "subtract", "mix"},
+        "shadow_filter": {"none", "pcf5", "pcf13"},
+    }.items():
+        if name in properties and (
+            not isinstance(properties[name], str)
+            or properties[name].strip().lower() not in supported
+        ):
+            choices = ", ".join(sorted(supported))
+            raise ValueError(f"{name} must be one of: {choices}")
+    for name in ("range_item_cull_layers", "shadow_item_cull_layers"):
+        if name in properties:
+            _validate_collision_layer_numbers(properties[name], name)
+    for name in ("energy", "shadow_filter_smooth", "height", "texture_scale", "max_distance"):
+        if name in properties and not _is_finite_number(properties[name]):
+            raise ValueError(f"{name} must be a finite number")
+    if "energy" in properties and properties["energy"] < 0:
+        raise ValueError("energy must be greater than or equal to zero")
+    if "shadow_filter_smooth" in properties and not 0 <= properties["shadow_filter_smooth"] <= 64:
+        raise ValueError("shadow_filter_smooth must be between 0 and 64")
+    if "height" in properties and properties["height"] < 0:
+        raise ValueError("height must be greater than or equal to zero")
+    if "texture_scale" in properties and properties["texture_scale"] < 0.01:
+        raise ValueError("texture_scale must be greater than or equal to 0.01")
+    if "max_distance" in properties and properties["max_distance"] < 0:
+        raise ValueError("max_distance must be greater than or equal to zero")
+    for name, lower, upper in (
+        ("range_z_min", -4096, 4096),
+        ("range_z_max", -4096, 4096),
+        ("range_layer_min", -(2**31), 2**31 - 1),
+        ("range_layer_max", -(2**31), 2**31 - 1),
+    ):
+        if name in properties and (
+            isinstance(properties[name], bool)
+            or not isinstance(properties[name], int)
+            or not lower <= properties[name] <= upper
+        ):
+            raise ValueError(f"{name} must be an integer between {lower} and {upper}")
+    if "offset" in properties:
+        _validate_light_vector2(properties["offset"], "offset")
+    if "texture_path" in properties:
+        _validate_optional_project_resource_path(properties["texture_path"], "texture_path")
+
+
+def _validate_light_color(value: Any, label: str) -> None:
+    if isinstance(value, str):
+        return
+    if (
+        isinstance(value, dict)
+        and set(value) in ({"r", "g", "b"}, {"r", "g", "b", "a"})
+        and all(_is_finite_number(channel) for channel in value.values())
+    ):
+        return
+    raise ValueError(f"{label} must be a color string or r/g/b/a object")
+
+
+def _validate_light_vector2(value: Any, label: str) -> None:
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"x", "y"}
+        or not _is_finite_number(value["x"])
+        or not _is_finite_number(value["y"])
+    ):
+        raise ValueError(f"{label} must contain finite x and y values")
+
+
+def _validate_light_occluder_polygon(polygon: dict[str, Any]) -> None:
+    if not isinstance(polygon, dict):
+        raise ValueError("polygon must be an object")
+    _validate_tile_occlusion_polygons([polygon])
 
 
 def _validate_navigation_polygon_agent_radius(value: float) -> None:

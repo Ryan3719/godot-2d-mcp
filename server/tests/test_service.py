@@ -1146,6 +1146,128 @@ async def test_navigation_polygon_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_lighting_tools_forward_atomic_semantic_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    light_path = "/Main/KeyLight"
+    occluder_path = "/Main/WallOccluder"
+    scene_file = "res://main.tscn"
+    light_properties = {
+        "enabled": True,
+        "color": {"r": 1.0, "g": 0.8, "b": 0.4, "a": 1.0},
+        "energy": 2.5,
+        "blend_mode": "add",
+        "range_item_cull_layers": [1, 3],
+        "shadow_enabled": True,
+        "shadow_filter": "pcf5",
+        "shadow_item_cull_layers": [2],
+        "height": 64.0,
+        "texture_path": "res://light.png",
+        "offset": {"x": 4.0, "y": -2.0},
+        "texture_scale": 1.25,
+    }
+    polygon = {
+        "points": [
+            {"x": -8.0, "y": -8.0},
+            {"x": 8.0, "y": -8.0},
+            {"x": 8.0, "y": 8.0},
+            {"x": -8.0, "y": 8.0},
+        ],
+        "closed": True,
+        "cull_mode": "counter_clockwise",
+    }
+
+    await service.light_2d_get(light_path, session_id="project@a1b2", scene_file=scene_file)
+    await service.light_occluder_2d_get(occluder_path, scene_file=scene_file)
+    await service.light_2d_set(light_path, light_properties, scene_file=scene_file)
+    await service.light_occluder_2d_set(
+        occluder_path,
+        layers=[2, 5],
+        sdf_collision=True,
+        polygon=polygon,
+        scene_file=scene_file,
+    )
+    await service.light_occluder_2d_set(occluder_path, clear=True, scene_file=scene_file)
+
+    assert bridge.calls == [
+        ("light_2d_get", {"path": light_path, "scene_file": scene_file}, "project@a1b2"),
+        ("light_occluder_2d_get", {"path": occluder_path, "scene_file": scene_file}, None),
+        (
+            "light_2d_set",
+            {"path": light_path, "properties": light_properties, "scene_file": scene_file},
+            None,
+        ),
+        (
+            "light_occluder_2d_set",
+            {
+                "path": occluder_path,
+                "layers": [2, 5],
+                "sdf_collision": True,
+                "polygon": polygon,
+                "clear": False,
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "light_occluder_2d_set",
+            {
+                "path": occluder_path,
+                "layers": None,
+                "sdf_collision": None,
+                "polygon": None,
+                "clear": True,
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_lighting_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="non-empty"):
+        await service.light_2d_set("/Main/KeyLight", {})
+    with pytest.raises(ValueError, match="unsupported light property"):
+        await service.light_2d_set("/Main/KeyLight", {"texture": "res://light.png"})
+    with pytest.raises(ValueError, match="texture_path"):
+        await service.light_2d_set("/Main/KeyLight", {"texture_path": "/tmp/light.png"})
+    with pytest.raises(ValueError, match="range_item_cull_layers"):
+        await service.light_2d_set("/Main/KeyLight", {"range_item_cull_layers": [1, 1]})
+    with pytest.raises(ValueError, match="shadow_filter_smooth"):
+        await service.light_2d_set("/Main/KeyLight", {"shadow_filter_smooth": 65.0})
+    with pytest.raises(ValueError, match="layers, sdf_collision, polygon, or clear"):
+        await service.light_occluder_2d_set("/Main/WallOccluder")
+    with pytest.raises(ValueError, match="sdf_collision"):
+        await service.light_occluder_2d_set("/Main/WallOccluder", sdf_collision=1)
+    with pytest.raises(ValueError, match="clear cannot"):
+        await service.light_occluder_2d_set(
+            "/Main/WallOccluder",
+            polygon={"points": [{"x": 0.0, "y": 0.0}, {"x": 1.0, "y": 0.0}]},
+            clear=True,
+        )
+    with pytest.raises(ValueError, match="between two"):
+        await service.light_occluder_2d_set(
+            "/Main/WallOccluder",
+            polygon={"points": [{"x": 0.0, "y": 0.0}], "closed": False},
+        )
+    with pytest.raises(ValueError, match="cull_mode"):
+        await service.light_occluder_2d_set(
+            "/Main/WallOccluder",
+            polygon={
+                "points": [
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 1.0, "y": 0.0},
+                    {"x": 0.0, "y": 1.0},
+                ],
+                "cull_mode": "front",
+            },
+        )
+
+
+@pytest.mark.asyncio
 async def test_tilemap_tools_forward_semantic_edits() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)
