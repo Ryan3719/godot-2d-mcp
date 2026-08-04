@@ -1241,6 +1241,23 @@ def create_application(
         )
 
     @mcp.tool(annotations=WRITE)
+    async def tile_set_occlusion_layer_create(
+        path: str,
+        layers: list[int] | None = None,
+        sdf_collision: bool = False,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Add a TileSet occlusion layer with light-mask layers and SDF collision mode."""
+        return await service.tile_set_occlusion_layer_create(
+            path=path,
+            layers=layers,
+            sdf_collision=sdf_collision,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
     async def tile_set_custom_data_layer_create(
         path: str,
         name: str,
@@ -1403,6 +1420,29 @@ def create_application(
             polygons=polygons,
             agent_radius=agent_radius,
             clear=clear,
+            alternative_tile=alternative_tile,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def tile_set_atlas_tile_occlusion_set(
+        path: str,
+        source_id: int,
+        atlas_coords: dict[str, int],
+        occlusion_layer: int,
+        polygons: list[dict[str, Any]],
+        alternative_tile: int = 0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically replace OccluderPolygon2D resources on one atlas-tile layer."""
+        return await service.tile_set_atlas_tile_occlusion_set(
+            path=path,
+            source_id=source_id,
+            atlas_coords=atlas_coords,
+            occlusion_layer=occlusion_layer,
+            polygons=polygons,
             alternative_tile=alternative_tile,
             session_id=session_id,
             scene_file=scene_file,

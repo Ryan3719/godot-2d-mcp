@@ -85,6 +85,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "tile_set_atlas_tile_create",
         "tile_set_physics_layer_create",
         "tile_set_navigation_layer_create",
+        "tile_set_occlusion_layer_create",
         "tile_set_custom_data_layer_create",
         "tile_set_terrain_set_create",
         "tile_set_terrain_create",
@@ -93,6 +94,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "tile_set_atlas_tile_custom_data_set",
         "tile_set_atlas_tile_collision_set",
         "tile_set_atlas_tile_navigation_set",
+        "tile_set_atlas_tile_occlusion_set",
         "tile_map_layer_cells_set",
         "tile_map_layer_cells_clear",
         "scene_save",
@@ -168,6 +170,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["tile_set_atlas_tile_create"].readOnlyHint is False
     assert annotations["tile_set_physics_layer_create"].readOnlyHint is False
     assert annotations["tile_set_navigation_layer_create"].readOnlyHint is False
+    assert annotations["tile_set_occlusion_layer_create"].readOnlyHint is False
     assert annotations["tile_set_custom_data_layer_create"].readOnlyHint is False
     assert annotations["tile_set_terrain_set_create"].readOnlyHint is False
     assert annotations["tile_set_terrain_create"].readOnlyHint is False
@@ -176,6 +179,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["tile_set_atlas_tile_custom_data_set"].readOnlyHint is False
     assert annotations["tile_set_atlas_tile_collision_set"].readOnlyHint is False
     assert annotations["tile_set_atlas_tile_navigation_set"].readOnlyHint is False
+    assert annotations["tile_set_atlas_tile_occlusion_set"].readOnlyHint is False
     assert annotations["tile_map_layer_cells_set"].readOnlyHint is False
     assert annotations["tile_map_layer_cells_clear"].destructiveHint is True
     assert annotations["scene_save"].idempotentHint is True

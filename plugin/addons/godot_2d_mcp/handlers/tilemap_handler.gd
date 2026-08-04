@@ -18,10 +18,17 @@ const MAX_TILE_COLLISION_POLYGON_POINTS := 512
 const MAX_TILE_COLLISION_TOTAL_POINTS := 2048
 const MAX_TILE_NAVIGATION_POLYGONS := 512
 const MAX_TILE_NAVIGATION_INDICES := 2048
+const MAX_TILE_OCCLUSION_POLYGONS := 128
+const MAX_TILE_OCCLUSION_TOTAL_POINTS := 2048
 const TERRAIN_MODES := {
 	"match_corners_and_sides": 0,
 	"match_corners": 1,
 	"match_sides": 2,
+}
+const OCCLUDER_CULL_MODES := {
+	"disabled": OccluderPolygon2D.CULL_DISABLED,
+	"clockwise": OccluderPolygon2D.CULL_CLOCKWISE,
+	"counter_clockwise": OccluderPolygon2D.CULL_COUNTER_CLOCKWISE,
 }
 const CUSTOM_DATA_TYPES := {
 	"bool": TYPE_BOOL,
@@ -390,6 +397,7 @@ func get_tile_set_atlas_tile(params: Dictionary) -> Dictionary:
 	var result := _tile_data_response(tile_map_layer, resolved["scene_root"], tile_result)
 	result["physics_layers"] = _serialize_tile_collision_layers(tile_set, tile_data)
 	result["navigation_layers"] = _serialize_tile_navigation_layers(tile_set, tile_data)
+	result["occlusion_layers"] = _serialize_tile_occlusion_layers(tile_set, tile_data)
 	return result
 
 
@@ -462,6 +470,43 @@ func create_tile_set_navigation_layer(params: Dictionary) -> Dictionary:
 	)
 	var result := _tile_set_layers_response(tile_map_layer, resolved["scene_root"])
 	result["navigation_layer_index"] = layer_index
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func create_tile_set_occlusion_layer(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tile_map_layer(params)
+	if resolved.has("_error"):
+		return resolved
+	var tile_map_layer: TileMapLayer = resolved["tile_map_layer"]
+	var current: TileSet = tile_map_layer.tile_set
+	if current == null:
+		return _tile_set_required(tile_map_layer)
+	if current.get_occlusion_layers_count() >= MAX_TILESET_LAYERS:
+		return Errors.make("TILESET_LAYER_LIMIT", "occlusion layer count exceeds the supported limit")
+	var layers_result := _parse_layer_numbers(params.get("layers", [1]), "layers")
+	if layers_result.has("_error"):
+		return layers_result
+	var sdf_collision_result := _parse_boolean(params.get("sdf_collision", false), "sdf_collision")
+	if sdf_collision_result.has("_error"):
+		return sdf_collision_result
+	var replacement_result := _duplicate_tile_set(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: TileSet = replacement_result["tile_set"]
+	var layer_index := replacement.get_occlusion_layers_count()
+	replacement.add_occlusion_layer()
+	replacement.set_occlusion_layer_light_mask(layer_index, layers_result["mask"])
+	replacement.set_occlusion_layer_sdf_collision(layer_index, sdf_collision_result["value"])
+	_commit_tile_set(
+		tile_map_layer,
+		resolved["scene_root"],
+		replacement,
+		"Create TileSet occlusion layer on %s" % tile_map_layer.name
+	)
+	var result := _tile_set_layers_response(tile_map_layer, resolved["scene_root"])
+	result["occlusion_layer_index"] = layer_index
 	result["undoable"] = true
 	result["_scene_mutated"] = true
 	return result
@@ -820,6 +865,57 @@ func set_tile_set_atlas_tile_navigation(params: Dictionary) -> Dictionary:
 	return result
 
 
+func set_tile_set_atlas_tile_occlusion(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tile_map_layer(params)
+	if resolved.has("_error"):
+		return resolved
+	var tile_map_layer: TileMapLayer = resolved["tile_map_layer"]
+	var current: TileSet = tile_map_layer.tile_set
+	if current == null:
+		return _tile_set_required(tile_map_layer)
+	var tile_result := _resolve_atlas_tile(params, current)
+	if tile_result.has("_error"):
+		return tile_result
+	var layer_result := _parse_existing_tile_set_layer(
+		params.get("occlusion_layer", null), "occlusion_layer", current.get_occlusion_layers_count()
+	)
+	if layer_result.has("_error"):
+		return layer_result
+	var polygons_result := _parse_tile_occlusion_polygons(params.get("polygons", null))
+	if polygons_result.has("_error"):
+		return polygons_result
+	var replacement_result := _duplicate_tile_set(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: TileSet = replacement_result["tile_set"]
+	var replacement_data_result := _get_replacement_tile_data(replacement, tile_result)
+	if replacement_data_result.has("_error"):
+		return replacement_data_result
+	var tile_data: TileData = replacement_data_result["tile_data"]
+	var occlusion_layer: int = layer_result["layer"]
+	var polygons: Array = polygons_result["polygons"]
+	tile_data.set_occluder_polygons_count(occlusion_layer, polygons.size())
+	for polygon_index in polygons.size():
+		var polygon: Dictionary = polygons[polygon_index]
+		var occluder := OccluderPolygon2D.new()
+		occluder.polygon = polygon["points"]
+		occluder.closed = polygon["closed"]
+		occluder.cull_mode = OCCLUDER_CULL_MODES[polygon["cull_mode"]]
+		tile_data.set_occluder_polygon(occlusion_layer, polygon_index, occluder)
+	_commit_tile_set(
+		tile_map_layer,
+		resolved["scene_root"],
+		replacement,
+		"Set TileSet atlas occlusion on %s" % tile_map_layer.name
+	)
+	var result := _tile_data_response(tile_map_layer, resolved["scene_root"], tile_result)
+	result["occlusion_layer"] = occlusion_layer
+	result["occluder_polygons"] = _serialize_tile_occluder_polygons(tile_data, occlusion_layer)
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
 func _parse_layer_numbers(raw_values: Variant, label: String) -> Dictionary:
 	if not raw_values is Array or raw_values.size() > 32:
 		return Errors.make("INVALID_TILESET_LAYERS", "%s must contain at most 32 layer numbers" % label)
@@ -851,6 +947,12 @@ func _parse_nonnegative_float(raw_value: Variant, label: String) -> Dictionary:
 	if value < 0.0:
 		return Errors.make("INVALID_TILESET_VALUE", "%s must be greater than or equal to zero" % label)
 	return {"value": value}
+
+
+func _parse_boolean(raw_value: Variant, label: String) -> Dictionary:
+	if not raw_value is bool:
+		return Errors.make("INVALID_TILESET_VALUE", "%s must be a boolean" % label)
+	return {"value": raw_value}
 
 
 func _parse_tile_set_name(raw_value: Variant, label: String) -> Dictionary:
@@ -1186,6 +1288,108 @@ func _parse_tile_collision_polygon_points(raw_value: Variant, label: String) -> 
 	return {"points": points}
 
 
+func _parse_tile_occlusion_polygons(raw_value: Variant) -> Dictionary:
+	if not raw_value is Array or raw_value.size() > MAX_TILE_OCCLUSION_POLYGONS:
+		return Errors.make(
+			"INVALID_TILE_OCCLUSION",
+			"polygons must contain at most %d polygons" % MAX_TILE_OCCLUSION_POLYGONS
+		)
+	var polygons: Array = []
+	var total_points := 0
+	for polygon_index in raw_value.size():
+		var raw_polygon: Variant = raw_value[polygon_index]
+		if not raw_polygon is Dictionary or not raw_polygon.has("points"):
+			return Errors.make("INVALID_TILE_OCCLUSION", "polygons entries must contain points")
+		for name in raw_polygon:
+			if name != "points" and name != "closed" and name != "cull_mode":
+				return Errors.make("INVALID_TILE_OCCLUSION", "polygons entries contain an unsupported property")
+		var closed := true
+		if raw_polygon.has("closed"):
+			if not raw_polygon["closed"] is bool:
+				return Errors.make("INVALID_TILE_OCCLUSION", "polygons[].closed must be a boolean")
+			closed = raw_polygon["closed"]
+		var points_result := _parse_tile_occlusion_polygon_points(
+			raw_polygon["points"], "polygons[%d].points" % polygon_index, closed
+		)
+		if points_result.has("_error"):
+			return points_result
+		var points: PackedVector2Array = points_result["points"]
+		total_points += points.size()
+		if total_points > MAX_TILE_OCCLUSION_TOTAL_POINTS:
+			return Errors.make("INVALID_TILE_OCCLUSION", "occlusion polygon points exceed the supported limit")
+		var cull_mode := "disabled"
+		if raw_polygon.has("cull_mode"):
+			if not raw_polygon["cull_mode"] is String:
+				return Errors.make("INVALID_TILE_OCCLUSION", "polygons[].cull_mode must be a supported mode name")
+			var raw_cull_mode: String = raw_polygon["cull_mode"]
+			cull_mode = raw_cull_mode.to_lower().strip_edges()
+			if not OCCLUDER_CULL_MODES.has(cull_mode):
+				return Errors.make(
+					"INVALID_TILE_OCCLUSION",
+					"polygons[].cull_mode must be disabled, clockwise, or counter_clockwise"
+				)
+		polygons.append({
+			"points": points,
+			"closed": closed,
+			"cull_mode": cull_mode,
+		})
+	return {"polygons": polygons}
+
+
+func _parse_tile_occlusion_polygon_points(
+	raw_value: Variant,
+	label: String,
+	closed: bool
+) -> Dictionary:
+	var decoded := VariantCodec.decode(
+		raw_value, {"type": TYPE_PACKED_VECTOR2_ARRAY}, PackedVector2Array()
+	)
+	if decoded.has("_error"):
+		return Errors.make("INVALID_TILE_OCCLUSION", "%s must be an array of Vector2 objects" % label)
+	var points: PackedVector2Array = decoded["value"]
+	var minimum_points := 3 if closed else 2
+	if points.size() < minimum_points or points.size() > MAX_TILE_COLLISION_POLYGON_POINTS:
+		return Errors.make(
+			"INVALID_TILE_OCCLUSION",
+			"%s must contain between %d and %d points" % [
+				label, minimum_points, MAX_TILE_COLLISION_POLYGON_POINTS
+			]
+		)
+	for point_index in points.size():
+		if not is_finite(points[point_index].x) or not is_finite(points[point_index].y):
+			return Errors.make("INVALID_TILE_OCCLUSION", "%s points must be finite" % label)
+		for later_index in range(point_index + 1, points.size()):
+			if points[point_index].is_equal_approx(points[later_index]):
+				return Errors.make("INVALID_TILE_OCCLUSION", "%s points must be unique" % label)
+	if closed:
+		var signed_area := 0.0
+		for point_index in points.size():
+			var next_index := (point_index + 1) % points.size()
+			signed_area += points[point_index].cross(points[next_index])
+		if is_zero_approx(signed_area) \
+			or _tile_polygon_has_intersecting_edges(points) \
+			or Geometry2D.triangulate_polygon(points).is_empty():
+			return Errors.make("INVALID_TILE_OCCLUSION", "%s must describe a valid simple polygon" % label)
+	return {"points": points}
+
+
+func _tile_polygon_has_intersecting_edges(points: PackedVector2Array) -> bool:
+	for first_index in points.size():
+		var first_next := (first_index + 1) % points.size()
+		for second_index in range(first_index + 1, points.size()):
+			var second_next := (second_index + 1) % points.size()
+			if first_index == second_index \
+				or first_index == second_next \
+				or first_next == second_index \
+				or first_next == second_next:
+				continue
+			if Geometry2D.segment_intersects_segment(
+				points[first_index], points[first_next], points[second_index], points[second_next]
+			) != null:
+				return true
+	return false
+
+
 func _parse_tile_navigation_clear(raw_value: Variant) -> Dictionary:
 	if not raw_value is bool:
 		return Errors.make("INVALID_TILE_NAVIGATION", "clear must be a boolean")
@@ -1350,6 +1554,42 @@ func _serialize_tile_navigation_polygon(navigation_polygon: NavigationPolygon) -
 	}
 
 
+func _serialize_tile_occlusion_layers(tile_set: TileSet, tile_data: TileData) -> Array:
+	var layers := []
+	for layer_index in tile_set.get_occlusion_layers_count():
+		layers.append({
+			"index": layer_index,
+			"occluder_polygons": _serialize_tile_occluder_polygons(tile_data, layer_index),
+		})
+	return layers
+
+
+func _serialize_tile_occluder_polygons(tile_data: TileData, occlusion_layer: int) -> Array:
+	var polygons := []
+	for polygon_index in tile_data.get_occluder_polygons_count(occlusion_layer):
+		polygons.append(_serialize_tile_occluder_polygon(
+			tile_data.get_occluder_polygon(occlusion_layer, polygon_index)
+		))
+	return polygons
+
+
+func _serialize_tile_occluder_polygon(occluder: OccluderPolygon2D) -> Variant:
+	if occluder == null:
+		return null
+	return {
+		"points": VariantCodec.serialize(occluder.polygon),
+		"closed": occluder.closed,
+		"cull_mode": _occluder_cull_mode_name(occluder.cull_mode),
+	}
+
+
+func _occluder_cull_mode_name(cull_mode: int) -> String:
+	for name in OCCLUDER_CULL_MODES:
+		if int(OCCLUDER_CULL_MODES[name]) == cull_mode:
+			return name
+	return "unknown"
+
+
 func _tile_set_layers_response(tile_map_layer: TileMapLayer, scene_root: Node) -> Dictionary:
 	var response := _tile_map_layer_response(tile_map_layer, scene_root)
 	var tile_set: TileSet = tile_map_layer.tile_set
@@ -1366,6 +1606,13 @@ func _tile_set_layers_response(tile_map_layer: TileMapLayer, scene_root: Node) -
 		navigation_layers.append({
 			"index": index,
 			"layers": _mask_to_layer_numbers(tile_set.get_navigation_layer_layers(index)),
+		})
+	var occlusion_layers := []
+	for index in mini(tile_set.get_occlusion_layers_count(), MAX_TILESET_LAYERS):
+		occlusion_layers.append({
+			"index": index,
+			"layers": _mask_to_layer_numbers(tile_set.get_occlusion_layer_light_mask(index)),
+			"sdf_collision": tile_set.get_occlusion_layer_sdf_collision(index),
 		})
 	var custom_data_layers := []
 	for index in mini(tile_set.get_custom_data_layers_count(), MAX_TILESET_LAYERS):
@@ -1393,6 +1640,8 @@ func _tile_set_layers_response(tile_map_layer: TileMapLayer, scene_root: Node) -
 	response["physics_layers_total"] = tile_set.get_physics_layers_count()
 	response["navigation_layers"] = navigation_layers
 	response["navigation_layers_total"] = tile_set.get_navigation_layers_count()
+	response["occlusion_layers"] = occlusion_layers
+	response["occlusion_layers_total"] = tile_set.get_occlusion_layers_count()
 	response["custom_data_layers"] = custom_data_layers
 	response["custom_data_layers_total"] = tile_set.get_custom_data_layers_count()
 	response["terrain_sets"] = terrain_sets

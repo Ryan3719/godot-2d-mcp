@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.15.0"
+const PLUGIN_VERSION := "0.16.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 
 const ConnectionScript := preload("res://addons/godot_2d_mcp/transport/connection.gd")
@@ -147,6 +147,7 @@ func _register_handlers() -> void:
 	_dispatcher.register("tile_map_layer_cells_clear", tile_map_handler.clear_tile_map_layer_cells)
 	_dispatcher.register("tile_set_physics_layer_create", tile_map_handler.create_tile_set_physics_layer)
 	_dispatcher.register("tile_set_navigation_layer_create", tile_map_handler.create_tile_set_navigation_layer)
+	_dispatcher.register("tile_set_occlusion_layer_create", tile_map_handler.create_tile_set_occlusion_layer)
 	_dispatcher.register("tile_set_custom_data_layer_create", tile_map_handler.create_tile_set_custom_data_layer)
 	_dispatcher.register("tile_set_terrain_set_create", tile_map_handler.create_tile_set_terrain_set)
 	_dispatcher.register("tile_set_terrain_create", tile_map_handler.create_tile_set_terrain)
@@ -155,6 +156,7 @@ func _register_handlers() -> void:
 	_dispatcher.register("tile_set_atlas_tile_custom_data_set", tile_map_handler.set_tile_set_atlas_tile_custom_data)
 	_dispatcher.register("tile_set_atlas_tile_collision_set", tile_map_handler.set_tile_set_atlas_tile_collision)
 	_dispatcher.register("tile_set_atlas_tile_navigation_set", tile_map_handler.set_tile_set_atlas_tile_navigation)
+	_dispatcher.register("tile_set_atlas_tile_occlusion_set", tile_map_handler.set_tile_set_atlas_tile_occlusion)
 	_dispatcher.register("class_search", class_handler.search)
 
 

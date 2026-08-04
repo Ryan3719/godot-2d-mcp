@@ -1568,6 +1568,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             for name in (
                 "physics_layers_total",
                 "navigation_layers_total",
+                "occlusion_layers_total",
                 "custom_data_layers_total",
                 "terrain_sets_total",
             )
@@ -1593,6 +1594,16 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )
         if navigation_layer["navigation_layers"] != [{"index": 0, "layers": [4]}]:
             raise RuntimeError("TileSet navigation layer definition was not applied")
+        occlusion_layer = await app.service.tile_set_occlusion_layer_create(
+            tile_map_layer_path,
+            layers=[2, 5],
+            sdf_collision=True,
+            scene_file=scene_file,
+        )
+        if occlusion_layer["occlusion_layers"] != [
+            {"index": 0, "layers": [2, 5], "sdf_collision": True}
+        ]:
+            raise RuntimeError("TileSet occlusion layer definition was not applied")
         custom_data_layer = await app.service.tile_set_custom_data_layer_create(
             tile_map_layer_path,
             name="damage",
@@ -1746,6 +1757,56 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or navigation_polygon["polygons"] != [[0, 1, 2, 3]]
         ):
             raise RuntimeError("TileSet atlas navigation polygon was not applied")
+        occlusion_polygons = [
+            {
+                "points": [
+                    {"x": -8.0, "y": -8.0},
+                    {"x": 8.0, "y": -8.0},
+                    {"x": 8.0, "y": 8.0},
+                    {"x": -8.0, "y": 8.0},
+                ],
+                "closed": True,
+                "cull_mode": "counter_clockwise",
+            },
+            {
+                "points": [{"x": -8.0, "y": 0.0}, {"x": 8.0, "y": 0.0}],
+                "closed": False,
+                "cull_mode": "clockwise",
+            },
+        ]
+        atlas_occlusion = await app.service.tile_set_atlas_tile_occlusion_set(
+            tile_map_layer_path,
+            source_id=3,
+            atlas_coords={"x": 0, "y": 0},
+            occlusion_layer=0,
+            polygons=occlusion_polygons,
+            alternative_tile=1,
+            scene_file=scene_file,
+        )
+        if atlas_occlusion["occluder_polygons"] != occlusion_polygons:
+            raise RuntimeError("TileSet atlas occlusion polygons were not applied")
+        await _expect_godot_error(
+            app.service.tile_set_atlas_tile_occlusion_set(
+                tile_map_layer_path,
+                source_id=3,
+                atlas_coords={"x": 0, "y": 0},
+                occlusion_layer=0,
+                polygons=[
+                    {
+                        "points": [
+                            {"x": 0.0, "y": 0.0},
+                            {"x": 4.0, "y": 0.0},
+                            {"x": 0.0, "y": 4.0},
+                            {"x": 4.0, "y": 4.0},
+                            {"x": 0.0, "y": 8.0},
+                        ]
+                    }
+                ],
+                alternative_tile=1,
+                scene_file=scene_file,
+            ),
+            "INVALID_TILE_OCCLUSION",
+        )
         atlas_tile_state = await app.service.tile_set_atlas_tile_get(
             tile_map_layer_path,
             source_id=3,
@@ -1759,6 +1820,8 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             ]
             or atlas_tile_state["navigation_layers"]
             != [{"index": 0, "navigation_polygon": navigation_polygon}]
+            or atlas_tile_state["occlusion_layers"]
+            != [{"index": 0, "occluder_polygons": occlusion_polygons}]
         ):
             raise RuntimeError("tile_set_atlas_tile_get did not return TileData geometry")
         await _expect_godot_error(
@@ -1805,6 +1868,32 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         redo_tile_navigation_clear = await app.service.scene_redo(scene_file=scene_file)
         if not redo_tile_navigation_clear.get("changed"):
             raise RuntimeError("TileSet atlas navigation clear was not redoable")
+        cleared_atlas_occlusion = await app.service.tile_set_atlas_tile_occlusion_set(
+            tile_map_layer_path,
+            source_id=3,
+            atlas_coords={"x": 0, "y": 0},
+            occlusion_layer=0,
+            polygons=[],
+            alternative_tile=1,
+            scene_file=scene_file,
+        )
+        if cleared_atlas_occlusion["occluder_polygons"] != []:
+            raise RuntimeError("TileSet atlas occlusion polygons were not cleared")
+        undo_tile_occlusion_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_tile_occlusion_clear.get("changed"):
+            raise RuntimeError("TileSet atlas occlusion clear was not undoable")
+        restored_atlas_tile = await app.service.tile_set_atlas_tile_get(
+            tile_map_layer_path,
+            source_id=3,
+            atlas_coords={"x": 0, "y": 0},
+            alternative_tile=1,
+            scene_file=scene_file,
+        )
+        if restored_atlas_tile["occlusion_layers"][0]["occluder_polygons"] != occlusion_polygons:
+            raise RuntimeError("Undo did not restore TileSet atlas occlusion geometry")
+        redo_tile_occlusion_clear = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_tile_occlusion_clear.get("changed"):
+            raise RuntimeError("TileSet atlas occlusion clear was not redoable")
         tile_set_state = await app.service.tile_set_get(tile_map_layer_path, scene_file=scene_file)
         if (
             tile_set_state["total"] != 1
