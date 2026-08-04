@@ -18,6 +18,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "scene_get_hierarchy",
         "class_search",
         "node_get_properties",
+        "node_get_signals",
         "node_create",
         "node_set_properties",
         "node_delete",
@@ -25,6 +26,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "node_duplicate",
         "node_reparent",
         "node_move",
+        "signal_connect",
+        "signal_disconnect",
         "scene_save",
         "scene_undo",
         "scene_redo",
@@ -32,10 +35,13 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert all(tool.annotations is not None for tool in tools)
     annotations = {tool.name: tool.annotations for tool in tools}
     assert annotations["node_get_properties"].readOnlyHint is True
+    assert annotations["node_get_signals"].readOnlyHint is True
     assert annotations["node_create"].readOnlyHint is False
     assert annotations["node_delete"].destructiveHint is True
     assert annotations["node_rename"].destructiveHint is False
     assert annotations["node_duplicate"].readOnlyHint is False
     assert annotations["node_reparent"].readOnlyHint is False
     assert annotations["node_move"].readOnlyHint is False
+    assert annotations["signal_connect"].readOnlyHint is False
+    assert annotations["signal_disconnect"].readOnlyHint is False
     assert annotations["scene_save"].idempotentHint is True
