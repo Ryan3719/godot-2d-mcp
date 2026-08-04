@@ -342,6 +342,53 @@ def create_application(
             scene_file=scene_file,
         )
 
+    @mcp.tool(annotations=READ_ONLY)
+    async def tile_map_layer_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read TileMapLayer cell usage and its bound TileSet summary."""
+        return await service.tile_map_layer_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def tile_map_layer_cells_get(
+        path: str,
+        offset: int = 0,
+        limit: int = 100,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read a stable, paginated list of TileMapLayer cell assignments."""
+        return await service.tile_map_layer_cells_get(
+            path=path,
+            offset=offset,
+            limit=limit,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def tile_set_get(
+        path: str,
+        offset: int = 0,
+        limit: int = 100,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read a TileMapLayer TileSet and its paginated source summaries."""
+        return await service.tile_set_get(
+            path=path,
+            offset=offset,
+            limit=limit,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
     @mcp.tool(annotations=WRITE)
     async def node_create(
         type: str,
@@ -1053,6 +1100,106 @@ def create_application(
         """Detach the NavigationPolygon resource from a NavigationRegion2D."""
         return await service.navigation_polygon_clear(
             path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def tile_set_create(
+        path: str,
+        tile_size: dict[str, int] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Create and bind an embedded TileSet to a TileMapLayer."""
+        return await service.tile_set_create(
+            path=path,
+            tile_size=tile_size,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def tile_set_clear(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Detach a TileSet from a TileMapLayer while retaining editor undo support."""
+        return await service.tile_set_clear(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def tile_set_atlas_source_create(
+        path: str,
+        texture_path: str,
+        source_id: int | None = None,
+        texture_region_size: dict[str, int] | None = None,
+        margins: dict[str, int] | None = None,
+        separation: dict[str, int] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Add an embedded TileSetAtlasSource using an existing project Texture2D."""
+        return await service.tile_set_atlas_source_create(
+            path=path,
+            texture_path=texture_path,
+            source_id=source_id,
+            texture_region_size=texture_region_size,
+            margins=margins,
+            separation=separation,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def tile_set_atlas_tile_create(
+        path: str,
+        source_id: int,
+        atlas_coords: dict[str, int],
+        size: dict[str, int] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Create one base atlas tile in a TileSetAtlasSource."""
+        return await service.tile_set_atlas_tile_create(
+            path=path,
+            source_id=source_id,
+            atlas_coords=atlas_coords,
+            size=size,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def tile_map_layer_cells_set(
+        path: str,
+        cells: list[dict[str, Any]],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically assign verified TileSet atlas tiles to TileMapLayer cells."""
+        return await service.tile_map_layer_cells_set(
+            path=path,
+            cells=cells,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def tile_map_layer_cells_clear(
+        path: str,
+        coords: list[dict[str, int]],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Clear selected TileMapLayer cells while retaining editor undo support."""
+        return await service.tile_map_layer_cells_clear(
+            path=path,
+            coords=coords,
             session_id=session_id,
             scene_file=scene_file,
         )

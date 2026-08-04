@@ -33,6 +33,9 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "shape_cast_2d_get",
         "navigation_2d_get",
         "navigation_polygon_get",
+        "tile_map_layer_get",
+        "tile_map_layer_cells_get",
+        "tile_set_get",
         "node_create",
         "node_set_properties",
         "node_delete",
@@ -74,6 +77,12 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "navigation_polygon_outline_remove",
         "navigation_polygon_make_from_outlines",
         "navigation_polygon_clear",
+        "tile_set_create",
+        "tile_set_clear",
+        "tile_set_atlas_source_create",
+        "tile_set_atlas_tile_create",
+        "tile_map_layer_cells_set",
+        "tile_map_layer_cells_clear",
         "scene_save",
         "scene_undo",
         "scene_redo",
@@ -96,6 +105,9 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["shape_cast_2d_get"].readOnlyHint is True
     assert annotations["navigation_2d_get"].readOnlyHint is True
     assert annotations["navigation_polygon_get"].readOnlyHint is True
+    assert annotations["tile_map_layer_get"].readOnlyHint is True
+    assert annotations["tile_map_layer_cells_get"].readOnlyHint is True
+    assert annotations["tile_set_get"].readOnlyHint is True
     assert annotations["node_create"].readOnlyHint is False
     assert annotations["node_delete"].destructiveHint is True
     assert annotations["node_rename"].destructiveHint is False
@@ -136,4 +148,10 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["navigation_polygon_outline_remove"].destructiveHint is True
     assert annotations["navigation_polygon_make_from_outlines"].readOnlyHint is False
     assert annotations["navigation_polygon_clear"].destructiveHint is True
+    assert annotations["tile_set_create"].readOnlyHint is False
+    assert annotations["tile_set_clear"].destructiveHint is True
+    assert annotations["tile_set_atlas_source_create"].readOnlyHint is False
+    assert annotations["tile_set_atlas_tile_create"].readOnlyHint is False
+    assert annotations["tile_map_layer_cells_set"].readOnlyHint is False
+    assert annotations["tile_map_layer_cells_clear"].destructiveHint is True
     assert annotations["scene_save"].idempotentHint is True

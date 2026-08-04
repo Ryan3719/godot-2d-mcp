@@ -728,6 +728,51 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def tile_map_layer_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "tile_map_layer_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def tile_map_layer_cells_get(
+        self,
+        path: str,
+        offset: int = 0,
+        limit: int = 100,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tilemap_page(offset, limit)
+        return await self.bridge.call(
+            "tile_map_layer_cells_get",
+            _scene_params(scene_file, path=path, offset=offset, limit=limit),
+            session_id=session_id,
+        )
+
+    async def tile_set_get(
+        self,
+        path: str,
+        offset: int = 0,
+        limit: int = 100,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tilemap_page(offset, limit)
+        return await self.bridge.call(
+            "tile_set_get",
+            _scene_params(scene_file, path=path, offset=offset, limit=limit),
+            session_id=session_id,
+        )
+
     async def control_stylebox_flat_upsert(
         self,
         path: str,
@@ -1192,6 +1237,131 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def tile_set_create(
+        self,
+        path: str,
+        tile_size: dict[str, int] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        requested_tile_size = {"x": 16, "y": 16} if tile_size is None else tile_size
+        _validate_tilemap_vector2i(
+            requested_tile_size, "tile_size", nonnegative=True, positive=True
+        )
+        return await self.bridge.call(
+            "tile_set_create",
+            _scene_params(scene_file, path=path, tile_size=requested_tile_size),
+            session_id=session_id,
+        )
+
+    async def tile_set_clear(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "tile_set_clear",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def tile_set_atlas_source_create(
+        self,
+        path: str,
+        texture_path: str,
+        source_id: int | None = None,
+        texture_region_size: dict[str, int] | None = None,
+        margins: dict[str, int] | None = None,
+        separation: dict[str, int] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_project_resource_path(texture_path, "texture_path")
+        _validate_optional_tilemap_source_id(source_id)
+        if texture_region_size is not None:
+            _validate_tilemap_vector2i(
+                texture_region_size, "texture_region_size", nonnegative=True, positive=True
+            )
+        if margins is not None:
+            _validate_tilemap_vector2i(margins, "margins", nonnegative=True)
+        if separation is not None:
+            _validate_tilemap_vector2i(separation, "separation", nonnegative=True)
+        return await self.bridge.call(
+            "tile_set_atlas_source_create",
+            _scene_params(
+                scene_file,
+                path=path,
+                texture_path=texture_path,
+                source_id=source_id,
+                texture_region_size=texture_region_size,
+                margins=margins,
+                separation=separation,
+            ),
+            session_id=session_id,
+        )
+
+    async def tile_set_atlas_tile_create(
+        self,
+        path: str,
+        source_id: int,
+        atlas_coords: dict[str, int],
+        size: dict[str, int] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tilemap_source_id(source_id)
+        _validate_tilemap_vector2i(atlas_coords, "atlas_coords", nonnegative=True)
+        requested_size = {"x": 1, "y": 1} if size is None else size
+        _validate_tilemap_vector2i(requested_size, "size", nonnegative=True, positive=True)
+        if requested_size["x"] > 64 or requested_size["y"] > 64:
+            raise ValueError("size cannot exceed 64 atlas grid cells per axis")
+        return await self.bridge.call(
+            "tile_set_atlas_tile_create",
+            _scene_params(
+                scene_file,
+                path=path,
+                source_id=source_id,
+                atlas_coords=atlas_coords,
+                size=requested_size,
+            ),
+            session_id=session_id,
+        )
+
+    async def tile_map_layer_cells_set(
+        self,
+        path: str,
+        cells: list[dict[str, Any]],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tilemap_cells(cells)
+        return await self.bridge.call(
+            "tile_map_layer_cells_set",
+            _scene_params(scene_file, path=path, cells=cells),
+            session_id=session_id,
+        )
+
+    async def tile_map_layer_cells_clear(
+        self,
+        path: str,
+        coords: list[dict[str, int]],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tilemap_coordinates(coords)
+        return await self.bridge.call(
+            "tile_map_layer_cells_clear",
+            _scene_params(scene_file, path=path, coords=coords),
+            session_id=session_id,
+        )
+
     async def scene_save(
         self,
         session_id: str | None = None,
@@ -1608,6 +1778,90 @@ def _validate_navigation_outline_index(value: int | None, *, allow_none: bool = 
         return
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ValueError("index must be a non-negative integer")
+
+
+def _validate_tilemap_page(offset: int, limit: int) -> None:
+    if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+        raise ValueError("offset must be a non-negative integer")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 512:
+        raise ValueError("limit must be an integer from 1 to 512")
+
+
+def _validate_tilemap_vector2i(
+    value: dict[str, int],
+    label: str,
+    *,
+    nonnegative: bool = False,
+    positive: bool = False,
+) -> None:
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"x", "y"}
+        or any(
+            isinstance(component, bool) or not isinstance(component, int)
+            for component in value.values()
+        )
+    ):
+        raise ValueError(f"{label} must be a Vector2i object with integral x and y values")
+    maximum = 32767
+    minimum = 0 if nonnegative else -1_000_000
+    if any(component < minimum or component > maximum for component in value.values()):
+        raise ValueError(f"{label} values must be between {minimum} and {maximum}")
+    if positive and (value["x"] < 1 or value["y"] < 1):
+        raise ValueError(f"{label}.x and {label}.y must be greater than zero")
+
+
+def _validate_tilemap_source_id(value: int) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 32767:
+        raise ValueError("source_id must be an integer between 0 and 32767")
+
+
+def _validate_optional_tilemap_source_id(value: int | None) -> None:
+    if value is not None:
+        _validate_tilemap_source_id(value)
+
+
+def _validate_tilemap_cells(cells: list[dict[str, Any]]) -> None:
+    if not isinstance(cells, list) or not 1 <= len(cells) <= 512:
+        raise ValueError("cells must contain between one and 512 entries")
+    seen: set[tuple[int, int]] = set()
+    for cell in cells:
+        if not isinstance(cell, dict) or set(cell) != {
+            "coords",
+            "source_id",
+            "atlas_coords",
+            "alternative_tile",
+        }:
+            raise ValueError(
+                "each cell must contain exactly coords, source_id, atlas_coords, "
+                "and alternative_tile"
+            )
+        _validate_tilemap_vector2i(cell["coords"], "cells[].coords")
+        _validate_tilemap_source_id(cell["source_id"])
+        _validate_tilemap_vector2i(cell["atlas_coords"], "cells[].atlas_coords", nonnegative=True)
+        alternative_tile = cell["alternative_tile"]
+        if (
+            isinstance(alternative_tile, bool)
+            or not isinstance(alternative_tile, int)
+            or not 0 <= alternative_tile <= 32767
+        ):
+            raise ValueError("cells[].alternative_tile must be an integer between 0 and 32767")
+        coord_key = (cell["coords"]["x"], cell["coords"]["y"])
+        if coord_key in seen:
+            raise ValueError("cells must not contain duplicate coords")
+        seen.add(coord_key)
+
+
+def _validate_tilemap_coordinates(coords: list[dict[str, int]]) -> None:
+    if not isinstance(coords, list) or not 1 <= len(coords) <= 512:
+        raise ValueError("coords must contain between one and 512 Vector2i objects")
+    seen: set[tuple[int, int]] = set()
+    for value in coords:
+        _validate_tilemap_vector2i(value, "coords[]")
+        coord_key = (value["x"], value["y"])
+        if coord_key in seen:
+            raise ValueError("coords must not contain duplicates")
+        seen.add(coord_key)
 
 
 def _validate_optional_joint_endpoint_path(value: str | None, label: str) -> None:
