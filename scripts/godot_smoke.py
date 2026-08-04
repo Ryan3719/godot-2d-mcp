@@ -257,6 +257,126 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if not redo_reparent.get("changed"):
             raise RuntimeError("Reparent was not redoable")
 
+        animation_list = await app.service.animation_list(
+            "/Main/ButtonAnimations", scene_file=scene_file
+        )
+        if not _has_animation(animation_list, "", "button_pulse"):
+            raise RuntimeError("Existing button animation was not listed")
+        existing_animation = await app.service.animation_get(
+            "/Main/ButtonAnimations", "button_pulse", scene_file=scene_file
+        )
+        if not _has_animation_track(
+            existing_animation["animation"], reparented_button_path, "modulate"
+        ):
+            raise RuntimeError("Animation track target was not resolved after reparenting")
+        await _expect_godot_error(
+            app.service.animation_track_upsert(
+                player_path="/Main/ButtonAnimations",
+                animation="button_pulse",
+                target_path=reparented_button_path,
+                property="not_a_property",
+                keys=[{"time": 0.0, "value": 1}],
+                scene_file=scene_file,
+            ),
+            "PROPERTY_NOT_FOUND",
+        )
+        created_animation = await app.service.animation_create(
+            player_path="/Main/ButtonAnimations",
+            animation="button_hover",
+            length=0.2,
+            loop_mode="pingpong",
+            scene_file=scene_file,
+        )
+        if created_animation["animation"]["name"] != "button_hover":
+            raise RuntimeError("Animation creation returned an unexpected name")
+        track_update = await app.service.animation_track_upsert(
+            player_path="/Main/ButtonAnimations",
+            animation="button_hover",
+            target_path=reparented_button_path,
+            property="scale",
+            keys=[
+                {"time": 0.0, "value": {"x": 1.0, "y": 1.0}},
+                {"time": 0.2, "value": {"x": 1.08, "y": 1.08}, "transition": 0.5},
+            ],
+            interpolation="cubic",
+            loop_wrap=False,
+            scene_file=scene_file,
+        )
+        hover_track_index = track_update["track"]["index"]
+        if track_update["track"]["target_path"] != reparented_button_path:
+            raise RuntimeError("Animation track targeted the wrong node")
+        if track_update["track"]["property"] != "scale":
+            raise RuntimeError("Animation track targeted the wrong property")
+        hover_animation = await app.service.animation_get(
+            "/Main/ButtonAnimations", "button_hover", scene_file=scene_file
+        )
+        hover_track = _animation_track(
+            hover_animation["animation"], reparented_button_path, "scale"
+        )
+        if hover_track["key_count"] != 2 or hover_track["interpolation"] != "cubic":
+            raise RuntimeError("Animation track did not retain its keyframe configuration")
+        key_update = await app.service.animation_key_upsert(
+            player_path="/Main/ButtonAnimations",
+            animation="button_hover",
+            track_index=hover_track_index,
+            time=0.1,
+            value={"x": 1.04, "y": 1.04},
+            scene_file=scene_file,
+        )
+        if key_update["replaced_existing"]:
+            raise RuntimeError("Animation key upsert unexpectedly replaced a new key")
+        undo_key_update = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_key_update.get("changed"):
+            raise RuntimeError("Animation key upsert was not undoable")
+        hover_animation = await app.service.animation_get(
+            "/Main/ButtonAnimations", "button_hover", scene_file=scene_file
+        )
+        hover_track = _animation_track(
+            hover_animation["animation"], reparented_button_path, "scale"
+        )
+        if hover_track["key_count"] != 2:
+            raise RuntimeError("Undo did not restore animation keys")
+        redo_key_update = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_key_update.get("changed"):
+            raise RuntimeError("Animation key upsert was not redoable")
+        key_delete = await app.service.animation_key_delete(
+            player_path="/Main/ButtonAnimations",
+            animation="button_hover",
+            track_index=hover_track_index,
+            time=0.1,
+            scene_file=scene_file,
+        )
+        if key_delete["key_index"] < 0:
+            raise RuntimeError("Animation key delete returned an invalid key index")
+        undo_key_delete = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_key_delete.get("changed"):
+            raise RuntimeError("Animation key delete was not undoable")
+        track_delete = await app.service.animation_track_delete(
+            player_path="/Main/ButtonAnimations",
+            animation="button_hover",
+            track_index=hover_track_index,
+            scene_file=scene_file,
+        )
+        if track_delete["track_index"] != hover_track_index:
+            raise RuntimeError("Animation track delete returned an unexpected index")
+        undo_track_delete = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_track_delete.get("changed"):
+            raise RuntimeError("Animation track delete was not undoable")
+        animation_delete = await app.service.animation_delete(
+            player_path="/Main/ButtonAnimations",
+            animation="button_hover",
+            scene_file=scene_file,
+        )
+        if animation_delete["name"] != "button_hover":
+            raise RuntimeError("Animation delete returned an unexpected name")
+        undo_animation_delete = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_animation_delete.get("changed"):
+            raise RuntimeError("Animation delete was not undoable")
+        await app.service.scene_save(scene_file=scene_file)
+        saved_scene = (project_path / "test_scene.tscn").read_text(encoding="utf-8")
+        if 'resource_name = "button_hover"' not in saved_scene:
+            raise RuntimeError("Created animation was not saved in the scene")
+
         button_signals = await app.service.node_get_signals(
             reparented_button_path,
             scene_file=scene_file,
@@ -512,6 +632,28 @@ def _signal_data(result: dict, name: str) -> dict | None:
         if signal_data.get("name") == name:
             return signal_data
     return None
+
+
+def _has_animation(result: dict, library: str, name: str) -> bool:
+    return any(
+        item.get("name") == library
+        and any(animation.get("name") == name for animation in item.get("animations", []))
+        for item in result.get("libraries", [])
+    )
+
+
+def _has_animation_track(animation: dict, target_path: str, property_name: str) -> bool:
+    return any(
+        track.get("target_path") == target_path and track.get("property") == property_name
+        for track in animation.get("tracks", [])
+    )
+
+
+def _animation_track(animation: dict, target_path: str, property_name: str) -> dict:
+    for track in animation.get("tracks", []):
+        if track.get("target_path") == target_path and track.get("property") == property_name:
+            return track
+    raise RuntimeError(f"Animation track was not returned: {target_path}:{property_name}")
 
 
 def _has_signal_connection(

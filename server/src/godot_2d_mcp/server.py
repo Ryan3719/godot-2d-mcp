@@ -156,6 +156,36 @@ def create_application(
             scene_file=scene_file,
         )
 
+    @mcp.tool(annotations=READ_ONLY)
+    async def animation_list(
+        player_path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """List an AnimationPlayer's libraries and available animation summaries."""
+        return await service.animation_list(
+            player_path=player_path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def animation_get(
+        player_path: str,
+        animation: str,
+        library: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read one animation's tracks, typed property targets, and keyframes."""
+        return await service.animation_get(
+            player_path=player_path,
+            animation=animation,
+            library=library,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
     @mcp.tool(annotations=WRITE)
     async def node_create(
         type: str,
@@ -305,6 +335,140 @@ def create_application(
             signal=signal,
             target_path=target_path,
             method=method,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def animation_create(
+        player_path: str,
+        animation: str,
+        length: float = 0.2,
+        loop_mode: str = "none",
+        library: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Create a persistent scene-embedded Animation resource."""
+        return await service.animation_create(
+            player_path=player_path,
+            animation=animation,
+            length=length,
+            loop_mode=loop_mode,
+            library=library,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def animation_delete(
+        player_path: str,
+        animation: str,
+        library: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Delete one persistent animation while preserving editor undo support."""
+        return await service.animation_delete(
+            player_path=player_path,
+            animation=animation,
+            library=library,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def animation_track_upsert(
+        player_path: str,
+        animation: str,
+        target_path: str,
+        property: str,
+        keys: list[dict[str, Any]],
+        interpolation: str = "linear",
+        update_mode: str = "continuous",
+        enabled: bool = True,
+        loop_wrap: bool = True,
+        library: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Create or replace a local 2D/UI property value track atomically."""
+        return await service.animation_track_upsert(
+            player_path=player_path,
+            animation=animation,
+            target_path=target_path,
+            property=property,
+            keys=keys,
+            interpolation=interpolation,
+            update_mode=update_mode,
+            enabled=enabled,
+            loop_wrap=loop_wrap,
+            library=library,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def animation_track_delete(
+        player_path: str,
+        animation: str,
+        track_index: int,
+        library: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Delete one animation track while preserving editor undo support."""
+        return await service.animation_track_delete(
+            player_path=player_path,
+            animation=animation,
+            track_index=track_index,
+            library=library,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def animation_key_upsert(
+        player_path: str,
+        animation: str,
+        track_index: int,
+        time: float,
+        value: Any,
+        transition: float = 1.0,
+        library: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Create or replace one key on a local property value track."""
+        return await service.animation_key_upsert(
+            player_path=player_path,
+            animation=animation,
+            track_index=track_index,
+            time=time,
+            value=value,
+            transition=transition,
+            library=library,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def animation_key_delete(
+        player_path: str,
+        animation: str,
+        track_index: int,
+        time: float,
+        library: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Delete one key at an exact time on a local property value track."""
+        return await service.animation_key_delete(
+            player_path=player_path,
+            animation=animation,
+            track_index=track_index,
+            time=time,
+            library=library,
             session_id=session_id,
             scene_file=scene_file,
         )

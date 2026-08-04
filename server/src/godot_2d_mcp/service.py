@@ -305,6 +305,222 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def animation_list(
+        self,
+        player_path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(player_path)
+        return await self.bridge.call(
+            "animation_list",
+            _scene_params(scene_file, player_path=player_path),
+            session_id=session_id,
+        )
+
+    async def animation_get(
+        self,
+        player_path: str,
+        animation: str,
+        library: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(player_path)
+        _validate_animation_name(animation)
+        _validate_animation_library(library)
+        return await self.bridge.call(
+            "animation_get",
+            _scene_params(
+                scene_file,
+                player_path=player_path,
+                animation=animation,
+                library=library,
+            ),
+            session_id=session_id,
+        )
+
+    async def animation_create(
+        self,
+        player_path: str,
+        animation: str,
+        length: float = 0.2,
+        loop_mode: str = "none",
+        library: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(player_path)
+        _validate_animation_name(animation)
+        _validate_animation_library(library)
+        _validate_animation_length(length)
+        _validate_loop_mode(loop_mode)
+        return await self.bridge.call(
+            "animation_create",
+            _scene_params(
+                scene_file,
+                player_path=player_path,
+                animation=animation,
+                length=length,
+                loop_mode=loop_mode,
+                library=library,
+            ),
+            session_id=session_id,
+        )
+
+    async def animation_delete(
+        self,
+        player_path: str,
+        animation: str,
+        library: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(player_path)
+        _validate_animation_name(animation)
+        _validate_animation_library(library)
+        return await self.bridge.call(
+            "animation_delete",
+            _scene_params(
+                scene_file,
+                player_path=player_path,
+                animation=animation,
+                library=library,
+            ),
+            session_id=session_id,
+        )
+
+    async def animation_track_upsert(
+        self,
+        player_path: str,
+        animation: str,
+        target_path: str,
+        property: str,
+        keys: list[dict[str, Any]],
+        interpolation: str = "linear",
+        update_mode: str = "continuous",
+        enabled: bool = True,
+        loop_wrap: bool = True,
+        library: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(player_path)
+        _validate_animation_name(animation)
+        _validate_node_path(target_path)
+        _validate_animation_property(property)
+        _validate_animation_keys(keys)
+        _validate_interpolation(interpolation)
+        _validate_update_mode(update_mode)
+        _validate_boolean(enabled, "enabled")
+        _validate_boolean(loop_wrap, "loop_wrap")
+        _validate_animation_library(library)
+        return await self.bridge.call(
+            "animation_track_upsert",
+            _scene_params(
+                scene_file,
+                player_path=player_path,
+                animation=animation,
+                target_path=target_path,
+                property=property,
+                keys=keys,
+                interpolation=interpolation,
+                update_mode=update_mode,
+                enabled=enabled,
+                loop_wrap=loop_wrap,
+                library=library,
+            ),
+            session_id=session_id,
+        )
+
+    async def animation_track_delete(
+        self,
+        player_path: str,
+        animation: str,
+        track_index: int,
+        library: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(player_path)
+        _validate_animation_name(animation)
+        _validate_track_index(track_index)
+        _validate_animation_library(library)
+        return await self.bridge.call(
+            "animation_track_delete",
+            _scene_params(
+                scene_file,
+                player_path=player_path,
+                animation=animation,
+                track_index=track_index,
+                library=library,
+            ),
+            session_id=session_id,
+        )
+
+    async def animation_key_upsert(
+        self,
+        player_path: str,
+        animation: str,
+        track_index: int,
+        time: float,
+        value: Any,
+        transition: float = 1.0,
+        library: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(player_path)
+        _validate_animation_name(animation)
+        _validate_track_index(track_index)
+        _validate_key_time(time)
+        if not _is_json_bind_value(value):
+            raise ValueError("value must be a bounded JSON-compatible value")
+        _validate_transition(transition)
+        _validate_animation_library(library)
+        return await self.bridge.call(
+            "animation_key_upsert",
+            _scene_params(
+                scene_file,
+                player_path=player_path,
+                animation=animation,
+                track_index=track_index,
+                time=time,
+                value=value,
+                transition=transition,
+                library=library,
+            ),
+            session_id=session_id,
+        )
+
+    async def animation_key_delete(
+        self,
+        player_path: str,
+        animation: str,
+        track_index: int,
+        time: float,
+        library: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(player_path)
+        _validate_animation_name(animation)
+        _validate_track_index(track_index)
+        _validate_key_time(time)
+        _validate_animation_library(library)
+        return await self.bridge.call(
+            "animation_key_delete",
+            _scene_params(
+                scene_file,
+                player_path=player_path,
+                animation=animation,
+                track_index=track_index,
+                time=time,
+                library=library,
+            ),
+            session_id=session_id,
+        )
+
     async def scene_save(
         self,
         session_id: str | None = None,
@@ -352,6 +568,87 @@ def _validate_node_name(name: str) -> None:
 def _validate_signal_member(value: str, label: str) -> None:
     if not isinstance(value, str) or not value or len(value) > 256:
         raise ValueError(f"{label} must contain between 1 and 256 characters")
+
+
+def _validate_animation_name(value: str) -> None:
+    if not isinstance(value, str) or not value or len(value) > 256 or "/" in value:
+        raise ValueError(
+            "animation must contain between 1 and 256 characters and cannot contain '/'"
+        )
+
+
+def _validate_animation_library(value: str) -> None:
+    if not isinstance(value, str) or len(value) > 256 or "/" in value:
+        raise ValueError("library cannot exceed 256 characters or contain '/'")
+
+
+def _validate_animation_length(value: float) -> None:
+    if not _is_finite_number(value) or not 0 < float(value) <= 3600:
+        raise ValueError("length must be a finite number between 0 and 3600")
+
+
+def _validate_loop_mode(value: str) -> None:
+    if value not in {"none", "linear", "pingpong"}:
+        raise ValueError("loop_mode must be none, linear, or pingpong")
+
+
+def _validate_interpolation(value: str) -> None:
+    if value not in {"nearest", "linear", "cubic", "linear_angle", "cubic_angle"}:
+        raise ValueError("interpolation is not supported")
+
+
+def _validate_update_mode(value: str) -> None:
+    if value not in {"continuous", "discrete", "capture"}:
+        raise ValueError("update_mode must be continuous, discrete, or capture")
+
+
+def _validate_animation_property(value: str) -> None:
+    if not isinstance(value, str) or not value or len(value) > 256 or ":" in value:
+        raise ValueError("property must be a single name between 1 and 256 characters")
+
+
+def _validate_animation_keys(keys: list[dict[str, Any]]) -> None:
+    if not isinstance(keys, list) or not keys:
+        raise ValueError("keys must be a non-empty array")
+    if len(keys) > 512:
+        raise ValueError("keys can contain at most 512 entries")
+    times: list[float] = []
+    for key in keys:
+        if not isinstance(key, dict) or "time" not in key or "value" not in key:
+            raise ValueError("each key requires time and value")
+        _validate_key_time(key["time"])
+        if not _is_json_bind_value(key["value"]):
+            raise ValueError("key values must be bounded JSON-compatible values")
+        if "transition" in key:
+            _validate_transition(key["transition"])
+        time = float(key["time"])
+        if any(math.isclose(time, existing, rel_tol=1e-9, abs_tol=1e-9) for existing in times):
+            raise ValueError("keys cannot contain duplicate times")
+        times.append(time)
+
+
+def _validate_track_index(value: int) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("track_index must be a non-negative integer")
+
+
+def _validate_key_time(value: float) -> None:
+    if not _is_finite_number(value) or float(value) < 0:
+        raise ValueError("time must be a finite non-negative number")
+
+
+def _validate_transition(value: float) -> None:
+    if not _is_finite_number(value):
+        raise ValueError("transition must be a finite number")
+
+
+def _validate_boolean(value: bool, label: str) -> None:
+    if not isinstance(value, bool):
+        raise ValueError(f"{label} must be a boolean")
+
+
+def _is_finite_number(value: Any) -> bool:
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
 
 
 def _validate_binds(binds: list[Any]) -> None:

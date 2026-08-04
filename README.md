@@ -2,7 +2,7 @@
 
 Godot 2D MCP connects Codex, Claude Code, and other MCP clients to a live Godot editor. The project is designed for comprehensive Godot 2D authoring while keeping editor mutations on Godot's main thread and inside its undo/redo system.
 
-The current `0.4.0` preview adds persistent signal management to safe 2D scene-structure editing. Agents can inspect a live scene, create, rename, duplicate, reparent, reorder, and delete supported 2D and UI nodes, update public properties, connect existing methods to signals, use the editor's undo/redo history, and explicitly save the scene.
+The current `0.5.0` preview adds scene-embedded `AnimationPlayer` authoring to safe 2D scene-structure and signal editing. Agents can create animations, build typed property tracks and keyframes for supported 2D/UI nodes, connect existing methods to signals, use the editor's undo/redo history, and explicitly save the scene.
 
 ## Current capabilities
 
@@ -16,14 +16,16 @@ The current `0.4.0` preview adds persistent signal management to safe 2D scene-s
 - Runtime `class_search` filtered by the centralized 2D type policy.
 - `node_get_properties` with property metadata and JSON-safe values.
 - `node_get_signals` with typed signal arguments and scene connection metadata.
+- `animation_list` and `animation_get` for animation-library, track, keyframe, and target inspection.
 - `node_create`, `node_set_properties`, `node_delete`, `node_rename`, `node_duplicate`, `node_reparent`, and `node_move` with scene-file guards.
 - `signal_connect` and `signal_disconnect` for persistent local-node connections, including bounded JSON binding arguments, deferred, and one-shot options.
+- `animation_create`, `animation_delete`, `animation_track_upsert`, `animation_track_delete`, `animation_key_upsert`, and `animation_key_delete` for scene-embedded 2D/UI property animation.
 - Scene-local `NodePath` property and built-in `AnimationPlayer` track migration during rename and reparent.
 - Reparenting preserves global placement for `Node2D` and `Control` by default.
 - `scene_undo`, `scene_redo`, and `scene_save` through Godot editor APIs.
 - Atomic multi-property updates registered with `EditorUndoRedoManager`.
 - Strict 2D Variant conversion for `Vector2`, `Vector2i`, `Rect2`, `Rect2i`, `Transform2D`, `Color`, arrays, dictionaries, and common packed arrays.
-- Real Godot 4.7 smoke coverage for create, update, signals, animation binding, rename, duplicate, reparent, reorder, undo, redo, delete, restore, animation-track migration, and save.
+- Real Godot 4.7 smoke coverage for create, update, signals, animation authoring and binding, rename, duplicate, reparent, reorder, undo, redo, delete, restore, animation-track migration, and save.
 
 See [the initial implementation plan](docs/INITIAL_PLAN.md) for the complete 2D scope and roadmap.
 
@@ -61,11 +63,11 @@ Compound property values use JSON shapes inferred from the target Godot property
 
 Node changes mark the scene as unsaved and participate in the active scene's normal Godot undo history. Only `scene_save` writes the `.tscn` file.
 
-This preview creates built-in `ClassDB` node types only. It rejects structure edits that cross a PackedScene boundary or contain unsupported 3D nodes, deletions that would leave direct `NodePath` or animation-track references dangling, and renames or reparents requiring changes to external animation resources. Signal tools only connect methods that already exist; they never generate or modify user script callbacks. Custom script nodes, PackedScene instances, resource assignment, automatic callback generation, and semantic animation-authoring tools remain on the staged roadmap.
+This preview creates built-in `ClassDB` node types only. It rejects structure edits that cross a PackedScene boundary or contain unsupported 3D nodes, deletions that would leave direct `NodePath` or animation-track references dangling, and renames or reparents requiring changes to external animation resources. Animation tools edit only scene-embedded `AnimationLibrary` and `Animation` resources, and create 2D/UI property value tracks only; external resources, imported tracks, method tracks, audio tracks, and arbitrary code execution remain out of scope. Signal tools only connect methods that already exist; they never generate or modify user script callbacks.
 
 `node_rename` and `node_reparent` migrate direct scene-local `NodePath` properties plus tracks stored in built-in `AnimationPlayer` animations. The returned migration counts make that work visible to the caller. `node_reparent` accepts an optional sibling `index` and defaults `keep_global_transform` to `true`; set it to `false` when the node should inherit its new parent's visual transform instead.
 
-For a button animation, inspect the button with `node_get_signals`, then connect `pressed` to an existing `AnimationPlayer.play` method with `binds: ["animation_name"]`. Connections created by `signal_connect` are persistent, saved in the scene, and can be undone or removed with `signal_disconnect`.
+For a button animation, use `animation_create` on an `AnimationPlayer`, then call `animation_track_upsert` with the button path, `scale` or `modulate` property, and typed keyframes. Finish by connecting `pressed`, `mouse_entered`, or `mouse_exited` to the existing `AnimationPlayer.play` method with `binds: ["animation_name"]`. Both animation edits and connections are persistent, saved in the scene, and support undo/redo.
 
 ## Requirements
 

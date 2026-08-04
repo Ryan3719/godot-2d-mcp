@@ -297,3 +297,184 @@ async def test_signal_tools_reject_invalid_bind_values_and_options() -> None:
             "play",
             deferred=1,  # type: ignore[arg-type]
         )
+
+
+@pytest.mark.asyncio
+async def test_animation_tools_forward_scene_guard_and_track_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    keys = [
+        {"time": 0.0, "value": {"x": 1.0, "y": 1.0}},
+        {"time": 0.2, "value": {"x": 1.08, "y": 1.08}, "transition": 0.5},
+    ]
+
+    await service.animation_list(
+        player_path="/Main/ButtonAnimations",
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
+    await service.animation_get(
+        player_path="/Main/ButtonAnimations",
+        animation="button_hover",
+        library="ui",
+        scene_file="res://main.tscn",
+    )
+    await service.animation_create(
+        player_path="/Main/ButtonAnimations",
+        animation="button_hover",
+        length=0.2,
+        loop_mode="pingpong",
+        scene_file="res://main.tscn",
+    )
+    await service.animation_track_upsert(
+        player_path="/Main/ButtonAnimations",
+        animation="button_hover",
+        target_path="/Main/UI/StartButton",
+        property="scale",
+        keys=keys,
+        interpolation="cubic",
+        loop_wrap=False,
+        scene_file="res://main.tscn",
+    )
+    await service.animation_key_upsert(
+        player_path="/Main/ButtonAnimations",
+        animation="button_hover",
+        track_index=0,
+        time=0.1,
+        value={"x": 1.04, "y": 1.04},
+        scene_file="res://main.tscn",
+    )
+    await service.animation_key_delete(
+        player_path="/Main/ButtonAnimations",
+        animation="button_hover",
+        track_index=0,
+        time=0.1,
+        scene_file="res://main.tscn",
+    )
+    await service.animation_track_delete(
+        player_path="/Main/ButtonAnimations",
+        animation="button_hover",
+        track_index=0,
+        scene_file="res://main.tscn",
+    )
+    await service.animation_delete(
+        player_path="/Main/ButtonAnimations",
+        animation="button_hover",
+        scene_file="res://main.tscn",
+    )
+
+    assert bridge.calls == [
+        (
+            "animation_list",
+            {"player_path": "/Main/ButtonAnimations", "scene_file": "res://main.tscn"},
+            "project@a1b2",
+        ),
+        (
+            "animation_get",
+            {
+                "player_path": "/Main/ButtonAnimations",
+                "animation": "button_hover",
+                "library": "ui",
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "animation_create",
+            {
+                "player_path": "/Main/ButtonAnimations",
+                "animation": "button_hover",
+                "length": 0.2,
+                "loop_mode": "pingpong",
+                "library": "",
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "animation_track_upsert",
+            {
+                "player_path": "/Main/ButtonAnimations",
+                "animation": "button_hover",
+                "target_path": "/Main/UI/StartButton",
+                "property": "scale",
+                "keys": keys,
+                "interpolation": "cubic",
+                "update_mode": "continuous",
+                "enabled": True,
+                "loop_wrap": False,
+                "library": "",
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "animation_key_upsert",
+            {
+                "player_path": "/Main/ButtonAnimations",
+                "animation": "button_hover",
+                "track_index": 0,
+                "time": 0.1,
+                "value": {"x": 1.04, "y": 1.04},
+                "transition": 1.0,
+                "library": "",
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "animation_key_delete",
+            {
+                "player_path": "/Main/ButtonAnimations",
+                "animation": "button_hover",
+                "track_index": 0,
+                "time": 0.1,
+                "library": "",
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "animation_track_delete",
+            {
+                "player_path": "/Main/ButtonAnimations",
+                "animation": "button_hover",
+                "track_index": 0,
+                "library": "",
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "animation_delete",
+            {
+                "player_path": "/Main/ButtonAnimations",
+                "animation": "button_hover",
+                "library": "",
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_animation_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="animation"):
+        await service.animation_create("/Main/ButtonAnimations", "bad/name")
+    with pytest.raises(ValueError, match="length"):
+        await service.animation_create("/Main/ButtonAnimations", "hover", length=0)
+    with pytest.raises(ValueError, match="keys"):
+        await service.animation_track_upsert(
+            "/Main/ButtonAnimations",
+            "hover",
+            "/Main/UI/StartButton",
+            "scale",
+            keys=[{"time": 0.0, "value": 1}, {"time": 0.0, "value": 2}],
+        )
+    with pytest.raises(ValueError, match="track_index"):
+        await service.animation_key_delete(
+            "/Main/ButtonAnimations", "hover", track_index=-1, time=0.0
+        )

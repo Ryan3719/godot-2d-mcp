@@ -19,6 +19,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "class_search",
         "node_get_properties",
         "node_get_signals",
+        "animation_list",
+        "animation_get",
         "node_create",
         "node_set_properties",
         "node_delete",
@@ -28,6 +30,12 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "node_move",
         "signal_connect",
         "signal_disconnect",
+        "animation_create",
+        "animation_delete",
+        "animation_track_upsert",
+        "animation_track_delete",
+        "animation_key_upsert",
+        "animation_key_delete",
         "scene_save",
         "scene_undo",
         "scene_redo",
@@ -36,6 +44,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     annotations = {tool.name: tool.annotations for tool in tools}
     assert annotations["node_get_properties"].readOnlyHint is True
     assert annotations["node_get_signals"].readOnlyHint is True
+    assert annotations["animation_list"].readOnlyHint is True
+    assert annotations["animation_get"].readOnlyHint is True
     assert annotations["node_create"].readOnlyHint is False
     assert annotations["node_delete"].destructiveHint is True
     assert annotations["node_rename"].destructiveHint is False
@@ -44,4 +54,10 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["node_move"].readOnlyHint is False
     assert annotations["signal_connect"].readOnlyHint is False
     assert annotations["signal_disconnect"].readOnlyHint is False
+    assert annotations["animation_create"].readOnlyHint is False
+    assert annotations["animation_delete"].destructiveHint is True
+    assert annotations["animation_track_upsert"].readOnlyHint is False
+    assert annotations["animation_track_delete"].destructiveHint is True
+    assert annotations["animation_key_upsert"].readOnlyHint is False
+    assert annotations["animation_key_delete"].destructiveHint is True
     assert annotations["scene_save"].idempotentHint is True
