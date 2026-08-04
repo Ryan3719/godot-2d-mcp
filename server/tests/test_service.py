@@ -1272,6 +1272,143 @@ async def test_tilemap_tools_forward_semantic_edits() -> None:
 
 
 @pytest.mark.asyncio
+async def test_tileset_semantic_tools_forward_atomic_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    path = "/Main/Tiles"
+    scene_file = "res://main.tscn"
+
+    await service.tile_set_layers_get(path, scene_file=scene_file)
+    await service.tile_set_physics_layer_create(
+        path,
+        layers=[2],
+        masks=[1, 3],
+        priority=0.5,
+        scene_file=scene_file,
+    )
+    await service.tile_set_navigation_layer_create(path, layers=[4], scene_file=scene_file)
+    await service.tile_set_custom_data_layer_create(
+        path, name="damage", value_type="int", scene_file=scene_file
+    )
+    await service.tile_set_terrain_set_create(path, mode="match_sides", scene_file=scene_file)
+    await service.tile_set_terrain_create(
+        path,
+        terrain_set=0,
+        name="Ground",
+        color="#39b54a",
+        scene_file=scene_file,
+    )
+    await service.tile_set_atlas_alternative_create(
+        path,
+        source_id=4,
+        atlas_coords={"x": 1, "y": 2},
+        alternative_tile=1,
+        scene_file=scene_file,
+    )
+    await service.tile_set_atlas_tile_terrain_set(
+        path,
+        source_id=4,
+        atlas_coords={"x": 1, "y": 2},
+        terrain_set=0,
+        terrain=0,
+        peering_bits={"right_side": 0},
+        alternative_tile=1,
+        scene_file=scene_file,
+    )
+    await service.tile_set_atlas_tile_custom_data_set(
+        path,
+        source_id=4,
+        atlas_coords={"x": 1, "y": 2},
+        values={"damage": 8},
+        alternative_tile=1,
+        scene_file=scene_file,
+    )
+
+    assert bridge.calls == [
+        ("tile_set_layers_get", {"path": path, "scene_file": scene_file}, None),
+        (
+            "tile_set_physics_layer_create",
+            {
+                "path": path,
+                "layers": [2],
+                "masks": [1, 3],
+                "priority": 0.5,
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "tile_set_navigation_layer_create",
+            {"path": path, "layers": [4], "scene_file": scene_file},
+            None,
+        ),
+        (
+            "tile_set_custom_data_layer_create",
+            {
+                "path": path,
+                "name": "damage",
+                "value_type": "int",
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "tile_set_terrain_set_create",
+            {"path": path, "mode": "match_sides", "scene_file": scene_file},
+            None,
+        ),
+        (
+            "tile_set_terrain_create",
+            {
+                "path": path,
+                "terrain_set": 0,
+                "name": "Ground",
+                "color": "#39b54a",
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "tile_set_atlas_alternative_create",
+            {
+                "path": path,
+                "source_id": 4,
+                "atlas_coords": {"x": 1, "y": 2},
+                "alternative_tile": 1,
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "tile_set_atlas_tile_terrain_set",
+            {
+                "path": path,
+                "source_id": 4,
+                "atlas_coords": {"x": 1, "y": 2},
+                "terrain_set": 0,
+                "terrain": 0,
+                "peering_bits": {"right_side": 0},
+                "alternative_tile": 1,
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "tile_set_atlas_tile_custom_data_set",
+            {
+                "path": path,
+                "source_id": 4,
+                "atlas_coords": {"x": 1, "y": 2},
+                "values": {"damage": 8},
+                "alternative_tile": 1,
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
 async def test_tilemap_tools_reject_invalid_payloads() -> None:
     service = GodotService(SessionRegistry(), FakeBridge())
 
@@ -1300,4 +1437,31 @@ async def test_tilemap_tools_reject_invalid_payloads() -> None:
     with pytest.raises(ValueError, match="duplicates"):
         await service.tile_map_layer_cells_clear(
             "/Main/Tiles", [{"x": 0, "y": 0}, {"x": 0, "y": 0}]
+        )
+    with pytest.raises(ValueError, match="priority"):
+        await service.tile_set_physics_layer_create("/Main/Tiles", priority=-0.1)
+    with pytest.raises(ValueError, match="value_type"):
+        await service.tile_set_custom_data_layer_create(
+            "/Main/Tiles", name="damage", value_type="resource"
+        )
+    with pytest.raises(ValueError, match="terrain_set"):
+        await service.tile_set_terrain_create("/Main/Tiles", terrain_set=-1)
+    with pytest.raises(ValueError, match="alternative_tile"):
+        await service.tile_set_atlas_alternative_create(
+            "/Main/Tiles", source_id=0, atlas_coords={"x": 0, "y": 0}, alternative_tile=0
+        )
+    with pytest.raises(ValueError, match="terrain must be -1"):
+        await service.tile_set_atlas_tile_terrain_set(
+            "/Main/Tiles",
+            source_id=0,
+            atlas_coords={"x": 0, "y": 0},
+            terrain_set=-1,
+            terrain=0,
+        )
+    with pytest.raises(ValueError, match="values"):
+        await service.tile_set_atlas_tile_custom_data_set(
+            "/Main/Tiles",
+            source_id=0,
+            atlas_coords={"x": 0, "y": 0},
+            values={},
         )

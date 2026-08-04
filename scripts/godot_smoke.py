@@ -1560,6 +1560,125 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )
         if created_atlas_tile["atlas_coords"] != {"x": 0, "y": 0}:
             raise RuntimeError("TileSetAtlasSource did not create its atlas tile")
+        initial_tile_set_layers = await app.service.tile_set_layers_get(
+            tile_map_layer_path, scene_file=scene_file
+        )
+        if any(
+            initial_tile_set_layers[name] != 0
+            for name in (
+                "physics_layers_total",
+                "navigation_layers_total",
+                "custom_data_layers_total",
+                "terrain_sets_total",
+            )
+        ):
+            raise RuntimeError("New TileSet unexpectedly had semantic layer definitions")
+        physics_layer = await app.service.tile_set_physics_layer_create(
+            tile_map_layer_path,
+            layers=[2],
+            masks=[1, 3],
+            priority=0.5,
+            scene_file=scene_file,
+        )
+        if (
+            physics_layer["physics_layer_index"] != 0
+            or physics_layer["physics_layers"][0]
+            != {"index": 0, "layers": [2], "masks": [1, 3], "priority": 0.5}
+        ):
+            raise RuntimeError("TileSet physics layer definition was not applied")
+        navigation_layer = await app.service.tile_set_navigation_layer_create(
+            tile_map_layer_path,
+            layers=[4],
+            scene_file=scene_file,
+        )
+        if navigation_layer["navigation_layers"] != [{"index": 0, "layers": [4]}]:
+            raise RuntimeError("TileSet navigation layer definition was not applied")
+        custom_data_layer = await app.service.tile_set_custom_data_layer_create(
+            tile_map_layer_path,
+            name="damage",
+            value_type="int",
+            scene_file=scene_file,
+        )
+        if custom_data_layer["custom_data_layers"] != [
+            {"index": 0, "name": "damage", "value_type": "int"}
+        ]:
+            raise RuntimeError("TileSet custom-data layer definition was not applied")
+        terrain_set = await app.service.tile_set_terrain_set_create(
+            tile_map_layer_path,
+            mode="match_sides",
+            scene_file=scene_file,
+        )
+        if terrain_set["terrain_set"] != 0 or terrain_set["terrain_sets"][0]["mode"] != "match_sides":
+            raise RuntimeError("TileSet terrain set definition was not applied")
+        terrain = await app.service.tile_set_terrain_create(
+            tile_map_layer_path,
+            terrain_set=0,
+            name="Ground",
+            color={"r": 0.2, "g": 0.7, "b": 0.3, "a": 1.0},
+            scene_file=scene_file,
+        )
+        terrain_definition = terrain["terrain_sets"][0]["terrains"][0]
+        terrain_color = terrain_definition["color"]
+        if (
+            terrain["terrain"] != 0
+            or terrain_definition["name"] != "Ground"
+            or any(
+                abs(terrain_color[channel] - expected) > 0.0001
+                for channel, expected in {"r": 0.2, "g": 0.7, "b": 0.3, "a": 1.0}.items()
+            )
+        ):
+            raise RuntimeError("TileSet terrain definition was not applied")
+        await _expect_godot_error(
+            app.service.tile_set_atlas_tile_terrain_set(
+                tile_map_layer_path,
+                source_id=3,
+                atlas_coords={"x": 0, "y": 0},
+                terrain_set=0,
+                terrain=0,
+                peering_bits={"top_left_side": 0},
+                scene_file=scene_file,
+            ),
+            "INVALID_TILE_TERRAIN",
+        )
+        atlas_alternative = await app.service.tile_set_atlas_alternative_create(
+            tile_map_layer_path,
+            source_id=3,
+            atlas_coords={"x": 0, "y": 0},
+            alternative_tile=1,
+            scene_file=scene_file,
+        )
+        if atlas_alternative["alternative_tile"] != 1:
+            raise RuntimeError("TileSet atlas alternative was not created")
+        atlas_terrain = await app.service.tile_set_atlas_tile_terrain_set(
+            tile_map_layer_path,
+            source_id=3,
+            atlas_coords={"x": 0, "y": 0},
+            terrain_set=0,
+            terrain=0,
+            peering_bits={"right_side": 0},
+            alternative_tile=1,
+            scene_file=scene_file,
+        )
+        if atlas_terrain["terrain_set"] != 0 or atlas_terrain["peering_bits"] != {
+            "right_side": 0
+        }:
+            raise RuntimeError("TileSet atlas terrain data was not applied")
+        atlas_custom_data = await app.service.tile_set_atlas_tile_custom_data_set(
+            tile_map_layer_path,
+            source_id=3,
+            atlas_coords={"x": 0, "y": 0},
+            values={"damage": 8},
+            alternative_tile=1,
+            scene_file=scene_file,
+        )
+        if atlas_custom_data["custom_data"] != {"damage": 8}:
+            raise RuntimeError("TileSet atlas custom data was not applied")
+        undo_tile_custom_data = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_tile_custom_data.get("changed"):
+            raise RuntimeError("TileSet atlas custom-data edit was not undoable")
+        redo_tile_custom_data = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_tile_custom_data.get("changed"):
+            raise RuntimeError("TileSet atlas custom-data edit was not redoable")
         tile_set_state = await app.service.tile_set_get(tile_map_layer_path, scene_file=scene_file)
         if (
             tile_set_state["total"] != 1

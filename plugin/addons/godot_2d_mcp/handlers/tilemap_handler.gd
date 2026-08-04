@@ -9,6 +9,42 @@ const VariantCodec := preload("res://addons/godot_2d_mcp/utils/variant_codec.gd"
 const MAX_TILEMAP_CELLS := 512
 const MAX_ATLAS_TILE_SIZE := 64
 const MAX_PAGE_LIMIT := 512
+const MAX_TILESET_LAYERS := 64
+const MAX_TILESET_TERRAINS := 64
+const MAX_TILE_CUSTOM_DATA_VALUES := 16
+const MAX_TILESET_NAME_LENGTH := 128
+const TERRAIN_MODES := {
+	"match_corners_and_sides": 0,
+	"match_corners": 1,
+	"match_sides": 2,
+}
+const CUSTOM_DATA_TYPES := {
+	"bool": TYPE_BOOL,
+	"int": TYPE_INT,
+	"float": TYPE_FLOAT,
+	"string": TYPE_STRING,
+	"vector2": TYPE_VECTOR2,
+	"vector2i": TYPE_VECTOR2I,
+	"color": TYPE_COLOR,
+}
+const TERRAIN_PEERING_BITS := {
+	"right_side": 0,
+	"right_corner": 1,
+	"bottom_right_side": 2,
+	"bottom_right_corner": 3,
+	"bottom_side": 4,
+	"bottom_corner": 5,
+	"bottom_left_side": 6,
+	"bottom_left_corner": 7,
+	"left_side": 8,
+	"left_corner": 9,
+	"top_left_side": 10,
+	"top_left_corner": 11,
+	"top_side": 12,
+	"top_corner": 13,
+	"top_right_side": 14,
+	"top_right_corner": 15,
+}
 
 var _undo_redo: EditorUndoRedoManager
 
@@ -321,6 +357,670 @@ func clear_tile_map_layer_cells(params: Dictionary) -> Dictionary:
 	result["undoable"] = true
 	result["_scene_mutated"] = true
 	return result
+
+
+func get_tile_set_layers(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tile_map_layer(params, false)
+	if resolved.has("_error"):
+		return resolved
+	var tile_map_layer: TileMapLayer = resolved["tile_map_layer"]
+	var tile_set: TileSet = tile_map_layer.tile_set
+	if tile_set == null:
+		return _tile_set_required(tile_map_layer)
+	return _tile_set_layers_response(tile_map_layer, resolved["scene_root"])
+
+
+func create_tile_set_physics_layer(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tile_map_layer(params)
+	if resolved.has("_error"):
+		return resolved
+	var tile_map_layer: TileMapLayer = resolved["tile_map_layer"]
+	var current: TileSet = tile_map_layer.tile_set
+	if current == null:
+		return _tile_set_required(tile_map_layer)
+	if current.get_physics_layers_count() >= MAX_TILESET_LAYERS:
+		return Errors.make("TILESET_LAYER_LIMIT", "physics layer count exceeds the supported limit")
+	var layers_result := _parse_layer_numbers(params.get("layers", [1]), "layers")
+	if layers_result.has("_error"):
+		return layers_result
+	var masks_result := _parse_layer_numbers(params.get("masks", [1]), "masks")
+	if masks_result.has("_error"):
+		return masks_result
+	var priority_result := _parse_nonnegative_float(params.get("priority", 1.0), "priority")
+	if priority_result.has("_error"):
+		return priority_result
+	var replacement_result := _duplicate_tile_set(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: TileSet = replacement_result["tile_set"]
+	var layer_index := replacement.get_physics_layers_count()
+	replacement.add_physics_layer()
+	replacement.set_physics_layer_collision_layer(layer_index, layers_result["mask"])
+	replacement.set_physics_layer_collision_mask(layer_index, masks_result["mask"])
+	replacement.set_physics_layer_collision_priority(layer_index, priority_result["value"])
+	_commit_tile_set(
+		tile_map_layer,
+		resolved["scene_root"],
+		replacement,
+		"Create TileSet physics layer on %s" % tile_map_layer.name
+	)
+	var result := _tile_set_layers_response(tile_map_layer, resolved["scene_root"])
+	result["physics_layer_index"] = layer_index
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func create_tile_set_navigation_layer(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tile_map_layer(params)
+	if resolved.has("_error"):
+		return resolved
+	var tile_map_layer: TileMapLayer = resolved["tile_map_layer"]
+	var current: TileSet = tile_map_layer.tile_set
+	if current == null:
+		return _tile_set_required(tile_map_layer)
+	if current.get_navigation_layers_count() >= MAX_TILESET_LAYERS:
+		return Errors.make("TILESET_LAYER_LIMIT", "navigation layer count exceeds the supported limit")
+	var layers_result := _parse_layer_numbers(params.get("layers", [1]), "layers")
+	if layers_result.has("_error"):
+		return layers_result
+	var replacement_result := _duplicate_tile_set(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: TileSet = replacement_result["tile_set"]
+	var layer_index := replacement.get_navigation_layers_count()
+	replacement.add_navigation_layer()
+	replacement.set_navigation_layer_layers(layer_index, layers_result["mask"])
+	_commit_tile_set(
+		tile_map_layer,
+		resolved["scene_root"],
+		replacement,
+		"Create TileSet navigation layer on %s" % tile_map_layer.name
+	)
+	var result := _tile_set_layers_response(tile_map_layer, resolved["scene_root"])
+	result["navigation_layer_index"] = layer_index
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func create_tile_set_custom_data_layer(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tile_map_layer(params)
+	if resolved.has("_error"):
+		return resolved
+	var tile_map_layer: TileMapLayer = resolved["tile_map_layer"]
+	var current: TileSet = tile_map_layer.tile_set
+	if current == null:
+		return _tile_set_required(tile_map_layer)
+	if current.get_custom_data_layers_count() >= MAX_TILESET_LAYERS:
+		return Errors.make("TILESET_LAYER_LIMIT", "custom data layer count exceeds the supported limit")
+	var name_result := _parse_tile_set_name(params.get("name", null), "name")
+	if name_result.has("_error"):
+		return name_result
+	var name: String = name_result["value"]
+	if current.has_custom_data_layer_by_name(name):
+		return Errors.make("CUSTOM_DATA_LAYER_EXISTS", "A custom data layer already uses this name")
+	var type_result := _parse_custom_data_type(params.get("value_type", null))
+	if type_result.has("_error"):
+		return type_result
+	var replacement_result := _duplicate_tile_set(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: TileSet = replacement_result["tile_set"]
+	var layer_index := replacement.get_custom_data_layers_count()
+	replacement.add_custom_data_layer()
+	replacement.set_custom_data_layer_name(layer_index, name)
+	replacement.set_custom_data_layer_type(layer_index, type_result["type"])
+	_commit_tile_set(
+		tile_map_layer,
+		resolved["scene_root"],
+		replacement,
+		"Create TileSet custom data layer on %s" % tile_map_layer.name
+	)
+	var result := _tile_set_layers_response(tile_map_layer, resolved["scene_root"])
+	result["custom_data_layer_index"] = layer_index
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func create_tile_set_terrain_set(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tile_map_layer(params)
+	if resolved.has("_error"):
+		return resolved
+	var tile_map_layer: TileMapLayer = resolved["tile_map_layer"]
+	var current: TileSet = tile_map_layer.tile_set
+	if current == null:
+		return _tile_set_required(tile_map_layer)
+	if current.get_terrain_sets_count() >= MAX_TILESET_TERRAINS:
+		return Errors.make("TILESET_TERRAIN_LIMIT", "terrain set count exceeds the supported limit")
+	var mode_result := _parse_terrain_mode(params.get("mode", "match_corners_and_sides"))
+	if mode_result.has("_error"):
+		return mode_result
+	var replacement_result := _duplicate_tile_set(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: TileSet = replacement_result["tile_set"]
+	var terrain_set := replacement.get_terrain_sets_count()
+	replacement.add_terrain_set()
+	replacement.set_terrain_set_mode(terrain_set, mode_result["mode"])
+	_commit_tile_set(
+		tile_map_layer,
+		resolved["scene_root"],
+		replacement,
+		"Create TileSet terrain set on %s" % tile_map_layer.name
+	)
+	var result := _tile_set_layers_response(tile_map_layer, resolved["scene_root"])
+	result["terrain_set"] = terrain_set
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func create_tile_set_terrain(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tile_map_layer(params)
+	if resolved.has("_error"):
+		return resolved
+	var tile_map_layer: TileMapLayer = resolved["tile_map_layer"]
+	var current: TileSet = tile_map_layer.tile_set
+	if current == null:
+		return _tile_set_required(tile_map_layer)
+	var terrain_set_result := _parse_existing_terrain_set(params, current)
+	if terrain_set_result.has("_error"):
+		return terrain_set_result
+	var terrain_set: int = terrain_set_result["terrain_set"]
+	if current.get_terrains_count(terrain_set) >= MAX_TILESET_TERRAINS:
+		return Errors.make("TILESET_TERRAIN_LIMIT", "terrain count exceeds the supported limit")
+	var name_result := _parse_optional_tile_set_name(params.get("name", ""), "name")
+	if name_result.has("_error"):
+		return name_result
+	var color_result := _parse_color(params.get("color", null), Color.WHITE)
+	if color_result.has("_error"):
+		return color_result
+	var replacement_result := _duplicate_tile_set(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: TileSet = replacement_result["tile_set"]
+	var terrain_index := replacement.get_terrains_count(terrain_set)
+	replacement.add_terrain(terrain_set)
+	replacement.set_terrain_name(terrain_set, terrain_index, name_result["value"])
+	replacement.set_terrain_color(terrain_set, terrain_index, color_result["color"])
+	_commit_tile_set(
+		tile_map_layer,
+		resolved["scene_root"],
+		replacement,
+		"Create TileSet terrain on %s" % tile_map_layer.name
+	)
+	var result := _tile_set_layers_response(tile_map_layer, resolved["scene_root"])
+	result["terrain_set"] = terrain_set
+	result["terrain"] = terrain_index
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func create_tile_set_atlas_alternative(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tile_map_layer(params)
+	if resolved.has("_error"):
+		return resolved
+	var tile_map_layer: TileMapLayer = resolved["tile_map_layer"]
+	var current: TileSet = tile_map_layer.tile_set
+	if current == null:
+		return _tile_set_required(tile_map_layer)
+	var base_tile_params := params.duplicate()
+	base_tile_params["alternative_tile"] = 0
+	var tile_result := _resolve_atlas_tile(base_tile_params, current)
+	if tile_result.has("_error"):
+		return tile_result
+	var alternative_result := _parse_new_alternative_id(params, tile_result["atlas_source"], tile_result["atlas_coords"])
+	if alternative_result.has("_error"):
+		return alternative_result
+	var replacement_result := _duplicate_tile_set(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: TileSet = replacement_result["tile_set"]
+	var source := replacement.get_source(tile_result["source_id"]) as TileSetAtlasSource
+	if source == null:
+		return Errors.make("TILE_SET_COPY_FAILED", "Duplicated TileSet lost its atlas source")
+	var alternative_id := source.create_alternative_tile(
+		tile_result["atlas_coords"], alternative_result["alternative_id"]
+	)
+	if alternative_id < 0:
+		return Errors.make("ATLAS_ALTERNATIVE_CREATE_FAILED", "Godot could not create the requested alternative tile")
+	_commit_tile_set(
+		tile_map_layer,
+		resolved["scene_root"],
+		replacement,
+		"Create TileSet atlas alternative on %s" % tile_map_layer.name
+	)
+	var result := _tile_set_response(tile_map_layer, resolved["scene_root"])
+	result["source_id"] = tile_result["source_id"]
+	result["atlas_coords"] = VariantCodec.serialize(tile_result["atlas_coords"])
+	result["alternative_tile"] = alternative_id
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func set_tile_set_atlas_tile_terrain(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tile_map_layer(params)
+	if resolved.has("_error"):
+		return resolved
+	var tile_map_layer: TileMapLayer = resolved["tile_map_layer"]
+	var current: TileSet = tile_map_layer.tile_set
+	if current == null:
+		return _tile_set_required(tile_map_layer)
+	var tile_result := _resolve_atlas_tile(params, current)
+	if tile_result.has("_error"):
+		return tile_result
+	var terrain_result := _parse_tile_terrain(params, current, tile_result["tile_data"])
+	if terrain_result.has("_error"):
+		return terrain_result
+	var replacement_result := _duplicate_tile_set(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: TileSet = replacement_result["tile_set"]
+	var replacement_data_result := _get_replacement_tile_data(replacement, tile_result)
+	if replacement_data_result.has("_error"):
+		return replacement_data_result
+	var tile_data: TileData = replacement_data_result["tile_data"]
+	for name in terrain_result["clear_peering_bits"]:
+		tile_data.set_terrain_peering_bit(TERRAIN_PEERING_BITS[name], -1)
+	tile_data.terrain_set = terrain_result["terrain_set"]
+	tile_data.terrain = terrain_result["terrain"]
+	for name in terrain_result["peering_bits"]:
+		tile_data.set_terrain_peering_bit(TERRAIN_PEERING_BITS[name], terrain_result["peering_bits"][name])
+	_commit_tile_set(
+		tile_map_layer,
+		resolved["scene_root"],
+		replacement,
+		"Set TileSet atlas terrain on %s" % tile_map_layer.name
+	)
+	var result := _tile_data_response(tile_map_layer, resolved["scene_root"], tile_result)
+	result["terrain_set"] = terrain_result["terrain_set"]
+	result["terrain"] = terrain_result["terrain"]
+	result["peering_bits"] = terrain_result["peering_bits"]
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func set_tile_set_atlas_tile_custom_data(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tile_map_layer(params)
+	if resolved.has("_error"):
+		return resolved
+	var tile_map_layer: TileMapLayer = resolved["tile_map_layer"]
+	var current: TileSet = tile_map_layer.tile_set
+	if current == null:
+		return _tile_set_required(tile_map_layer)
+	var tile_result := _resolve_atlas_tile(params, current)
+	if tile_result.has("_error"):
+		return tile_result
+	var values_result := _parse_tile_custom_data(params.get("values", null), current, tile_result["tile_data"])
+	if values_result.has("_error"):
+		return values_result
+	var replacement_result := _duplicate_tile_set(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: TileSet = replacement_result["tile_set"]
+	var replacement_data_result := _get_replacement_tile_data(replacement, tile_result)
+	if replacement_data_result.has("_error"):
+		return replacement_data_result
+	var tile_data: TileData = replacement_data_result["tile_data"]
+	for name in values_result["values"]:
+		tile_data.set_custom_data(name, values_result["values"][name])
+	_commit_tile_set(
+		tile_map_layer,
+		resolved["scene_root"],
+		replacement,
+		"Set TileSet atlas custom data on %s" % tile_map_layer.name
+	)
+	var result := _tile_data_response(tile_map_layer, resolved["scene_root"], tile_result)
+	result["custom_data"] = values_result["serialized"]
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func _parse_layer_numbers(raw_values: Variant, label: String) -> Dictionary:
+	if not raw_values is Array or raw_values.size() > 32:
+		return Errors.make("INVALID_TILESET_LAYERS", "%s must contain at most 32 layer numbers" % label)
+	var mask := 0
+	for raw_value in raw_values:
+		if not _is_integral_number(raw_value):
+			return Errors.make("INVALID_TILESET_LAYERS", "%s entries must be integers from 1 to 32" % label)
+		var layer := int(raw_value)
+		if layer < 1 or layer > 32 or mask & (1 << (layer - 1)) != 0:
+			return Errors.make(
+				"INVALID_TILESET_LAYERS", "%s entries must be unique integers from 1 to 32" % label
+			)
+		mask |= 1 << (layer - 1)
+	return {"mask": mask}
+
+
+func _mask_to_layer_numbers(mask: int) -> Array[int]:
+	var layers: Array[int] = []
+	for index in 32:
+		if mask & (1 << index) != 0:
+			layers.append(index + 1)
+	return layers
+
+
+func _parse_nonnegative_float(raw_value: Variant, label: String) -> Dictionary:
+	if not (raw_value is int or raw_value is float) or not is_finite(float(raw_value)):
+		return Errors.make("INVALID_TILESET_VALUE", "%s must be a finite number" % label)
+	var value := float(raw_value)
+	if value < 0.0:
+		return Errors.make("INVALID_TILESET_VALUE", "%s must be greater than or equal to zero" % label)
+	return {"value": value}
+
+
+func _parse_tile_set_name(raw_value: Variant, label: String) -> Dictionary:
+	if not raw_value is String:
+		return Errors.make("INVALID_TILESET_NAME", "%s must be a non-empty string" % label)
+	var value: String = raw_value.strip_edges()
+	if value.is_empty() or value.length() > MAX_TILESET_NAME_LENGTH or "/" in value or ":" in value:
+		return Errors.make("INVALID_TILESET_NAME", "%s is not a supported TileSet identifier" % label)
+	return {"value": value}
+
+
+func _parse_optional_tile_set_name(raw_value: Variant, label: String) -> Dictionary:
+	if not raw_value is String or raw_value.length() > MAX_TILESET_NAME_LENGTH:
+		return Errors.make("INVALID_TILESET_NAME", "%s must be a string with at most 128 characters" % label)
+	return {"value": raw_value}
+
+
+func _parse_custom_data_type(raw_value: Variant) -> Dictionary:
+	if not raw_value is String:
+		return Errors.make("INVALID_CUSTOM_DATA_TYPE", "value_type must be a supported type name")
+	var name: String = raw_value.to_lower().strip_edges()
+	if not CUSTOM_DATA_TYPES.has(name):
+		return Errors.make(
+			"INVALID_CUSTOM_DATA_TYPE",
+			"value_type must be one of: bool, int, float, string, vector2, vector2i, color"
+		)
+	return {"name": name, "type": CUSTOM_DATA_TYPES[name]}
+
+
+func _parse_terrain_mode(raw_value: Variant) -> Dictionary:
+	if not raw_value is String:
+		return Errors.make("INVALID_TERRAIN_MODE", "mode must be a supported terrain mode name")
+	var name: String = raw_value.to_lower().strip_edges()
+	if not TERRAIN_MODES.has(name):
+		return Errors.make(
+			"INVALID_TERRAIN_MODE",
+			"mode must be match_corners_and_sides, match_corners, or match_sides"
+		)
+	return {"mode": TERRAIN_MODES[name]}
+
+
+func _terrain_mode_name(mode: int) -> String:
+	for name in TERRAIN_MODES:
+		if int(TERRAIN_MODES[name]) == mode:
+			return name
+	return "unknown"
+
+
+func _custom_data_type_name(value_type: int) -> String:
+	for name in CUSTOM_DATA_TYPES:
+		if int(CUSTOM_DATA_TYPES[name]) == value_type:
+			return name
+	return type_string(value_type)
+
+
+func _parse_color(raw_value: Variant, fallback: Color) -> Dictionary:
+	if raw_value == null:
+		return {"color": fallback}
+	var decoded := VariantCodec.decode(raw_value, {"type": TYPE_COLOR}, fallback)
+	if decoded.has("_error"):
+		return Errors.make("INVALID_TILESET_COLOR", "color must be a Color string or numeric r, g, b, a object")
+	return {"color": decoded["value"]}
+
+
+func _parse_existing_terrain_set(params: Dictionary, tile_set: TileSet) -> Dictionary:
+	if not params.has("terrain_set") or not _is_integral_number(params["terrain_set"]):
+		return Errors.make("MISSING_PARAMETER", "terrain_set must be an existing non-negative integer")
+	var terrain_set := int(params["terrain_set"])
+	if terrain_set < 0 or terrain_set >= tile_set.get_terrain_sets_count():
+		return Errors.make("TERRAIN_SET_NOT_FOUND", "terrain_set does not identify a TileSet terrain set")
+	return {"terrain_set": terrain_set}
+
+
+func _resolve_atlas_tile(params: Dictionary, tile_set: TileSet) -> Dictionary:
+	var source_result := _resolve_atlas_source(params, tile_set)
+	if source_result.has("_error"):
+		return source_result
+	var atlas_coords_result := _parse_nonnegative_vector2i(params.get("atlas_coords", null), "atlas_coords")
+	if atlas_coords_result.has("_error"):
+		return atlas_coords_result
+	var atlas_source: TileSetAtlasSource = source_result["atlas_source"]
+	var atlas_coords: Vector2i = atlas_coords_result["value"]
+	if not atlas_source.has_tile(atlas_coords):
+		return Errors.make("ATLAS_TILE_NOT_FOUND", "atlas_coords is not a tile in the selected source")
+	var alternative_result := _parse_existing_alternative_id(params, atlas_source, atlas_coords)
+	if alternative_result.has("_error"):
+		return alternative_result
+	var alternative_tile: int = alternative_result["alternative_tile"]
+	var tile_data := atlas_source.get_tile_data(atlas_coords, alternative_tile)
+	if tile_data == null:
+		return Errors.make("ATLAS_TILE_NOT_FOUND", "Godot could not resolve the selected TileData")
+	return {
+		"source_id": source_result["source_id"],
+		"atlas_source": atlas_source,
+		"atlas_coords": atlas_coords,
+		"alternative_tile": alternative_tile,
+		"tile_data": tile_data as TileData,
+	}
+
+
+func _parse_existing_alternative_id(
+	params: Dictionary,
+	atlas_source: TileSetAtlasSource,
+	atlas_coords: Vector2i
+) -> Dictionary:
+	var raw_value: Variant = params.get("alternative_tile", 0)
+	if raw_value == null:
+		raw_value = 0
+	if not _is_integral_number(raw_value) or int(raw_value) < 0 or int(raw_value) > 4095:
+		return Errors.make("INVALID_ATLAS_ALTERNATIVE", "alternative_tile must be an integer from 0 to 4095")
+	var alternative_tile := int(raw_value)
+	if not atlas_source.has_alternative_tile(atlas_coords, alternative_tile):
+		return Errors.make("ATLAS_ALTERNATIVE_NOT_FOUND", "alternative_tile is not defined for atlas_coords")
+	return {"alternative_tile": alternative_tile}
+
+
+func _parse_new_alternative_id(
+	params: Dictionary,
+	atlas_source: TileSetAtlasSource,
+	atlas_coords: Vector2i
+) -> Dictionary:
+	if not params.has("alternative_tile") or params["alternative_tile"] == null:
+		var next_id := atlas_source.get_next_alternative_tile_id(atlas_coords)
+		if next_id < 1 or next_id > 4095:
+			return Errors.make("INVALID_ATLAS_ALTERNATIVE", "Godot could not allocate a supported alternative tile ID")
+		return {"alternative_id": next_id}
+	if not _is_integral_number(params["alternative_tile"]):
+		return Errors.make("INVALID_ATLAS_ALTERNATIVE", "alternative_tile must be an integer from 1 to 4095")
+	var alternative_id := int(params["alternative_tile"])
+	if alternative_id < 1 or alternative_id > 4095:
+		return Errors.make("INVALID_ATLAS_ALTERNATIVE", "alternative_tile must be an integer from 1 to 4095")
+	if atlas_source.has_alternative_tile(atlas_coords, alternative_id):
+		return Errors.make("ATLAS_ALTERNATIVE_EXISTS", "alternative_tile already exists for atlas_coords")
+	return {"alternative_id": alternative_id}
+
+
+func _get_replacement_tile_data(replacement: TileSet, tile_result: Dictionary) -> Dictionary:
+	var source := replacement.get_source(tile_result["source_id"])
+	if not source is TileSetAtlasSource:
+		return Errors.make("TILE_SET_COPY_FAILED", "Duplicated TileSet lost its atlas source")
+	var tile_data := (source as TileSetAtlasSource).get_tile_data(
+		tile_result["atlas_coords"], tile_result["alternative_tile"]
+	)
+	if tile_data == null:
+		return Errors.make("TILE_SET_COPY_FAILED", "Duplicated TileSet lost its TileData")
+	return {"tile_data": tile_data as TileData}
+
+
+func _parse_tile_terrain(params: Dictionary, tile_set: TileSet, tile_data: TileData) -> Dictionary:
+	if not params.has("terrain_set") or not params.has("terrain"):
+		return Errors.make("MISSING_PARAMETER", "terrain_set and terrain must be supplied")
+	if not _is_integral_number(params["terrain_set"]) or not _is_integral_number(params["terrain"]):
+		return Errors.make("INVALID_TILE_TERRAIN", "terrain_set and terrain must be integers")
+	var terrain_set := int(params["terrain_set"])
+	var terrain := int(params["terrain"])
+	if terrain_set == -1:
+		if terrain != -1:
+			return Errors.make("INVALID_TILE_TERRAIN", "terrain must be -1 when terrain_set is -1")
+	elif terrain_set < 0 or terrain_set >= tile_set.get_terrain_sets_count():
+		return Errors.make("TERRAIN_SET_NOT_FOUND", "terrain_set does not identify a TileSet terrain set")
+	elif terrain < 0 or terrain >= tile_set.get_terrains_count(terrain_set):
+		return Errors.make("TERRAIN_NOT_FOUND", "terrain does not identify a terrain in terrain_set")
+	var peering_bits := {}
+	var clear_peering_bits: Array[String] = []
+	if terrain_set == -1:
+		for name in TERRAIN_PEERING_BITS:
+			if tile_data.is_valid_terrain_peering_bit(TERRAIN_PEERING_BITS[name]):
+				clear_peering_bits.append(name)
+	var raw_peering_bits: Variant = params.get("peering_bits", {})
+	if not raw_peering_bits is Dictionary or raw_peering_bits.size() > TERRAIN_PEERING_BITS.size():
+		return Errors.make("INVALID_TILE_TERRAIN", "peering_bits must be an object with supported neighbor names")
+	for raw_name in raw_peering_bits:
+		if not raw_name is String or not TERRAIN_PEERING_BITS.has(raw_name):
+			return Errors.make("INVALID_TILE_TERRAIN", "peering_bits contains an unsupported neighbor name")
+		if not _is_integral_number(raw_peering_bits[raw_name]):
+			return Errors.make("INVALID_TILE_TERRAIN", "peering_bits values must be terrain indices")
+		var value := int(raw_peering_bits[raw_name])
+		if terrain_set == -1:
+			if value != -1:
+				return Errors.make("INVALID_TILE_TERRAIN", "cleared terrain_set requires peering_bits values of -1")
+		elif value < -1 or value >= tile_set.get_terrains_count(terrain_set):
+			return Errors.make("TERRAIN_NOT_FOUND", "peering_bits values must be -1 or terrain indices in terrain_set")
+		if terrain_set != -1 and not _is_valid_terrain_peering_bit(
+			tile_set, terrain_set, TERRAIN_PEERING_BITS[raw_name]
+		):
+			return Errors.make("INVALID_TILE_TERRAIN", "peering_bits contains a direction invalid for this TileSet layout")
+		peering_bits[raw_name] = value
+	return {
+		"terrain_set": terrain_set,
+		"terrain": terrain,
+		"peering_bits": peering_bits,
+		"clear_peering_bits": clear_peering_bits,
+	}
+
+
+func _is_valid_terrain_peering_bit(tile_set: TileSet, terrain_set: int, peering_bit: int) -> bool:
+	if terrain_set < 0 or terrain_set >= tile_set.get_terrain_sets_count():
+		return false
+	var mode := tile_set.get_terrain_set_mode(terrain_set)
+	var supports_sides := mode == TERRAIN_MODES["match_corners_and_sides"] \
+		or mode == TERRAIN_MODES["match_sides"]
+	var supports_corners := mode == TERRAIN_MODES["match_corners_and_sides"] \
+		or mode == TERRAIN_MODES["match_corners"]
+	var side_bits: Array[int] = []
+	var corner_bits: Array[int] = []
+	if tile_set.tile_shape == TileSet.TILE_SHAPE_SQUARE:
+		side_bits.assign([0, 4, 8, 12])
+		corner_bits.assign([3, 7, 11, 15])
+	elif tile_set.tile_shape == TileSet.TILE_SHAPE_ISOMETRIC:
+		side_bits.assign([2, 6, 10, 14])
+		corner_bits.assign([1, 5, 9, 13])
+	elif tile_set.tile_offset_axis == TileSet.TILE_OFFSET_AXIS_HORIZONTAL:
+		side_bits.assign([0, 2, 6, 8, 10, 14])
+		corner_bits.assign([3, 5, 7, 11, 13, 15])
+	else:
+		side_bits.assign([2, 4, 6, 10, 12, 14])
+		corner_bits.assign([1, 3, 7, 9, 11, 15])
+	return (supports_sides and peering_bit in side_bits) \
+		or (supports_corners and peering_bit in corner_bits)
+
+
+func _parse_tile_custom_data(raw_values: Variant, tile_set: TileSet, tile_data: TileData) -> Dictionary:
+	if not raw_values is Dictionary or raw_values.is_empty() or raw_values.size() > MAX_TILE_CUSTOM_DATA_VALUES:
+		return Errors.make(
+			"INVALID_TILE_CUSTOM_DATA",
+			"values must be a non-empty object with at most %d entries" % MAX_TILE_CUSTOM_DATA_VALUES
+		)
+	var values := {}
+	var serialized := {}
+	for raw_name in raw_values:
+		if not raw_name is String or raw_name.is_empty() or raw_name.length() > MAX_TILESET_NAME_LENGTH:
+			return Errors.make("INVALID_TILE_CUSTOM_DATA", "custom data names must be supported TileSet identifiers")
+		var layer_index := tile_set.get_custom_data_layer_by_name(raw_name)
+		if layer_index < 0:
+			return Errors.make("CUSTOM_DATA_LAYER_NOT_FOUND", "values contains a name not defined by this TileSet")
+		var decoded := VariantCodec.decode(
+			raw_values[raw_name],
+			{"type": tile_set.get_custom_data_layer_type(layer_index)},
+			tile_data.get_custom_data(raw_name)
+		)
+		if decoded.has("_error"):
+			return Errors.make(
+				"INVALID_TILE_CUSTOM_DATA",
+				"values.%s does not match the TileSet custom data type" % raw_name
+			)
+		values[raw_name] = decoded["value"]
+		serialized[raw_name] = VariantCodec.serialize(decoded["value"])
+	return {"values": values, "serialized": serialized}
+
+
+func _tile_set_layers_response(tile_map_layer: TileMapLayer, scene_root: Node) -> Dictionary:
+	var response := _tile_map_layer_response(tile_map_layer, scene_root)
+	var tile_set: TileSet = tile_map_layer.tile_set
+	var physics_layers := []
+	for index in mini(tile_set.get_physics_layers_count(), MAX_TILESET_LAYERS):
+		physics_layers.append({
+			"index": index,
+			"layers": _mask_to_layer_numbers(tile_set.get_physics_layer_collision_layer(index)),
+			"masks": _mask_to_layer_numbers(tile_set.get_physics_layer_collision_mask(index)),
+			"priority": tile_set.get_physics_layer_collision_priority(index),
+		})
+	var navigation_layers := []
+	for index in mini(tile_set.get_navigation_layers_count(), MAX_TILESET_LAYERS):
+		navigation_layers.append({
+			"index": index,
+			"layers": _mask_to_layer_numbers(tile_set.get_navigation_layer_layers(index)),
+		})
+	var custom_data_layers := []
+	for index in mini(tile_set.get_custom_data_layers_count(), MAX_TILESET_LAYERS):
+		custom_data_layers.append({
+			"index": index,
+			"name": tile_set.get_custom_data_layer_name(index),
+			"value_type": _custom_data_type_name(tile_set.get_custom_data_layer_type(index)),
+		})
+	var terrain_sets := []
+	for terrain_set in mini(tile_set.get_terrain_sets_count(), MAX_TILESET_TERRAINS):
+		var terrains := []
+		for terrain in mini(tile_set.get_terrains_count(terrain_set), MAX_TILESET_TERRAINS):
+			terrains.append({
+				"index": terrain,
+				"name": tile_set.get_terrain_name(terrain_set, terrain),
+				"color": VariantCodec.serialize(tile_set.get_terrain_color(terrain_set, terrain)),
+			})
+		terrain_sets.append({
+			"index": terrain_set,
+			"mode": _terrain_mode_name(tile_set.get_terrain_set_mode(terrain_set)),
+			"terrains": terrains,
+			"terrain_total": tile_set.get_terrains_count(terrain_set),
+		})
+	response["physics_layers"] = physics_layers
+	response["physics_layers_total"] = tile_set.get_physics_layers_count()
+	response["navigation_layers"] = navigation_layers
+	response["navigation_layers_total"] = tile_set.get_navigation_layers_count()
+	response["custom_data_layers"] = custom_data_layers
+	response["custom_data_layers_total"] = tile_set.get_custom_data_layers_count()
+	response["terrain_sets"] = terrain_sets
+	response["terrain_sets_total"] = tile_set.get_terrain_sets_count()
+	return response
+
+
+func _tile_data_response(tile_map_layer: TileMapLayer, scene_root: Node, tile_result: Dictionary) -> Dictionary:
+	return {
+		"path": ScenePath.from_node(tile_map_layer, scene_root),
+		"type": tile_map_layer.get_class(),
+		"source_id": tile_result["source_id"],
+		"atlas_coords": VariantCodec.serialize(tile_result["atlas_coords"]),
+		"alternative_tile": tile_result["alternative_tile"],
+	}
 
 
 func _resolve_tile_map_layer(params: Dictionary, require_writable: bool = true) -> Dictionary:

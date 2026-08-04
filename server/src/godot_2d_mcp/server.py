@@ -389,6 +389,19 @@ def create_application(
             scene_file=scene_file,
         )
 
+    @mcp.tool(annotations=READ_ONLY)
+    async def tile_set_layers_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read TileSet physics, navigation, custom-data, and terrain definitions."""
+        return await service.tile_set_layers_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
     @mcp.tool(annotations=WRITE)
     async def node_create(
         type: str,
@@ -1170,6 +1183,156 @@ def create_application(
             source_id=source_id,
             atlas_coords=atlas_coords,
             size=size,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def tile_set_physics_layer_create(
+        path: str,
+        layers: list[int] | None = None,
+        masks: list[int] | None = None,
+        priority: float = 1.0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Add a TileSet physics layer with collision layers, masks, and priority."""
+        return await service.tile_set_physics_layer_create(
+            path=path,
+            layers=layers,
+            masks=masks,
+            priority=priority,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def tile_set_navigation_layer_create(
+        path: str,
+        layers: list[int] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Add a TileSet navigation layer using Godot navigation-layer numbers 1 through 32."""
+        return await service.tile_set_navigation_layer_create(
+            path=path,
+            layers=layers,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def tile_set_custom_data_layer_create(
+        path: str,
+        name: str,
+        value_type: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Add a named TileSet custom-data layer with an explicit Variant type."""
+        return await service.tile_set_custom_data_layer_create(
+            path=path,
+            name=name,
+            value_type=value_type,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def tile_set_terrain_set_create(
+        path: str,
+        mode: str = "match_corners_and_sides",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Add a TileSet terrain set with one of Godot's supported matching modes."""
+        return await service.tile_set_terrain_set_create(
+            path=path,
+            mode=mode,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def tile_set_terrain_create(
+        path: str,
+        terrain_set: int,
+        name: str = "",
+        color: Any | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Add a named, colored terrain definition to an existing TileSet terrain set."""
+        return await service.tile_set_terrain_create(
+            path=path,
+            terrain_set=terrain_set,
+            name=name,
+            color=color,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def tile_set_atlas_alternative_create(
+        path: str,
+        source_id: int,
+        atlas_coords: dict[str, int],
+        alternative_tile: int | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Create an alternative version of an existing TileSet atlas tile."""
+        return await service.tile_set_atlas_alternative_create(
+            path=path,
+            source_id=source_id,
+            atlas_coords=atlas_coords,
+            alternative_tile=alternative_tile,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def tile_set_atlas_tile_terrain_set(
+        path: str,
+        source_id: int,
+        atlas_coords: dict[str, int],
+        terrain_set: int,
+        terrain: int,
+        peering_bits: dict[str, int] | None = None,
+        alternative_tile: int = 0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Configure terrain IDs and optional peering bits for an atlas tile or alternative."""
+        return await service.tile_set_atlas_tile_terrain_set(
+            path=path,
+            source_id=source_id,
+            atlas_coords=atlas_coords,
+            terrain_set=terrain_set,
+            terrain=terrain,
+            peering_bits=peering_bits,
+            alternative_tile=alternative_tile,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def tile_set_atlas_tile_custom_data_set(
+        path: str,
+        source_id: int,
+        atlas_coords: dict[str, int],
+        values: dict[str, Any],
+        alternative_tile: int = 0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Set typed custom-data values for an atlas tile or alternative."""
+        return await service.tile_set_atlas_tile_custom_data_set(
+            path=path,
+            source_id=source_id,
+            atlas_coords=atlas_coords,
+            values=values,
+            alternative_tile=alternative_tile,
             session_id=session_id,
             scene_file=scene_file,
         )
