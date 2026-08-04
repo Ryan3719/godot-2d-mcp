@@ -32,6 +32,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "ray_cast_2d_get",
         "shape_cast_2d_get",
         "navigation_2d_get",
+        "navigation_polygon_get",
         "node_create",
         "node_set_properties",
         "node_delete",
@@ -67,6 +68,12 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "shape_cast_2d_set",
         "shape_cast_2d_shape_clear",
         "navigation_2d_set",
+        "navigation_polygon_create",
+        "navigation_polygon_geometry_set",
+        "navigation_polygon_outline_set",
+        "navigation_polygon_outline_remove",
+        "navigation_polygon_make_from_outlines",
+        "navigation_polygon_clear",
         "scene_save",
         "scene_undo",
         "scene_redo",
@@ -88,6 +95,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["ray_cast_2d_get"].readOnlyHint is True
     assert annotations["shape_cast_2d_get"].readOnlyHint is True
     assert annotations["navigation_2d_get"].readOnlyHint is True
+    assert annotations["navigation_polygon_get"].readOnlyHint is True
     assert annotations["node_create"].readOnlyHint is False
     assert annotations["node_delete"].destructiveHint is True
     assert annotations["node_rename"].destructiveHint is False
@@ -122,4 +130,10 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["shape_cast_2d_set"].readOnlyHint is False
     assert annotations["shape_cast_2d_shape_clear"].destructiveHint is True
     assert annotations["navigation_2d_set"].readOnlyHint is False
+    assert annotations["navigation_polygon_create"].readOnlyHint is False
+    assert annotations["navigation_polygon_geometry_set"].readOnlyHint is False
+    assert annotations["navigation_polygon_outline_set"].readOnlyHint is False
+    assert annotations["navigation_polygon_outline_remove"].destructiveHint is True
+    assert annotations["navigation_polygon_make_from_outlines"].readOnlyHint is False
+    assert annotations["navigation_polygon_clear"].destructiveHint is True
     assert annotations["scene_save"].idempotentHint is True

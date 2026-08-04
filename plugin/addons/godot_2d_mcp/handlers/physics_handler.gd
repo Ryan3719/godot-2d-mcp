@@ -10,6 +10,10 @@ const MAX_SHAPE_PROPERTIES := 16
 const MAX_LAYER_COUNT := 32
 const MAX_POLYGON_POINTS := 512
 const MAX_PHYSICS_PROPERTIES := 32
+const MAX_NAVIGATION_POLYGONS := 512
+const MAX_NAVIGATION_POLYGON_INDICES := 2048
+const MAX_NAVIGATION_OUTLINES := 128
+const MAX_NAVIGATION_OUTLINE_POINTS := 512
 const PROTECTED_SHAPE_PROPERTIES := {
 	"resource_path": true,
 	"resource_name": true,
@@ -501,6 +505,216 @@ func set_navigation_node(params: Dictionary) -> Dictionary:
 	return result
 
 
+func get_navigation_polygon(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_navigation_region(params, false)
+	if resolved.has("_error"):
+		return resolved
+	return _navigation_polygon_response(resolved["navigation_region"], resolved["scene_root"])
+
+
+func create_navigation_polygon(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_navigation_region(params)
+	if resolved.has("_error"):
+		return resolved
+	var navigation_region: NavigationRegion2D = resolved["navigation_region"]
+	if navigation_region.navigation_polygon != null:
+		return Errors.make(
+			"NAVIGATION_POLYGON_ALREADY_ASSIGNED",
+			"NavigationRegion2D '%s' already has a NavigationPolygon resource" % navigation_region.name,
+			false,
+			"Call navigation_polygon_get before replacing geometry, or navigation_polygon_clear first."
+		)
+	var agent_radius_result := _parse_navigation_polygon_agent_radius(params, 0.0)
+	if agent_radius_result.has("_error"):
+		return agent_radius_result
+	var navigation_polygon := NavigationPolygon.new()
+	navigation_polygon.agent_radius = agent_radius_result["agent_radius"]
+	_commit_navigation_polygon(
+		navigation_region,
+		resolved["scene_root"],
+		navigation_polygon,
+		"Create NavigationPolygon on %s" % navigation_region.name
+	)
+	var result := _navigation_polygon_response(navigation_region, resolved["scene_root"])
+	result["created"] = true
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func set_navigation_polygon_geometry(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_navigation_region(params)
+	if resolved.has("_error"):
+		return resolved
+	var navigation_region: NavigationRegion2D = resolved["navigation_region"]
+	var current: NavigationPolygon = navigation_region.navigation_polygon
+	if current == null:
+		return _navigation_polygon_required(navigation_region)
+	var geometry_result := _parse_navigation_polygon_geometry(params)
+	if geometry_result.has("_error"):
+		return geometry_result
+	var agent_radius_result := _parse_navigation_polygon_agent_radius(params, current.agent_radius)
+	if agent_radius_result.has("_error"):
+		return agent_radius_result
+	var replacement_result := _duplicate_navigation_polygon(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: NavigationPolygon = replacement_result["navigation_polygon"]
+	replacement.agent_radius = agent_radius_result["agent_radius"]
+	replacement.set_vertices(geometry_result["vertices"])
+	replacement.clear_polygons()
+	for polygon in geometry_result["polygons"]:
+		replacement.add_polygon(polygon)
+	if _navigation_polygon_matches(current, replacement):
+		var unchanged := _navigation_polygon_response(navigation_region, resolved["scene_root"])
+		unchanged["changed"] = false
+		unchanged["undoable"] = false
+		return unchanged
+	_commit_navigation_polygon(
+		navigation_region,
+		resolved["scene_root"],
+		replacement,
+		"Set NavigationPolygon geometry on %s" % navigation_region.name
+	)
+	var result := _navigation_polygon_response(navigation_region, resolved["scene_root"])
+	result["changed"] = true
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func set_navigation_polygon_outline(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_navigation_region(params)
+	if resolved.has("_error"):
+		return resolved
+	var navigation_region: NavigationRegion2D = resolved["navigation_region"]
+	var current: NavigationPolygon = navigation_region.navigation_polygon
+	if current == null:
+		return _navigation_polygon_required(navigation_region)
+	var outline_result := _parse_navigation_polygon_outline(params.get("outline", null))
+	if outline_result.has("_error"):
+		return outline_result
+	var index_result := _parse_navigation_outline_index(params, current.get_outline_count(), true)
+	if index_result.has("_error"):
+		return index_result
+	var replacement_result := _duplicate_navigation_polygon(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: NavigationPolygon = replacement_result["navigation_polygon"]
+	if index_result["append"]:
+		replacement.add_outline(outline_result["outline"])
+	else:
+		replacement.set_outline(index_result["index"], outline_result["outline"])
+	_commit_navigation_polygon(
+		navigation_region,
+		resolved["scene_root"],
+		replacement,
+		"Set NavigationPolygon outline on %s" % navigation_region.name
+	)
+	var result := _navigation_polygon_response(navigation_region, resolved["scene_root"])
+	result["outline_index"] = replacement.get_outline_count() - 1 if index_result["append"] else index_result["index"]
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func remove_navigation_polygon_outline(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_navigation_region(params)
+	if resolved.has("_error"):
+		return resolved
+	var navigation_region: NavigationRegion2D = resolved["navigation_region"]
+	var current: NavigationPolygon = navigation_region.navigation_polygon
+	if current == null:
+		return _navigation_polygon_required(navigation_region)
+	var index_result := _parse_navigation_outline_index(params, current.get_outline_count(), false)
+	if index_result.has("_error"):
+		return index_result
+	var replacement_result := _duplicate_navigation_polygon(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: NavigationPolygon = replacement_result["navigation_polygon"]
+	replacement.remove_outline(index_result["index"])
+	_commit_navigation_polygon(
+		navigation_region,
+		resolved["scene_root"],
+		replacement,
+		"Remove NavigationPolygon outline from %s" % navigation_region.name
+	)
+	var result := _navigation_polygon_response(navigation_region, resolved["scene_root"])
+	result["removed_outline_index"] = index_result["index"]
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func make_navigation_polygon_from_outlines(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_navigation_region(params)
+	if resolved.has("_error"):
+		return resolved
+	var navigation_region: NavigationRegion2D = resolved["navigation_region"]
+	var current: NavigationPolygon = navigation_region.navigation_polygon
+	if current == null:
+		return _navigation_polygon_required(navigation_region)
+	if current.get_outline_count() == 0:
+		return Errors.make(
+			"NAVIGATION_POLYGON_OUTLINES_REQUIRED",
+			"NavigationPolygon on '%s' has no outlines" % navigation_region.name,
+			false,
+			"Create at least one outline with navigation_polygon_outline_set first."
+		)
+	var replacement_result := _duplicate_navigation_polygon(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: NavigationPolygon = replacement_result["navigation_polygon"]
+	replacement.make_polygons_from_outlines()
+	if _navigation_polygon_matches(current, replacement):
+		var unchanged := _navigation_polygon_response(navigation_region, resolved["scene_root"])
+		unchanged["changed"] = false
+		unchanged["undoable"] = false
+		return unchanged
+	_commit_navigation_polygon(
+		navigation_region,
+		resolved["scene_root"],
+		replacement,
+		"Build NavigationPolygon from outlines on %s" % navigation_region.name
+	)
+	var result := _navigation_polygon_response(navigation_region, resolved["scene_root"])
+	result["changed"] = true
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func clear_navigation_polygon(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_navigation_region(params)
+	if resolved.has("_error"):
+		return resolved
+	var navigation_region: NavigationRegion2D = resolved["navigation_region"]
+	var current: NavigationPolygon = navigation_region.navigation_polygon
+	if current == null:
+		return Errors.make(
+			"NAVIGATION_POLYGON_NOT_ASSIGNED",
+			"NavigationRegion2D '%s' has no NavigationPolygon resource" % navigation_region.name,
+			false,
+			"Call navigation_polygon_get before clearing a resource."
+		)
+	_undo_redo.create_action(
+		"Godot 2D MCP: Clear NavigationPolygon on %s" % navigation_region.name,
+		UndoRedo.MERGE_DISABLE,
+		resolved["scene_root"],
+		true
+	)
+	_undo_redo.add_do_property(navigation_region, "navigation_polygon", null)
+	_undo_redo.add_undo_property(navigation_region, "navigation_polygon", current)
+	_undo_redo.add_undo_reference(current)
+	_undo_redo.commit_action()
+	var result := _navigation_polygon_response(navigation_region, resolved["scene_root"])
+	result["cleared"] = true
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
 func _resolve_area(params: Dictionary, require_writable: bool = true) -> Dictionary:
 	var resolved := _resolve_node(params, require_writable)
 	if resolved.has("_error"):
@@ -595,6 +809,251 @@ func _resolve_navigation_node(params: Dictionary, require_writable: bool = true)
 		)
 	resolved["navigation_node"] = node
 	return resolved
+
+
+func _resolve_navigation_region(params: Dictionary, require_writable: bool = true) -> Dictionary:
+	var resolved := _resolve_node(params, require_writable)
+	if resolved.has("_error"):
+		return resolved
+	if not resolved["node"] is NavigationRegion2D:
+		return Errors.make(
+			"NAVIGATION_REGION_2D_REQUIRED",
+			"Node '%s' is %s, not NavigationRegion2D" % [
+				resolved["node"].name, resolved["node"].get_class()
+			],
+			false,
+			"Target a NavigationRegion2D node."
+		)
+	resolved["navigation_region"] = resolved["node"] as NavigationRegion2D
+	return resolved
+
+
+func _navigation_polygon_required(navigation_region: NavigationRegion2D) -> Dictionary:
+	return Errors.make(
+		"NAVIGATION_POLYGON_NOT_ASSIGNED",
+		"NavigationRegion2D '%s' has no NavigationPolygon resource" % navigation_region.name,
+		false,
+		"Call navigation_polygon_create before editing its geometry."
+	)
+
+
+func _parse_navigation_polygon_agent_radius(params: Dictionary, fallback: float) -> Dictionary:
+	if not params.has("agent_radius") or params["agent_radius"] == null:
+		return {"agent_radius": fallback}
+	var raw_radius: Variant = params["agent_radius"]
+	if not (raw_radius is int or raw_radius is float) or not is_finite(float(raw_radius)):
+		return Errors.make("INVALID_NAVIGATION_POLYGON", "agent_radius must be a finite number")
+	var agent_radius := float(raw_radius)
+	if agent_radius < 0.0:
+		return Errors.make("INVALID_NAVIGATION_POLYGON", "agent_radius must be greater than or equal to zero")
+	return {"agent_radius": agent_radius}
+
+
+func _parse_navigation_polygon_geometry(params: Dictionary) -> Dictionary:
+	if not params.has("vertices") or not params.has("polygons"):
+		return Errors.make("MISSING_PARAMETER", "vertices and polygons must be supplied")
+	var vertices_result := _parse_navigation_polygon_points(params["vertices"], "vertices", MAX_POLYGON_POINTS)
+	if vertices_result.has("_error"):
+		return vertices_result
+	var vertices: PackedVector2Array = vertices_result["points"]
+	var raw_polygons: Variant = params["polygons"]
+	if not raw_polygons is Array or raw_polygons.size() > MAX_NAVIGATION_POLYGONS:
+		return Errors.make(
+			"INVALID_NAVIGATION_POLYGON",
+			"polygons must contain at most %d polygons" % MAX_NAVIGATION_POLYGONS
+		)
+	if vertices.is_empty() and not raw_polygons.is_empty():
+		return Errors.make("INVALID_NAVIGATION_POLYGON", "polygons require at least three vertices")
+	if not vertices.is_empty() and vertices.size() < 3:
+		return Errors.make("INVALID_NAVIGATION_POLYGON", "vertices must be empty or contain at least three points")
+	if not vertices.is_empty() and raw_polygons.is_empty():
+		return Errors.make("INVALID_NAVIGATION_POLYGON", "non-empty vertices require at least one polygon")
+	var polygons: Array[PackedInt32Array] = []
+	var total_indices := 0
+	for polygon_index in raw_polygons.size():
+		var polygon_result := _parse_navigation_polygon_indices(
+			raw_polygons[polygon_index], vertices, polygon_index, total_indices
+		)
+		if polygon_result.has("_error"):
+			return polygon_result
+		var polygon: PackedInt32Array = polygon_result["polygon"]
+		total_indices += polygon.size()
+		polygons.append(polygon)
+	return {"vertices": vertices, "polygons": polygons}
+
+
+func _parse_navigation_polygon_points(raw_points: Variant, label: String, limit: int) -> Dictionary:
+	var decoded := VariantCodec.decode(
+		raw_points, {"type": TYPE_PACKED_VECTOR2_ARRAY}, PackedVector2Array()
+	)
+	if decoded.has("_error"):
+		return Errors.make(
+			"INVALID_NAVIGATION_POLYGON",
+			"%s must be an array of Vector2 objects with numeric x and y fields" % label
+		)
+	var points: PackedVector2Array = decoded["value"]
+	if points.size() > limit:
+		return Errors.make("INVALID_NAVIGATION_POLYGON", "%s exceeds the supported point limit" % label)
+	for point in points:
+		if not is_finite(point.x) or not is_finite(point.y):
+			return Errors.make("INVALID_NAVIGATION_POLYGON", "%s points must be finite" % label)
+	return {"points": points}
+
+
+func _parse_navigation_polygon_indices(
+	raw_polygon: Variant,
+	vertices: PackedVector2Array,
+	polygon_index: int,
+	total_indices: int
+) -> Dictionary:
+	if not raw_polygon is Array or raw_polygon.size() < 3:
+		return Errors.make(
+			"INVALID_NAVIGATION_POLYGON",
+			"polygons[%d] must contain at least three vertex indices" % polygon_index
+		)
+	if raw_polygon.size() > MAX_POLYGON_POINTS or total_indices + raw_polygon.size() > MAX_NAVIGATION_POLYGON_INDICES:
+		return Errors.make("INVALID_NAVIGATION_POLYGON", "polygon indices exceed the supported limit")
+	var polygon := PackedInt32Array()
+	var seen := {}
+	for raw_index in raw_polygon:
+		if not _is_integral_number(raw_index):
+			return Errors.make("INVALID_NAVIGATION_POLYGON", "polygon indices must be integers")
+		var vertex_index := int(raw_index)
+		if vertex_index < 0 or vertex_index >= vertices.size():
+			return Errors.make("INVALID_NAVIGATION_POLYGON", "polygon index is outside the vertices array")
+		if seen.has(vertex_index):
+			return Errors.make("INVALID_NAVIGATION_POLYGON", "polygon indices must not repeat a vertex")
+		seen[vertex_index] = true
+		polygon.append(vertex_index)
+	var polygon_points := PackedVector2Array()
+	for vertex_index in polygon:
+		polygon_points.append(vertices[vertex_index])
+	var geometry_validity := _validate_navigation_polygon_face(polygon_points, polygon_index)
+	if geometry_validity.has("_error"):
+		return geometry_validity
+	return {"polygon": polygon}
+
+
+func _validate_navigation_polygon_face(points: PackedVector2Array, polygon_index: int) -> Dictionary:
+	var winding := 0.0
+	for index in points.size():
+		var next_index := (index + 1) % points.size()
+		var after_next_index := (index + 2) % points.size()
+		var cross := (points[next_index] - points[index]).cross(
+			points[after_next_index] - points[next_index]
+		)
+		if is_zero_approx(cross):
+			return Errors.make(
+				"INVALID_NAVIGATION_POLYGON",
+				"polygons[%d] cannot contain collinear edges" % polygon_index
+			)
+		if is_zero_approx(winding):
+			winding = sign(cross)
+		elif sign(cross) != winding:
+			return Errors.make(
+				"INVALID_NAVIGATION_POLYGON",
+				"polygons[%d] must be convex and ordered" % polygon_index
+			)
+	return {}
+
+
+func _parse_navigation_polygon_outline(raw_outline: Variant) -> Dictionary:
+	var parsed := _parse_navigation_polygon_points(
+		raw_outline, "outline", MAX_NAVIGATION_OUTLINE_POINTS
+	)
+	if parsed.has("_error"):
+		return parsed
+	var outline: PackedVector2Array = parsed["points"]
+	if outline.size() < 3:
+		return Errors.make("INVALID_NAVIGATION_POLYGON", "outline must contain at least three points")
+	for index in outline.size():
+		for later_index in range(index + 1, outline.size()):
+			if outline[index].is_equal_approx(outline[later_index]):
+				return Errors.make("INVALID_NAVIGATION_POLYGON", "outline points must be unique")
+	if Geometry2D.triangulate_polygon(outline).is_empty():
+		return Errors.make("INVALID_NAVIGATION_POLYGON", "outline must describe a valid simple polygon")
+	return {"outline": outline}
+
+
+func _parse_navigation_outline_index(params: Dictionary, count: int, allow_append: bool) -> Dictionary:
+	if (not params.has("index") or params["index"] == null) and allow_append:
+		if count >= MAX_NAVIGATION_OUTLINES:
+			return Errors.make("INVALID_NAVIGATION_POLYGON", "outline count exceeds the supported limit")
+		return {"append": true}
+	if not params.has("index") or not _is_integral_number(params["index"]):
+		return Errors.make("MISSING_PARAMETER", "index must be a non-negative integer")
+	var index := int(params["index"])
+	if index < 0 or index >= count:
+		return Errors.make("NAVIGATION_OUTLINE_NOT_FOUND", "index does not identify an existing outline")
+	return {"append": false, "index": index}
+
+
+func _duplicate_navigation_polygon(navigation_polygon: NavigationPolygon) -> Dictionary:
+	var duplicate_resource := navigation_polygon.duplicate(true)
+	if not duplicate_resource is NavigationPolygon:
+		return Errors.make("NAVIGATION_POLYGON_COPY_FAILED", "Godot failed to duplicate NavigationPolygon")
+	return {"navigation_polygon": duplicate_resource as NavigationPolygon}
+
+
+func _navigation_polygon_matches(first: NavigationPolygon, second: NavigationPolygon) -> bool:
+	if not is_equal_approx(first.agent_radius, second.agent_radius):
+		return false
+	if first.get_vertices() != second.get_vertices() or first.get_outline_count() != second.get_outline_count():
+		return false
+	if first.get_polygon_count() != second.get_polygon_count():
+		return false
+	for index in first.get_outline_count():
+		if first.get_outline(index) != second.get_outline(index):
+			return false
+	for index in first.get_polygon_count():
+		if first.get_polygon(index) != second.get_polygon(index):
+			return false
+	return true
+
+
+func _commit_navigation_polygon(
+	navigation_region: NavigationRegion2D,
+	scene_root: Node,
+	replacement: NavigationPolygon,
+	action_name: String
+) -> void:
+	var current: NavigationPolygon = navigation_region.navigation_polygon
+	_undo_redo.create_action("Godot 2D MCP: %s" % action_name, UndoRedo.MERGE_DISABLE, scene_root, true)
+	_undo_redo.add_do_property(navigation_region, "navigation_polygon", replacement)
+	_undo_redo.add_do_reference(replacement)
+	_undo_redo.add_undo_property(navigation_region, "navigation_polygon", current)
+	if current != null:
+		_undo_redo.add_undo_reference(current)
+	_undo_redo.commit_action()
+
+
+func _navigation_polygon_response(navigation_region: NavigationRegion2D, scene_root: Node) -> Dictionary:
+	return {
+		"path": ScenePath.from_node(navigation_region, scene_root),
+		"type": navigation_region.get_class(),
+		"navigation_polygon": _serialize_navigation_polygon(navigation_region.navigation_polygon),
+	}
+
+
+func _serialize_navigation_polygon(navigation_polygon: NavigationPolygon) -> Variant:
+	if navigation_polygon == null:
+		return null
+	var polygons := []
+	for index in navigation_polygon.get_polygon_count():
+		polygons.append(VariantCodec.serialize(navigation_polygon.get_polygon(index)))
+	var outlines := []
+	for index in navigation_polygon.get_outline_count():
+		outlines.append(VariantCodec.serialize(navigation_polygon.get_outline(index)))
+	return {
+		"resource_type": navigation_polygon.get_class(),
+		"resource_path": navigation_polygon.resource_path,
+		"resource_name": navigation_polygon.resource_name,
+		"built_in": navigation_polygon.is_built_in(),
+		"agent_radius": navigation_polygon.agent_radius,
+		"vertices": VariantCodec.serialize(navigation_polygon.get_vertices()),
+		"polygons": polygons,
+		"outlines": outlines,
+	}
 
 
 func _resolve_collision_shape(params: Dictionary, require_writable: bool = true) -> Dictionary:

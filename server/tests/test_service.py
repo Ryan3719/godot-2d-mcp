@@ -1032,3 +1032,114 @@ async def test_navigation_tools_reject_invalid_payloads() -> None:
         await service.navigation_2d_set(
             "/Main/NavigationRegion", {"enter_cost": float("inf")}
         )
+
+
+@pytest.mark.asyncio
+async def test_navigation_polygon_tools_forward_resource_edits() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    vertices = [
+        {"x": 0.0, "y": 0.0},
+        {"x": 128.0, "y": 0.0},
+        {"x": 128.0, "y": 64.0},
+        {"x": 0.0, "y": 64.0},
+    ]
+
+    await service.navigation_polygon_get(
+        "/Main/NavigationRegion", scene_file="res://main.tscn", session_id="project@a1b2"
+    )
+    await service.navigation_polygon_create(
+        "/Main/NavigationRegion", agent_radius=12.0, scene_file="res://main.tscn"
+    )
+    await service.navigation_polygon_geometry_set(
+        "/Main/NavigationRegion",
+        vertices,
+        [[0, 1, 2, 3]],
+        agent_radius=8.0,
+        scene_file="res://main.tscn",
+    )
+    await service.navigation_polygon_outline_set(
+        "/Main/NavigationRegion", vertices, scene_file="res://main.tscn"
+    )
+    await service.navigation_polygon_outline_remove(
+        "/Main/NavigationRegion", 0, scene_file="res://main.tscn"
+    )
+    await service.navigation_polygon_make_from_outlines(
+        "/Main/NavigationRegion", scene_file="res://main.tscn"
+    )
+    await service.navigation_polygon_clear("/Main/NavigationRegion", scene_file="res://main.tscn")
+
+    assert bridge.calls == [
+        (
+            "navigation_polygon_get",
+            {"path": "/Main/NavigationRegion", "scene_file": "res://main.tscn"},
+            "project@a1b2",
+        ),
+        (
+            "navigation_polygon_create",
+            {
+                "path": "/Main/NavigationRegion",
+                "agent_radius": 12.0,
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "navigation_polygon_geometry_set",
+            {
+                "path": "/Main/NavigationRegion",
+                "vertices": vertices,
+                "polygons": [[0, 1, 2, 3]],
+                "agent_radius": 8.0,
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "navigation_polygon_outline_set",
+            {
+                "path": "/Main/NavigationRegion",
+                "outline": vertices,
+                "index": None,
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "navigation_polygon_outline_remove",
+            {"path": "/Main/NavigationRegion", "index": 0, "scene_file": "res://main.tscn"},
+            None,
+        ),
+        (
+            "navigation_polygon_make_from_outlines",
+            {"path": "/Main/NavigationRegion", "scene_file": "res://main.tscn"},
+            None,
+        ),
+        (
+            "navigation_polygon_clear",
+            {"path": "/Main/NavigationRegion", "scene_file": "res://main.tscn"},
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_navigation_polygon_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="agent_radius"):
+        await service.navigation_polygon_create("/Main/NavigationRegion", agent_radius=-1.0)
+    with pytest.raises(ValueError, match="vertices"):
+        await service.navigation_polygon_geometry_set(
+            "/Main/NavigationRegion", [{"x": 1.0}], [[0, 1, 2]]
+        )
+    with pytest.raises(ValueError, match="vertices and polygons"):
+        await service.navigation_polygon_geometry_set(
+            "/Main/NavigationRegion", [], [[0, 1, 2]]
+        )
+    with pytest.raises(ValueError, match="outline"):
+        await service.navigation_polygon_outline_set(
+            "/Main/NavigationRegion", [{"x": 0.0, "y": 0.0}]
+        )
+    with pytest.raises(ValueError, match="index"):
+        await service.navigation_polygon_outline_remove("/Main/NavigationRegion", True)

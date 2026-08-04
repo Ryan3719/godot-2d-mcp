@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.11.0"
+const PLUGIN_VERSION := "0.12.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 
 const ConnectionScript := preload("res://addons/godot_2d_mcp/transport/connection.gd")
@@ -90,6 +90,7 @@ func _register_handlers() -> void:
 	_dispatcher.register("ray_cast_2d_get", physics_handler.get_ray_cast)
 	_dispatcher.register("shape_cast_2d_get", physics_handler.get_shape_cast)
 	_dispatcher.register("navigation_2d_get", physics_handler.get_navigation_node)
+	_dispatcher.register("navigation_polygon_get", physics_handler.get_navigation_polygon)
 	_dispatcher.register("node_create", node_handler.create_node)
 	_dispatcher.register("node_set_properties", node_handler.set_properties)
 	_dispatcher.register("node_delete", node_handler.delete_node)
@@ -125,6 +126,12 @@ func _register_handlers() -> void:
 	_dispatcher.register("shape_cast_2d_set", physics_handler.set_shape_cast)
 	_dispatcher.register("shape_cast_2d_shape_clear", physics_handler.clear_shape_cast_shape)
 	_dispatcher.register("navigation_2d_set", physics_handler.set_navigation_node)
+	_dispatcher.register("navigation_polygon_create", physics_handler.create_navigation_polygon)
+	_dispatcher.register("navigation_polygon_geometry_set", physics_handler.set_navigation_polygon_geometry)
+	_dispatcher.register("navigation_polygon_outline_set", physics_handler.set_navigation_polygon_outline)
+	_dispatcher.register("navigation_polygon_outline_remove", physics_handler.remove_navigation_polygon_outline)
+	_dispatcher.register("navigation_polygon_make_from_outlines", physics_handler.make_navigation_polygon_from_outlines)
+	_dispatcher.register("navigation_polygon_clear", physics_handler.clear_navigation_polygon)
 	_dispatcher.register("class_search", class_handler.search)
 
 

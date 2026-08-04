@@ -1330,6 +1330,82 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or region_update["configuration"]["travel_cost"] != 1.5
         ):
             raise RuntimeError("NavigationRegion2D configuration was not applied")
+        navigation_polygon_vertices = [
+            {"x": 0.0, "y": 0.0},
+            {"x": 192.0, "y": 0.0},
+            {"x": 192.0, "y": 96.0},
+            {"x": 0.0, "y": 96.0},
+        ]
+        initial_navigation_polygon = await app.service.navigation_polygon_get(
+            navigation_region_path, scene_file=scene_file
+        )
+        if initial_navigation_polygon["navigation_polygon"] is not None:
+            raise RuntimeError("New NavigationRegion2D unexpectedly had a NavigationPolygon resource")
+        await _expect_godot_error(
+            app.service.navigation_polygon_geometry_set(
+                navigation_region_path,
+                navigation_polygon_vertices,
+                [[0, 1, 2, 3]],
+                scene_file=scene_file,
+            ),
+            "NAVIGATION_POLYGON_NOT_ASSIGNED",
+        )
+        created_navigation_polygon = await app.service.navigation_polygon_create(
+            navigation_region_path, agent_radius=12.0, scene_file=scene_file
+        )
+        if created_navigation_polygon["navigation_polygon"]["agent_radius"] != 12.0:
+            raise RuntimeError("NavigationPolygon creation did not set agent_radius")
+        direct_navigation_polygon = await app.service.navigation_polygon_geometry_set(
+            navigation_region_path,
+            navigation_polygon_vertices,
+            [[0, 1, 2, 3]],
+            agent_radius=8.0,
+            scene_file=scene_file,
+        )
+        if (
+            direct_navigation_polygon["navigation_polygon"]["agent_radius"] != 8.0
+            or direct_navigation_polygon["navigation_polygon"]["polygons"] != [[0, 1, 2, 3]]
+        ):
+            raise RuntimeError("NavigationPolygon direct geometry was not applied")
+        outlined_navigation_polygon = await app.service.navigation_polygon_outline_set(
+            navigation_region_path, navigation_polygon_vertices, scene_file=scene_file
+        )
+        if outlined_navigation_polygon["outline_index"] != 0:
+            raise RuntimeError("NavigationPolygon outline was not appended")
+        baked_navigation_polygon = await app.service.navigation_polygon_make_from_outlines(
+            navigation_region_path, scene_file=scene_file
+        )
+        if not baked_navigation_polygon["navigation_polygon"]["polygons"]:
+            raise RuntimeError("NavigationPolygon did not build polygons from outlines")
+        removed_outline = await app.service.navigation_polygon_outline_remove(
+            navigation_region_path, 0, scene_file=scene_file
+        )
+        if removed_outline["navigation_polygon"]["outlines"]:
+            raise RuntimeError("NavigationPolygon outline was not removed")
+        undo_outline_remove = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_outline_remove.get("changed"):
+            raise RuntimeError("NavigationPolygon outline removal was not undoable")
+        restored_outline = await app.service.navigation_polygon_get(
+            navigation_region_path, scene_file=scene_file
+        )
+        if len(restored_outline["navigation_polygon"]["outlines"]) != 1:
+            raise RuntimeError("Undo did not restore the NavigationPolygon outline")
+        redo_outline_remove = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_outline_remove.get("changed"):
+            raise RuntimeError("NavigationPolygon outline removal was not redoable")
+        cleared_navigation_polygon = await app.service.navigation_polygon_clear(
+            navigation_region_path, scene_file=scene_file
+        )
+        if cleared_navigation_polygon["navigation_polygon"] is not None:
+            raise RuntimeError("NavigationPolygon resource was not detached")
+        undo_navigation_polygon_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_navigation_polygon_clear.get("changed"):
+            raise RuntimeError("NavigationPolygon clear was not undoable")
+        restored_navigation_polygon = await app.service.navigation_polygon_get(
+            navigation_region_path, scene_file=scene_file
+        )
+        if not restored_navigation_polygon["navigation_polygon"]["polygons"]:
+            raise RuntimeError("Undo did not restore the NavigationPolygon resource")
 
         navigation_agent = await app.service.node_create(
             type_name="NavigationAgent2D",
@@ -1453,6 +1529,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentSpringJoint" not in saved_scene
             or "AgentShapeCast" not in saved_scene
             or "AgentNavigationLink" not in saved_scene
+            or "NavigationPolygon" not in saved_scene
         ):
             raise RuntimeError("Saved scene does not contain the created Button")
 

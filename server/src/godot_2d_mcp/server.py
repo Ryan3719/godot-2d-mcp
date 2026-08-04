@@ -329,6 +329,19 @@ def create_application(
             scene_file=scene_file,
         )
 
+    @mcp.tool(annotations=READ_ONLY)
+    async def navigation_polygon_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read the NavigationPolygon resource bound to a NavigationRegion2D."""
+        return await service.navigation_polygon_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
     @mcp.tool(annotations=WRITE)
     async def node_create(
         type: str,
@@ -948,6 +961,98 @@ def create_application(
         return await service.navigation_2d_set(
             path=path,
             properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def navigation_polygon_create(
+        path: str,
+        agent_radius: float = 0.0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Create and bind a new embedded NavigationPolygon to a NavigationRegion2D."""
+        return await service.navigation_polygon_create(
+            path=path,
+            agent_radius=agent_radius,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def navigation_polygon_geometry_set(
+        path: str,
+        vertices: list[dict[str, float | int]],
+        polygons: list[list[int]],
+        agent_radius: float | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Replace NavigationPolygon vertices and convex polygon index arrays atomically."""
+        return await service.navigation_polygon_geometry_set(
+            path=path,
+            vertices=vertices,
+            polygons=polygons,
+            agent_radius=agent_radius,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def navigation_polygon_outline_set(
+        path: str,
+        outline: list[dict[str, float | int]],
+        index: int | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Append or replace one NavigationPolygon outline without mutating shared resources."""
+        return await service.navigation_polygon_outline_set(
+            path=path,
+            outline=outline,
+            index=index,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def navigation_polygon_outline_remove(
+        path: str,
+        index: int,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Remove one NavigationPolygon outline while retaining editor undo support."""
+        return await service.navigation_polygon_outline_remove(
+            path=path,
+            index=index,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def navigation_polygon_make_from_outlines(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Build NavigationPolygon convex polygons from its existing outlines."""
+        return await service.navigation_polygon_make_from_outlines(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def navigation_polygon_clear(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Detach the NavigationPolygon resource from a NavigationRegion2D."""
+        return await service.navigation_polygon_clear(
+            path=path,
             session_id=session_id,
             scene_file=scene_file,
         )
