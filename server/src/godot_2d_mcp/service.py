@@ -521,6 +521,115 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def control_get_layout(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "control_get_layout",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def control_set_layout(
+        self,
+        path: str,
+        anchors: dict[str, float] | None = None,
+        offsets: dict[str, float] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        if anchors is None and offsets is None:
+            raise ValueError("anchors or offsets must be supplied")
+        if anchors is not None:
+            _validate_layout_sides(anchors, "anchors", minimum=0, maximum=1)
+        if offsets is not None:
+            _validate_layout_sides(
+                offsets,
+                "offsets",
+                minimum=-1_000_000,
+                maximum=1_000_000,
+            )
+        return await self.bridge.call(
+            "control_set_layout",
+            _scene_params(scene_file, path=path, anchors=anchors, offsets=offsets),
+            session_id=session_id,
+        )
+
+    async def control_set_layout_preset(
+        self,
+        path: str,
+        preset: str,
+        resize_mode: str = "min_size",
+        margin: int = 0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_layout_preset(preset)
+        _validate_layout_resize_mode(resize_mode)
+        _validate_layout_margin(margin)
+        return await self.bridge.call(
+            "control_set_layout_preset",
+            _scene_params(
+                scene_file,
+                path=path,
+                preset=preset,
+                resize_mode=resize_mode,
+                margin=margin,
+            ),
+            session_id=session_id,
+        )
+
+    async def control_get_styleboxes(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "control_get_styleboxes",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def control_stylebox_flat_upsert(
+        self,
+        path: str,
+        state: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_stylebox_state(state)
+        _validate_stylebox_properties(properties)
+        return await self.bridge.call(
+            "control_stylebox_flat_upsert",
+            _scene_params(scene_file, path=path, state=state, properties=properties),
+            session_id=session_id,
+        )
+
+    async def control_stylebox_override_clear(
+        self,
+        path: str,
+        state: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_stylebox_state(state)
+        return await self.bridge.call(
+            "control_stylebox_override_clear",
+            _scene_params(scene_file, path=path, state=state),
+            session_id=session_id,
+        )
+
     async def scene_save(
         self,
         session_id: str | None = None,
@@ -645,6 +754,74 @@ def _validate_transition(value: float) -> None:
 def _validate_boolean(value: bool, label: str) -> None:
     if not isinstance(value, bool):
         raise ValueError(f"{label} must be a boolean")
+
+
+def _validate_layout_sides(
+    sides: dict[str, float],
+    label: str,
+    minimum: float,
+    maximum: float,
+) -> None:
+    expected = {"left", "top", "right", "bottom"}
+    if not isinstance(sides, dict) or set(sides) != expected:
+        raise ValueError(f"{label} must contain exactly left, top, right, and bottom")
+    if any(
+        not _is_finite_number(value) or not minimum <= float(value) <= maximum
+        for value in sides.values()
+    ):
+        raise ValueError(f"{label} values must be finite numbers between {minimum} and {maximum}")
+
+
+def _validate_layout_preset(value: str) -> None:
+    if value not in {
+        "top_left",
+        "top_right",
+        "bottom_left",
+        "bottom_right",
+        "center_left",
+        "center_top",
+        "center_right",
+        "center_bottom",
+        "center",
+        "left_wide",
+        "top_wide",
+        "right_wide",
+        "bottom_wide",
+        "vcenter_wide",
+        "hcenter_wide",
+        "full_rect",
+    }:
+        raise ValueError("preset is not supported")
+
+
+def _validate_layout_resize_mode(value: str) -> None:
+    if value not in {"min_size", "keep_width", "keep_height", "keep_size"}:
+        raise ValueError("resize_mode is not supported")
+
+
+def _validate_layout_margin(value: int) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or abs(value) > 1_000_000:
+        raise ValueError("margin must be an integer between -1000000 and 1000000")
+
+
+def _validate_stylebox_state(value: str) -> None:
+    if not isinstance(value, str) or not value or len(value) > 256 or "/" in value:
+        raise ValueError("state must contain between 1 and 256 characters and cannot contain '/'")
+
+
+def _validate_stylebox_properties(properties: dict[str, Any]) -> None:
+    if not isinstance(properties, dict) or not properties:
+        raise ValueError("properties must be a non-empty object")
+    if len(properties) > 48:
+        raise ValueError("properties can contain at most 48 entries")
+    if any(
+        not isinstance(name, str)
+        or not name
+        or len(name) > 256
+        or not _is_json_bind_value(value)
+        for name, value in properties.items()
+    ):
+        raise ValueError("properties must contain bounded JSON-compatible values")
 
 
 def _is_finite_number(value: Any) -> bool:

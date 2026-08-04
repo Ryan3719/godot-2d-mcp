@@ -21,6 +21,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "node_get_signals",
         "animation_list",
         "animation_get",
+        "control_get_layout",
+        "control_get_styleboxes",
         "node_create",
         "node_set_properties",
         "node_delete",
@@ -36,6 +38,10 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "animation_track_delete",
         "animation_key_upsert",
         "animation_key_delete",
+        "control_set_layout",
+        "control_set_layout_preset",
+        "control_stylebox_flat_upsert",
+        "control_stylebox_override_clear",
         "scene_save",
         "scene_undo",
         "scene_redo",
@@ -46,6 +52,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["node_get_signals"].readOnlyHint is True
     assert annotations["animation_list"].readOnlyHint is True
     assert annotations["animation_get"].readOnlyHint is True
+    assert annotations["control_get_layout"].readOnlyHint is True
+    assert annotations["control_get_styleboxes"].readOnlyHint is True
     assert annotations["node_create"].readOnlyHint is False
     assert annotations["node_delete"].destructiveHint is True
     assert annotations["node_rename"].destructiveHint is False
@@ -60,4 +68,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["animation_track_delete"].destructiveHint is True
     assert annotations["animation_key_upsert"].readOnlyHint is False
     assert annotations["animation_key_delete"].destructiveHint is True
+    assert annotations["control_set_layout"].readOnlyHint is False
+    assert annotations["control_set_layout_preset"].readOnlyHint is False
+    assert annotations["control_stylebox_flat_upsert"].readOnlyHint is False
+    assert annotations["control_stylebox_override_clear"].destructiveHint is True
     assert annotations["scene_save"].idempotentHint is True

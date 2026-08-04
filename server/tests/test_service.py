@@ -478,3 +478,123 @@ async def test_animation_tools_reject_invalid_payloads() -> None:
         await service.animation_key_delete(
             "/Main/ButtonAnimations", "hover", track_index=-1, time=0.0
         )
+
+
+@pytest.mark.asyncio
+async def test_control_layout_and_stylebox_tools_forward_structured_values() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    anchors = {"left": 0.0, "top": 0.0, "right": 1.0, "bottom": 1.0}
+    offsets = {"left": 12.0, "top": 16.0, "right": -12.0, "bottom": -16.0}
+    style_properties = {
+        "bg_color": {"r": 0.1, "g": 0.2, "b": 0.3, "a": 1.0},
+        "corner_radius_top_left": 8,
+    }
+
+    await service.control_get_layout(
+        "/Main/UI/StartButton",
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
+    await service.control_set_layout(
+        "/Main/UI/StartButton",
+        anchors=anchors,
+        offsets=offsets,
+        scene_file="res://main.tscn",
+    )
+    await service.control_set_layout_preset(
+        "/Main/UI/StartButton",
+        preset="full_rect",
+        resize_mode="keep_size",
+        margin=4,
+        scene_file="res://main.tscn",
+    )
+    await service.control_get_styleboxes(
+        "/Main/UI/StartButton",
+        scene_file="res://main.tscn",
+    )
+    await service.control_stylebox_flat_upsert(
+        "/Main/UI/StartButton",
+        state="normal",
+        properties=style_properties,
+        scene_file="res://main.tscn",
+    )
+    await service.control_stylebox_override_clear(
+        "/Main/UI/StartButton",
+        state="normal",
+        scene_file="res://main.tscn",
+    )
+
+    assert bridge.calls == [
+        (
+            "control_get_layout",
+            {"path": "/Main/UI/StartButton", "scene_file": "res://main.tscn"},
+            "project@a1b2",
+        ),
+        (
+            "control_set_layout",
+            {
+                "path": "/Main/UI/StartButton",
+                "anchors": anchors,
+                "offsets": offsets,
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "control_set_layout_preset",
+            {
+                "path": "/Main/UI/StartButton",
+                "preset": "full_rect",
+                "resize_mode": "keep_size",
+                "margin": 4,
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "control_get_styleboxes",
+            {"path": "/Main/UI/StartButton", "scene_file": "res://main.tscn"},
+            None,
+        ),
+        (
+            "control_stylebox_flat_upsert",
+            {
+                "path": "/Main/UI/StartButton",
+                "state": "normal",
+                "properties": style_properties,
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "control_stylebox_override_clear",
+            {
+                "path": "/Main/UI/StartButton",
+                "state": "normal",
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_control_layout_and_stylebox_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="anchors or offsets"):
+        await service.control_set_layout("/Main/UI/StartButton")
+    with pytest.raises(ValueError, match="anchors"):
+        await service.control_set_layout(
+            "/Main/UI/StartButton",
+            anchors={"left": 0.0, "top": 0.0, "right": 1.0},
+        )
+    with pytest.raises(ValueError, match="preset"):
+        await service.control_set_layout_preset("/Main/UI/StartButton", preset="not_a_preset")
+    with pytest.raises(ValueError, match="properties"):
+        await service.control_stylebox_flat_upsert(
+            "/Main/UI/StartButton", state="normal", properties={}
+        )
+    with pytest.raises(ValueError, match="state"):
+        await service.control_stylebox_override_clear("/Main/UI/StartButton", state="bad/state")

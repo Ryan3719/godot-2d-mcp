@@ -186,6 +186,32 @@ def create_application(
             scene_file=scene_file,
         )
 
+    @mcp.tool(annotations=READ_ONLY)
+    async def control_get_layout(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read one Control's anchors, offsets, sizing, and container-layout status."""
+        return await service.control_get_layout(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def control_get_styleboxes(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read available Control stylebox states and local/effective flat-style values."""
+        return await service.control_get_styleboxes(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
     @mcp.tool(annotations=WRITE)
     async def node_create(
         type: str,
@@ -469,6 +495,74 @@ def create_application(
             track_index=track_index,
             time=time,
             library=library,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def control_set_layout(
+        path: str,
+        anchors: dict[str, float] | None = None,
+        offsets: dict[str, float] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically set exact anchors and/or offsets on a local non-Container Control."""
+        return await service.control_set_layout(
+            path=path,
+            anchors=anchors,
+            offsets=offsets,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def control_set_layout_preset(
+        path: str,
+        preset: str,
+        resize_mode: str = "min_size",
+        margin: int = 0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Apply a named Godot layout preset while retaining editor undo support."""
+        return await service.control_set_layout_preset(
+            path=path,
+            preset=preset,
+            resize_mode=resize_mode,
+            margin=margin,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def control_stylebox_flat_upsert(
+        path: str,
+        state: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Create or replace one local StyleBoxFlat theme override on a Control."""
+        return await service.control_stylebox_flat_upsert(
+            path=path,
+            state=state,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def control_stylebox_override_clear(
+        path: str,
+        state: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Remove one local stylebox override while retaining editor undo support."""
+        return await service.control_stylebox_override_clear(
+            path=path,
+            state=state,
             session_id=session_id,
             scene_file=scene_file,
         )

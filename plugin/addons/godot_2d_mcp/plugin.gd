@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.5.0"
+const PLUGIN_VERSION := "0.6.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 
 const ConnectionScript := preload("res://addons/godot_2d_mcp/transport/connection.gd")
@@ -13,6 +13,7 @@ const NodeHandlerScript := preload("res://addons/godot_2d_mcp/handlers/node_hand
 const ClassHandlerScript := preload("res://addons/godot_2d_mcp/handlers/class_handler.gd")
 const SignalHandlerScript := preload("res://addons/godot_2d_mcp/handlers/signal_handler.gd")
 const AnimationHandlerScript := preload("res://addons/godot_2d_mcp/handlers/animation_handler.gd")
+const UiHandlerScript := preload("res://addons/godot_2d_mcp/handlers/ui_handler.gd")
 
 var _connection: Node
 var _dispatcher: RefCounted
@@ -59,8 +60,10 @@ func _register_handlers() -> void:
 	var class_handler: RefCounted = ClassHandlerScript.new()
 	var signal_handler: RefCounted = SignalHandlerScript.new(get_undo_redo())
 	var animation_handler: RefCounted = AnimationHandlerScript.new(get_undo_redo())
+	var ui_handler: RefCounted = UiHandlerScript.new(get_undo_redo())
 	_handlers.assign([
-		editor_handler, scene_handler, node_handler, class_handler, signal_handler, animation_handler
+		editor_handler, scene_handler, node_handler, class_handler, signal_handler, animation_handler,
+		ui_handler
 	])
 
 	_dispatcher.register("editor_get_state", editor_handler.get_state)
@@ -72,6 +75,8 @@ func _register_handlers() -> void:
 	_dispatcher.register("node_get_signals", signal_handler.get_signals)
 	_dispatcher.register("animation_list", animation_handler.list_animations)
 	_dispatcher.register("animation_get", animation_handler.get_animation)
+	_dispatcher.register("control_get_layout", ui_handler.get_layout)
+	_dispatcher.register("control_get_styleboxes", ui_handler.get_styleboxes)
 	_dispatcher.register("node_create", node_handler.create_node)
 	_dispatcher.register("node_set_properties", node_handler.set_properties)
 	_dispatcher.register("node_delete", node_handler.delete_node)
@@ -87,6 +92,10 @@ func _register_handlers() -> void:
 	_dispatcher.register("animation_track_delete", animation_handler.delete_track)
 	_dispatcher.register("animation_key_upsert", animation_handler.upsert_key)
 	_dispatcher.register("animation_key_delete", animation_handler.delete_key)
+	_dispatcher.register("control_set_layout", ui_handler.set_layout)
+	_dispatcher.register("control_set_layout_preset", ui_handler.set_layout_preset)
+	_dispatcher.register("control_stylebox_flat_upsert", ui_handler.upsert_stylebox_flat)
+	_dispatcher.register("control_stylebox_override_clear", ui_handler.clear_stylebox_override)
 	_dispatcher.register("class_search", class_handler.search)
 
 
