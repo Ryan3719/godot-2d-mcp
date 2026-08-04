@@ -637,6 +637,45 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def area_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "area_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def physics_body_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "physics_body_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def joint_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "joint_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def control_stylebox_flat_upsert(
         self,
         path: str,
@@ -853,6 +892,64 @@ class GodotService:
         return await self.bridge.call(
             "collision_object_set_layers",
             _scene_params(scene_file, path=path, layers=layers, masks=masks),
+            session_id=session_id,
+        )
+
+    async def area_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_physics_configuration_properties(properties)
+        return await self.bridge.call(
+            "area_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def physics_body_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_physics_configuration_properties(properties)
+        return await self.bridge.call(
+            "physics_body_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def joint_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any] | None = None,
+        node_a_path: str | None = None,
+        node_b_path: str | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        if properties is None and node_a_path is None and node_b_path is None:
+            raise ValueError("properties, node_a_path, or node_b_path must be supplied")
+        if properties is not None:
+            _validate_physics_configuration_properties(properties, allow_empty=True)
+        _validate_optional_joint_endpoint_path(node_a_path, "node_a_path")
+        _validate_optional_joint_endpoint_path(node_b_path, "node_b_path")
+        return await self.bridge.call(
+            "joint_2d_set",
+            _scene_params(
+                scene_file,
+                path=path,
+                properties=properties,
+                node_a_path=node_a_path,
+                node_b_path=node_b_path,
+            ),
             session_id=session_id,
         )
 
@@ -1206,6 +1303,32 @@ def _validate_collision_shape_properties(shape_type: str, properties: dict[str, 
         for name, property_value in properties.items()
     ):
         raise ValueError("properties must contain bounded JSON-compatible values")
+
+
+def _validate_physics_configuration_properties(
+    properties: dict[str, Any], *, allow_empty: bool = False
+) -> None:
+    if not isinstance(properties, dict):
+        raise ValueError("properties must be an object")
+    if not properties and not allow_empty:
+        raise ValueError("properties must be a non-empty object")
+    if len(properties) > 32:
+        raise ValueError("properties can contain at most 32 entries")
+    if any(
+        not isinstance(name, str)
+        or not name
+        or len(name) > 256
+        or not _is_json_bind_value(property_value)
+        for name, property_value in properties.items()
+    ):
+        raise ValueError("properties must contain bounded JSON-compatible values")
+
+
+def _validate_optional_joint_endpoint_path(value: str | None, label: str) -> None:
+    if value is None:
+        return
+    if not isinstance(value, str) or len(value) > 4096:
+        raise ValueError(f"{label} must be a string with at most 4096 characters")
 
 
 def _validate_collision_layer_numbers(values: list[int], label: str) -> None:
