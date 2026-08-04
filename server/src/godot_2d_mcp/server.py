@@ -225,6 +225,32 @@ def create_application(
             scene_file=scene_file,
         )
 
+    @mcp.tool(annotations=READ_ONLY)
+    async def collision_shape_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read a CollisionShape2D's Shape2D resource and one-way collision settings."""
+        return await service.collision_shape_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def collision_object_get_layers(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read an Area2D or PhysicsBody2D collision layer and mask as layer-number lists."""
+        return await service.collision_object_get_layers(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
     @mcp.tool(annotations=WRITE)
     async def node_create(
         type: str,
@@ -682,6 +708,53 @@ def create_application(
             item_type=item_type,
             theme_type=theme_type,
             name=name,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def collision_shape_set(
+        path: str,
+        shape_type: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Create or replace an embedded Circle, Polygon, Ray, or other built-in Shape2D."""
+        return await service.collision_shape_set(
+            path=path,
+            shape_type=shape_type,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def collision_shape_clear(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Detach a CollisionShape2D's Shape2D resource while retaining editor undo support."""
+        return await service.collision_shape_clear(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def collision_object_set_layers(
+        path: str,
+        layers: list[int] | None = None,
+        masks: list[int] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Set an Area2D or PhysicsBody2D collision layer and/or mask with numbers 1 through 32."""
+        return await service.collision_object_set_layers(
+            path=path,
+            layers=layers,
+            masks=masks,
             session_id=session_id,
             scene_file=scene_file,
         )

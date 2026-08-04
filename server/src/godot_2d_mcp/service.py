@@ -611,6 +611,32 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def collision_shape_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "collision_shape_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def collision_object_get_layers(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "collision_object_get_layers",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def control_stylebox_flat_upsert(
         self,
         path: str,
@@ -771,6 +797,62 @@ class GodotService:
                 theme_type=theme_type,
                 name=name,
             ),
+            session_id=session_id,
+        )
+
+    async def collision_shape_set(
+        self,
+        path: str,
+        shape_type: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_collision_shape_type(shape_type)
+        _validate_collision_shape_properties(shape_type, properties)
+        return await self.bridge.call(
+            "collision_shape_set",
+            _scene_params(
+                scene_file,
+                path=path,
+                shape_type=shape_type,
+                properties=properties,
+            ),
+            session_id=session_id,
+        )
+
+    async def collision_shape_clear(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "collision_shape_clear",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def collision_object_set_layers(
+        self,
+        path: str,
+        layers: list[int] | None = None,
+        masks: list[int] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        if layers is None and masks is None:
+            raise ValueError("layers or masks must be supplied")
+        if layers is not None:
+            _validate_collision_layer_numbers(layers, "layers")
+        if masks is not None:
+            _validate_collision_layer_numbers(masks, "masks")
+        return await self.bridge.call(
+            "collision_object_set_layers",
+            _scene_params(scene_file, path=path, layers=layers, masks=masks),
             session_id=session_id,
         )
 
@@ -1082,6 +1164,60 @@ def _validate_theme_font_size(value: int) -> None:
 def _validate_theme_base_scale(value: float) -> None:
     if not _is_finite_number(value) or not 0.01 <= float(value) <= 100:
         raise ValueError("base_scale must be a finite number between 0.01 and 100")
+
+
+def _validate_collision_shape_type(value: str) -> None:
+    if value not in {
+        "circle",
+        "rectangle",
+        "capsule",
+        "segment",
+        "separation_ray",
+        "world_boundary",
+        "convex_polygon",
+        "concave_polygon",
+    }:
+        raise ValueError("shape_type is not supported")
+
+
+def _validate_collision_shape_properties(shape_type: str, properties: dict[str, Any]) -> None:
+    required = {
+        "circle": {"radius"},
+        "rectangle": {"size"},
+        "capsule": {"radius", "height"},
+        "segment": {"a", "b"},
+        "separation_ray": {"length"},
+        "world_boundary": {"normal", "distance"},
+        "convex_polygon": {"points"},
+        "concave_polygon": {"segments"},
+    }[shape_type]
+    if not isinstance(properties, dict) or not properties:
+        raise ValueError("properties must be a non-empty object")
+    if len(properties) > 16:
+        raise ValueError("properties can contain at most 16 entries")
+    if not required.issubset(properties):
+        names = ", ".join(sorted(required))
+        raise ValueError(f"properties must include {names}")
+    if any(
+        not isinstance(name, str)
+        or not name
+        or len(name) > 256
+        or not _is_json_bind_value(property_value)
+        for name, property_value in properties.items()
+    ):
+        raise ValueError("properties must contain bounded JSON-compatible values")
+
+
+def _validate_collision_layer_numbers(values: list[int], label: str) -> None:
+    if not isinstance(values, list) or len(values) > 32:
+        raise ValueError(f"{label} must contain at most 32 layer numbers")
+    if any(
+        isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 32
+        for value in values
+    ):
+        raise ValueError(f"{label} entries must be integers from 1 to 32")
+    if len(set(values)) != len(values):
+        raise ValueError(f"{label} entries must be unique")
 
 
 def _is_finite_number(value: Any) -> bool:

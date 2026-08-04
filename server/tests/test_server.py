@@ -24,6 +24,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "control_get_layout",
         "control_get_styleboxes",
         "control_theme_get",
+        "collision_shape_get",
+        "collision_object_get_layers",
         "node_create",
         "node_set_properties",
         "node_delete",
@@ -49,6 +51,9 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "control_theme_defaults_clear",
         "control_theme_item_upsert",
         "control_theme_item_clear",
+        "collision_shape_set",
+        "collision_shape_clear",
+        "collision_object_set_layers",
         "scene_save",
         "scene_undo",
         "scene_redo",
@@ -62,6 +67,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["control_get_layout"].readOnlyHint is True
     assert annotations["control_get_styleboxes"].readOnlyHint is True
     assert annotations["control_theme_get"].readOnlyHint is True
+    assert annotations["collision_shape_get"].readOnlyHint is True
+    assert annotations["collision_object_get_layers"].readOnlyHint is True
     assert annotations["node_create"].readOnlyHint is False
     assert annotations["node_delete"].destructiveHint is True
     assert annotations["node_rename"].destructiveHint is False
@@ -86,4 +93,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["control_theme_defaults_clear"].destructiveHint is True
     assert annotations["control_theme_item_upsert"].readOnlyHint is False
     assert annotations["control_theme_item_clear"].destructiveHint is True
+    assert annotations["collision_shape_set"].readOnlyHint is False
+    assert annotations["collision_shape_clear"].destructiveHint is True
+    assert annotations["collision_object_set_layers"].readOnlyHint is False
     assert annotations["scene_save"].idempotentHint is True

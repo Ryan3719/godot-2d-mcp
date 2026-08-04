@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.7.0"
+const PLUGIN_VERSION := "0.8.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 
 const ConnectionScript := preload("res://addons/godot_2d_mcp/transport/connection.gd")
@@ -15,6 +15,7 @@ const SignalHandlerScript := preload("res://addons/godot_2d_mcp/handlers/signal_
 const AnimationHandlerScript := preload("res://addons/godot_2d_mcp/handlers/animation_handler.gd")
 const UiHandlerScript := preload("res://addons/godot_2d_mcp/handlers/ui_handler.gd")
 const ThemeHandlerScript := preload("res://addons/godot_2d_mcp/handlers/theme_handler.gd")
+const PhysicsHandlerScript := preload("res://addons/godot_2d_mcp/handlers/physics_handler.gd")
 
 var _connection: Node
 var _dispatcher: RefCounted
@@ -63,9 +64,10 @@ func _register_handlers() -> void:
 	var animation_handler: RefCounted = AnimationHandlerScript.new(get_undo_redo())
 	var ui_handler: RefCounted = UiHandlerScript.new(get_undo_redo())
 	var theme_handler: RefCounted = ThemeHandlerScript.new(get_undo_redo())
+	var physics_handler: RefCounted = PhysicsHandlerScript.new(get_undo_redo())
 	_handlers.assign([
 		editor_handler, scene_handler, node_handler, class_handler, signal_handler, animation_handler,
-		ui_handler, theme_handler
+		ui_handler, theme_handler, physics_handler
 	])
 
 	_dispatcher.register("editor_get_state", editor_handler.get_state)
@@ -80,6 +82,8 @@ func _register_handlers() -> void:
 	_dispatcher.register("control_get_layout", ui_handler.get_layout)
 	_dispatcher.register("control_get_styleboxes", ui_handler.get_styleboxes)
 	_dispatcher.register("control_theme_get", theme_handler.get_theme)
+	_dispatcher.register("collision_shape_get", physics_handler.get_collision_shape)
+	_dispatcher.register("collision_object_get_layers", physics_handler.get_collision_layers)
 	_dispatcher.register("node_create", node_handler.create_node)
 	_dispatcher.register("node_set_properties", node_handler.set_properties)
 	_dispatcher.register("node_delete", node_handler.delete_node)
@@ -105,6 +109,9 @@ func _register_handlers() -> void:
 	_dispatcher.register("control_theme_defaults_clear", theme_handler.clear_defaults)
 	_dispatcher.register("control_theme_item_upsert", theme_handler.upsert_item)
 	_dispatcher.register("control_theme_item_clear", theme_handler.clear_item)
+	_dispatcher.register("collision_shape_set", physics_handler.set_collision_shape)
+	_dispatcher.register("collision_shape_clear", physics_handler.clear_collision_shape)
+	_dispatcher.register("collision_object_set_layers", physics_handler.set_collision_layers)
 	_dispatcher.register("class_search", class_handler.search)
 
 

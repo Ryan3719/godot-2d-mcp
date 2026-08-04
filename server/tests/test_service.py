@@ -735,3 +735,84 @@ async def test_control_theme_tools_reject_invalid_payloads() -> None:
         await service.control_theme_item_clear(
             "/Main/UI/Root", "color", "Button", "bad/name"
         )
+
+
+@pytest.mark.asyncio
+async def test_collision_shape_and_layer_tools_forward_safe_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    rectangle = {"size": {"x": 96.0, "y": 32.0}}
+
+    await service.collision_shape_get(
+        "/Main/Wall/Collider", scene_file="res://main.tscn", session_id="project@a1b2"
+    )
+    await service.collision_object_get_layers(
+        "/Main/Wall", scene_file="res://main.tscn"
+    )
+    await service.collision_shape_set(
+        "/Main/Wall/Collider",
+        shape_type="rectangle",
+        properties=rectangle,
+        scene_file="res://main.tscn",
+    )
+    await service.collision_shape_clear("/Main/Wall/Collider", scene_file="res://main.tscn")
+    await service.collision_object_set_layers(
+        "/Main/Wall",
+        layers=[2, 5],
+        masks=[1, 3],
+        scene_file="res://main.tscn",
+    )
+
+    assert bridge.calls == [
+        (
+            "collision_shape_get",
+            {"path": "/Main/Wall/Collider", "scene_file": "res://main.tscn"},
+            "project@a1b2",
+        ),
+        (
+            "collision_object_get_layers",
+            {"path": "/Main/Wall", "scene_file": "res://main.tscn"},
+            None,
+        ),
+        (
+            "collision_shape_set",
+            {
+                "path": "/Main/Wall/Collider",
+                "shape_type": "rectangle",
+                "properties": rectangle,
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "collision_shape_clear",
+            {"path": "/Main/Wall/Collider", "scene_file": "res://main.tscn"},
+            None,
+        ),
+        (
+            "collision_object_set_layers",
+            {
+                "path": "/Main/Wall",
+                "layers": [2, 5],
+                "masks": [1, 3],
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_collision_shape_and_layer_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="shape_type"):
+        await service.collision_shape_set("/Main/Collider", "box", {"size": {"x": 1, "y": 1}})
+    with pytest.raises(ValueError, match="properties must include"):
+        await service.collision_shape_set("/Main/Collider", "capsule", {"radius": 4})
+    with pytest.raises(ValueError, match="layers or masks"):
+        await service.collision_object_set_layers("/Main/Wall")
+    with pytest.raises(ValueError, match="unique"):
+        await service.collision_object_set_layers("/Main/Wall", layers=[1, 1])
+    with pytest.raises(ValueError, match="1 to 32"):
+        await service.collision_object_set_layers("/Main/Wall", masks=[33])
