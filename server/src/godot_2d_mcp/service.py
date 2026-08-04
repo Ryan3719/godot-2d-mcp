@@ -598,6 +598,19 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def control_theme_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "control_theme_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def control_stylebox_flat_upsert(
         self,
         path: str,
@@ -627,6 +640,137 @@ class GodotService:
         return await self.bridge.call(
             "control_stylebox_override_clear",
             _scene_params(scene_file, path=path, state=state),
+            session_id=session_id,
+        )
+
+    async def control_theme_create(
+        self,
+        path: str,
+        resource_name: str = "",
+        replace: bool = False,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_theme_resource_name(resource_name)
+        _validate_boolean(replace, "replace")
+        return await self.bridge.call(
+            "control_theme_create",
+            _scene_params(
+                scene_file,
+                path=path,
+                resource_name=resource_name,
+                replace=replace,
+            ),
+            session_id=session_id,
+        )
+
+    async def control_theme_assign(
+        self,
+        path: str,
+        theme_path: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_optional_project_resource_path(theme_path, "theme_path")
+        return await self.bridge.call(
+            "control_theme_assign",
+            _scene_params(scene_file, path=path, theme_path=theme_path),
+            session_id=session_id,
+        )
+
+    async def control_theme_defaults_set(
+        self,
+        path: str,
+        font: dict[str, Any] | None = None,
+        font_size: int | None = None,
+        base_scale: float | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        if font is None and font_size is None and base_scale is None:
+            raise ValueError("font, font_size, or base_scale must be supplied")
+        if font is not None:
+            _validate_theme_font_value(font)
+        if font_size is not None:
+            _validate_theme_font_size(font_size)
+        if base_scale is not None:
+            _validate_theme_base_scale(base_scale)
+        return await self.bridge.call(
+            "control_theme_defaults_set",
+            _scene_params(
+                scene_file,
+                path=path,
+                font=font,
+                font_size=font_size,
+                base_scale=base_scale,
+            ),
+            session_id=session_id,
+        )
+
+    async def control_theme_defaults_clear(
+        self,
+        path: str,
+        defaults: list[str],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_theme_default_names(defaults)
+        return await self.bridge.call(
+            "control_theme_defaults_clear",
+            _scene_params(scene_file, path=path, defaults=defaults),
+            session_id=session_id,
+        )
+
+    async def control_theme_item_upsert(
+        self,
+        path: str,
+        item_type: str,
+        theme_type: str,
+        name: str,
+        value: Any,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_theme_item_identity(item_type, theme_type, name)
+        _validate_theme_item_value(item_type, value)
+        return await self.bridge.call(
+            "control_theme_item_upsert",
+            _scene_params(
+                scene_file,
+                path=path,
+                item_type=item_type,
+                theme_type=theme_type,
+                name=name,
+                value=value,
+            ),
+            session_id=session_id,
+        )
+
+    async def control_theme_item_clear(
+        self,
+        path: str,
+        item_type: str,
+        theme_type: str,
+        name: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_theme_item_identity(item_type, theme_type, name)
+        return await self.bridge.call(
+            "control_theme_item_clear",
+            _scene_params(
+                scene_file,
+                path=path,
+                item_type=item_type,
+                theme_type=theme_type,
+                name=name,
+            ),
             session_id=session_id,
         )
 
@@ -822,6 +966,122 @@ def _validate_stylebox_properties(properties: dict[str, Any]) -> None:
         for name, value in properties.items()
     ):
         raise ValueError("properties must contain bounded JSON-compatible values")
+
+
+def _validate_theme_resource_name(value: str) -> None:
+    if not isinstance(value, str) or len(value) > 256 or "/" in value or ":" in value:
+        raise ValueError(
+            "resource_name must be at most 256 characters and cannot contain '/' or ':'"
+        )
+
+
+def _validate_optional_project_resource_path(value: str, label: str) -> None:
+    if not isinstance(value, str):
+        raise ValueError(f"{label} must be a res:// path or an empty string")
+    if not value:
+        return
+    _validate_project_resource_path(value, label)
+
+
+def _validate_project_resource_path(value: str, label: str) -> None:
+    if (
+        not isinstance(value, str)
+        or not value.startswith("res://")
+        or len(value) > 4096
+        or "/../" in value
+        or value.endswith("/..")
+    ):
+        raise ValueError(f"{label} must stay inside res://")
+
+
+def _validate_theme_default_names(defaults: list[str]) -> None:
+    if not isinstance(defaults, list) or not 1 <= len(defaults) <= 3:
+        raise ValueError("defaults must contain between 1 and 3 names")
+    allowed = {"font", "font_size", "base_scale"}
+    if any(not isinstance(name, str) or name not in allowed for name in defaults):
+        raise ValueError("defaults must contain only font, font_size, or base_scale")
+    if len(set(defaults)) != len(defaults):
+        raise ValueError("defaults cannot contain duplicates")
+
+
+def _validate_theme_item_identity(item_type: str, theme_type: str, name: str) -> None:
+    if item_type not in {"color", "constant", "font_size", "font", "icon", "stylebox_flat"}:
+        raise ValueError("item_type is not supported")
+    for label, value in (("theme_type", theme_type), ("name", name)):
+        if (
+            not isinstance(value, str)
+            or not value
+            or len(value) > 256
+            or "/" in value
+            or ":" in value
+        ):
+            raise ValueError(f"{label} must be a non-empty Theme identifier")
+
+
+def _validate_theme_item_value(item_type: str, value: Any) -> None:
+    if item_type == "color":
+        if not isinstance(value, str) and not (
+            isinstance(value, dict) and set(value) in ({"r", "g", "b"}, {"r", "g", "b", "a"})
+        ):
+            raise ValueError("color value must be a color string or r/g/b/a object")
+        return
+    if item_type == "constant":
+        if not _is_finite_number(value) or not float(value).is_integer() or abs(value) > 1_000_000:
+            raise ValueError("constant value must be an integer between -1000000 and 1000000")
+        return
+    if item_type == "font_size":
+        _validate_theme_font_size(value)
+        return
+    if item_type == "font":
+        _validate_theme_font_value(value)
+        return
+    if item_type == "icon":
+        _validate_project_resource_path(value, "icon value")
+        return
+    if not isinstance(value, dict) or not value or len(value) > 48:
+        raise ValueError(
+            "stylebox_flat value must be a non-empty object with at most 48 properties"
+        )
+    if any(
+        not isinstance(name, str)
+        or not name
+        or len(name) > 256
+        or not _is_json_bind_value(property_value)
+        for name, property_value in value.items()
+    ):
+        raise ValueError("stylebox_flat properties must be bounded JSON-compatible values")
+
+
+def _validate_theme_font_value(value: dict[str, Any]) -> None:
+    if not isinstance(value, dict) or set(value) - {"source", "path", "families"}:
+        raise ValueError("font must be a source/path or source/families object")
+    source = value.get("source")
+    if source == "path" and set(value) == {"source", "path"}:
+        _validate_project_resource_path(value["path"], "font path")
+        return
+    if source == "system" and set(value) == {"source", "families"}:
+        families = value["families"]
+        if (
+            not isinstance(families, list)
+            or not 1 <= len(families) <= 8
+            or any(
+                not isinstance(family, str) or not family or len(family) > 256
+                for family in families
+            )
+        ):
+            raise ValueError("system font families must contain 1 to 8 non-empty names")
+        return
+    raise ValueError("font.source must be path or system with the matching fields")
+
+
+def _validate_theme_font_size(value: int) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 4096:
+        raise ValueError("font_size must be an integer between 1 and 4096")
+
+
+def _validate_theme_base_scale(value: float) -> None:
+    if not _is_finite_number(value) or not 0.01 <= float(value) <= 100:
+        raise ValueError("base_scale must be a finite number between 0.01 and 100")
 
 
 def _is_finite_number(value: Any) -> bool:

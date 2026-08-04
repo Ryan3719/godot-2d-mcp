@@ -507,6 +507,180 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if 'sub_resource type="StyleBoxFlat"' not in saved_scene:
             raise RuntimeError("StyleBoxFlat override was not saved in the scene")
 
+        theme_before = await app.service.control_theme_get(
+            styled_button_path,
+            scene_file=scene_file,
+        )
+        if theme_before["theme"] is not None:
+            raise RuntimeError("Styled button unexpectedly started with a local Theme")
+        created_theme = await app.service.control_theme_create(
+            styled_button_path,
+            resource_name="SmokeUiTheme",
+            scene_file=scene_file,
+        )
+        if (
+            not created_theme["theme"]["built_in"]
+            or created_theme["theme"]["resource_name"] != "SmokeUiTheme"
+        ):
+            raise RuntimeError("Embedded Theme creation returned an invalid resource")
+        await app.service.control_theme_defaults_set(
+            styled_button_path,
+            font={"source": "system", "families": ["sans-serif"]},
+            font_size=18,
+            base_scale=1.25,
+            scene_file=scene_file,
+        )
+        themed_state = await app.service.control_theme_get(styled_button_path, scene_file=scene_file)
+        defaults = themed_state["theme"]["defaults"]
+        if (
+            defaults["font"]["resource_type"] != "SystemFont"
+            or defaults["font_size"] != 18
+            or not _is_close(defaults["base_scale"], 1.25)
+        ):
+            raise RuntimeError("Theme defaults did not retain system font settings")
+        undo_theme_defaults = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_theme_defaults.get("changed"):
+            raise RuntimeError("Theme default settings were not undoable")
+        themed_state = await app.service.control_theme_get(styled_button_path, scene_file=scene_file)
+        if any(value is not None for value in themed_state["theme"]["defaults"].values()):
+            raise RuntimeError("Undo did not clear newly-created Theme defaults")
+        redo_theme_defaults = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_theme_defaults.get("changed"):
+            raise RuntimeError("Theme default settings were not redoable")
+        theme_color = await app.service.control_theme_item_upsert(
+            styled_button_path,
+            item_type="color",
+            theme_type="Button",
+            name="font_color",
+            value={"r": 0.1, "g": 0.7, "b": 0.95, "a": 1.0},
+            scene_file=scene_file,
+        )
+        if not _color_matches(
+            theme_color["item"]["value"], {"r": 0.1, "g": 0.7, "b": 0.95, "a": 1.0}
+        ):
+            raise RuntimeError("Theme color item did not retain the requested value")
+        theme_constant = await app.service.control_theme_item_upsert(
+            styled_button_path,
+            item_type="constant",
+            theme_type="Button",
+            name="outline_size",
+            value=2,
+            scene_file=scene_file,
+        )
+        if theme_constant["item"]["value"] != 2:
+            raise RuntimeError("Theme constant item did not retain the requested value")
+        theme_font_size = await app.service.control_theme_item_upsert(
+            styled_button_path,
+            item_type="font_size",
+            theme_type="Button",
+            name="font_size",
+            value=20,
+            scene_file=scene_file,
+        )
+        if theme_font_size["item"]["value"] != 20:
+            raise RuntimeError("Theme font size item did not retain the requested value")
+        theme_font = await app.service.control_theme_item_upsert(
+            styled_button_path,
+            item_type="font",
+            theme_type="Button",
+            name="font",
+            value={"source": "system", "families": ["sans-serif"]},
+            scene_file=scene_file,
+        )
+        if theme_font["item"]["value"]["resource_type"] != "SystemFont":
+            raise RuntimeError("Theme font item did not create a SystemFont resource")
+        theme_icon = await app.service.control_theme_item_upsert(
+            styled_button_path,
+            item_type="icon",
+            theme_type="Button",
+            name="icon",
+            value="res://test_icon.svg",
+            scene_file=scene_file,
+        )
+        if theme_icon["item"]["value"]["resource_type"] != "CompressedTexture2D":
+            raise RuntimeError("Theme icon item did not load the project texture")
+        theme_style = await app.service.control_theme_item_upsert(
+            styled_button_path,
+            item_type="stylebox_flat",
+            theme_type="Button",
+            name="normal",
+            value={
+                "bg_color": {"r": 0.04, "g": 0.12, "b": 0.22, "a": 1.0},
+                "corner_radius_top_left": 6,
+                "corner_radius_top_right": 6,
+                "corner_radius_bottom_left": 6,
+                "corner_radius_bottom_right": 6,
+            },
+            scene_file=scene_file,
+        )
+        if theme_style["item"]["value"]["resource"]["resource_type"] != "StyleBoxFlat":
+            raise RuntimeError("Theme StyleBoxFlat item was not created")
+        themed_state = await app.service.control_theme_get(styled_button_path, scene_file=scene_file)
+        if (
+            _theme_item(themed_state, "colors", "Button", "font_color") is None
+            or _theme_item(themed_state, "constants", "Button", "outline_size") is None
+            or _theme_item(themed_state, "font_sizes", "Button", "font_size") is None
+            or _theme_item(themed_state, "fonts", "Button", "font") is None
+            or _theme_item(themed_state, "icons", "Button", "icon") is None
+            or _theme_item(themed_state, "styleboxes", "Button", "normal") is None
+        ):
+            raise RuntimeError("Theme inspection did not return all local Theme items")
+        cleared_theme_color = await app.service.control_theme_item_clear(
+            styled_button_path,
+            item_type="color",
+            theme_type="Button",
+            name="font_color",
+            scene_file=scene_file,
+        )
+        if cleared_theme_color["item_type"] != "color":
+            raise RuntimeError("Theme item clear returned the wrong item type")
+        undo_theme_item_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_theme_item_clear.get("changed"):
+            raise RuntimeError("Theme item clear was not undoable")
+        await app.service.control_theme_defaults_clear(
+            styled_button_path,
+            defaults=["font", "font_size", "base_scale"],
+            scene_file=scene_file,
+        )
+        undo_theme_defaults_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_theme_defaults_clear.get("changed"):
+            raise RuntimeError("Theme default clear was not undoable")
+        external_theme = await app.service.control_theme_assign(
+            styled_button_path,
+            theme_path="res://test_theme.tres",
+            scene_file=scene_file,
+        )
+        if external_theme["theme"]["resource_path"] != "res://test_theme.tres":
+            raise RuntimeError("External Theme assignment did not retain its project path")
+        await _expect_godot_error(
+            app.service.control_theme_defaults_set(
+                styled_button_path,
+                font_size=20,
+                scene_file=scene_file,
+            ),
+            "EXTERNAL_THEME_READ_ONLY",
+        )
+        undo_external_theme = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_external_theme.get("changed"):
+            raise RuntimeError("External Theme assignment was not undoable")
+        restored_theme = await app.service.control_theme_get(styled_button_path, scene_file=scene_file)
+        if restored_theme["theme"]["resource_name"] != "SmokeUiTheme":
+            raise RuntimeError("Undo did not restore the embedded Theme assignment")
+        cleared_theme_assignment = await app.service.control_theme_assign(
+            styled_button_path,
+            theme_path="",
+            scene_file=scene_file,
+        )
+        if cleared_theme_assignment["theme"] is not None:
+            raise RuntimeError("Empty Theme path did not clear the local assignment")
+        undo_theme_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_theme_clear.get("changed"):
+            raise RuntimeError("Theme assignment clear was not undoable")
+        await app.service.scene_save(scene_file=scene_file)
+        saved_scene = (project_path / "test_scene.tscn").read_text(encoding="utf-8")
+        if "SmokeUiTheme" not in saved_scene or 'theme = SubResource("Theme_' not in saved_scene:
+            raise RuntimeError("Embedded Theme was not saved in the scene")
+
         button_signals = await app.service.node_get_signals(
             reparented_button_path,
             scene_file=scene_file,
@@ -744,6 +918,18 @@ def _property_value(result: dict, name: str) -> object:
         if property_data.get("name") == name:
             return property_data.get("value")
     raise RuntimeError(f"Property was not returned: {name}")
+
+
+def _theme_item(result: dict, group: str, theme_type: str, name: str) -> dict | None:
+    theme = result.get("theme") or {}
+    for item in theme.get("items", {}).get(group, []):
+        if item.get("theme_type") == theme_type and item.get("name") == name:
+            return item
+    return None
+
+
+def _is_close(actual: object, expected: float) -> bool:
+    return isinstance(actual, (int, float)) and abs(float(actual) - expected) < 1e-6
 
 
 def _has_node(hierarchy: dict, path: str) -> bool:

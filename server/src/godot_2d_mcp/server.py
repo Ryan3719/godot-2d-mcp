@@ -212,6 +212,19 @@ def create_application(
             scene_file=scene_file,
         )
 
+    @mcp.tool(annotations=READ_ONLY)
+    async def control_theme_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read a Control's assigned Theme, defaults, and local Theme items."""
+        return await service.control_theme_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
     @mcp.tool(annotations=WRITE)
     async def node_create(
         type: str,
@@ -563,6 +576,112 @@ def create_application(
         return await service.control_stylebox_override_clear(
             path=path,
             state=state,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def control_theme_create(
+        path: str,
+        resource_name: str = "",
+        replace: bool = False,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Create and assign one embedded, undoable Theme to a local Control."""
+        return await service.control_theme_create(
+            path=path,
+            resource_name=resource_name,
+            replace=replace,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def control_theme_assign(
+        path: str,
+        theme_path: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Assign an existing res:// Theme, or clear the local assignment with an empty path."""
+        return await service.control_theme_assign(
+            path=path,
+            theme_path=theme_path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def control_theme_defaults_set(
+        path: str,
+        font: dict[str, Any] | None = None,
+        font_size: int | None = None,
+        base_scale: float | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Set one or more embedded Theme defaults, including a project or system font."""
+        return await service.control_theme_defaults_set(
+            path=path,
+            font=font,
+            font_size=font_size,
+            base_scale=base_scale,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def control_theme_defaults_clear(
+        path: str,
+        defaults: list[str],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Clear selected embedded Theme defaults while retaining editor undo support."""
+        return await service.control_theme_defaults_clear(
+            path=path,
+            defaults=defaults,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def control_theme_item_upsert(
+        path: str,
+        item_type: str,
+        theme_type: str,
+        name: str,
+        value: Any,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Create or replace a color, constant, font, icon, or StyleBoxFlat Theme item."""
+        return await service.control_theme_item_upsert(
+            path=path,
+            item_type=item_type,
+            theme_type=theme_type,
+            name=name,
+            value=value,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def control_theme_item_clear(
+        path: str,
+        item_type: str,
+        theme_type: str,
+        name: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Clear one local item from an embedded Theme while retaining editor undo support."""
+        return await service.control_theme_item_clear(
+            path=path,
+            item_type=item_type,
+            theme_type=theme_type,
+            name=name,
             session_id=session_id,
             scene_file=scene_file,
         )
