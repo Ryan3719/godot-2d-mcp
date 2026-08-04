@@ -143,6 +143,19 @@ def create_application(
             scene_file=scene_file,
         )
 
+    @mcp.tool(annotations=READ_ONLY)
+    async def node_get_signals(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """List a 2D node's signals, typed arguments, and current scene connections."""
+        return await service.node_get_signals(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
     @mcp.tool(annotations=WRITE)
     async def node_create(
         type: str,
@@ -248,6 +261,50 @@ def create_application(
         return await service.node_move(
             path=path,
             index=index,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def signal_connect(
+        source_path: str,
+        signal: str,
+        target_path: str,
+        method: str,
+        binds: list[Any] | None = None,
+        deferred: bool = False,
+        one_shot: bool = False,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Create a persistent, undoable connection between local 2D scene nodes."""
+        return await service.signal_connect(
+            source_path=source_path,
+            signal=signal,
+            target_path=target_path,
+            method=method,
+            binds=binds,
+            deferred=deferred,
+            one_shot=one_shot,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def signal_disconnect(
+        source_path: str,
+        signal: str,
+        target_path: str,
+        method: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Remove one persistent local-node connection while retaining undo support."""
+        return await service.signal_disconnect(
+            source_path=source_path,
+            signal=signal,
+            target_path=target_path,
+            method=method,
             session_id=session_id,
             scene_file=scene_file,
         )

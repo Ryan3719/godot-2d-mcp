@@ -257,6 +257,95 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if not redo_reparent.get("changed"):
             raise RuntimeError("Reparent was not redoable")
 
+        button_signals = await app.service.node_get_signals(
+            reparented_button_path,
+            scene_file=scene_file,
+        )
+        if _signal_data(button_signals, "pressed") is None:
+            raise RuntimeError("Button pressed signal was not returned")
+        await _expect_godot_error(
+            app.service.signal_connect(
+                source_path=reparented_button_path,
+                signal="pressed",
+                target_path="/Main/ButtonAnimations",
+                method="not_a_method",
+                scene_file=scene_file,
+            ),
+            "TARGET_METHOD_NOT_FOUND",
+        )
+        signal_connection = await app.service.signal_connect(
+            source_path=reparented_button_path,
+            signal="pressed",
+            target_path="/Main/ButtonAnimations",
+            method="play",
+            binds=["button_pulse"],
+            deferred=True,
+            one_shot=True,
+            scene_file=scene_file,
+        )
+        if (
+            not signal_connection.get("persistent")
+            or not signal_connection.get("deferred")
+            or not signal_connection.get("one_shot")
+        ):
+            raise RuntimeError("Signal connection was not persistent")
+        button_signals = await app.service.node_get_signals(
+            reparented_button_path,
+            scene_file=scene_file,
+        )
+        if not _has_signal_connection(
+            button_signals,
+            "pressed",
+            "/Main/ButtonAnimations",
+            "play",
+            ["button_pulse"],
+        ):
+            raise RuntimeError("Signal connection was not returned by node_get_signals")
+        pressed_signal = _signal_data(button_signals, "pressed")
+        if not any(
+            connection.get("target_path") == "/Main/ButtonAnimations"
+            and connection.get("method") == "play"
+            and connection.get("deferred")
+            and connection.get("one_shot")
+            for connection in pressed_signal.get("connections", [])
+        ):
+            raise RuntimeError("Signal connection flags were not returned by node_get_signals")
+        undo_connect = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_connect.get("changed"):
+            raise RuntimeError("Signal connection was not undoable")
+        button_signals = await app.service.node_get_signals(
+            reparented_button_path,
+            scene_file=scene_file,
+        )
+        if _has_signal_connection(
+            button_signals,
+            "pressed",
+            "/Main/ButtonAnimations",
+            "play",
+            ["button_pulse"],
+        ):
+            raise RuntimeError("Undo did not remove the signal connection")
+        redo_connect = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_connect.get("changed"):
+            raise RuntimeError("Signal connection was not redoable")
+        await app.service.signal_disconnect(
+            source_path=reparented_button_path,
+            signal="pressed",
+            target_path="/Main/ButtonAnimations",
+            method="play",
+            scene_file=scene_file,
+        )
+        undo_disconnect = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_disconnect.get("changed"):
+            raise RuntimeError("Signal disconnection was not undoable")
+        await app.service.scene_save(scene_file=scene_file)
+        saved_scene = (project_path / "test_scene.tscn").read_text(encoding="utf-8")
+        if (
+            'connection signal="pressed" from="UI/RenamedButton" to="ButtonAnimations"'
+            ' method="play"' not in saved_scene
+        ):
+            raise RuntimeError("Persistent signal connection was not saved")
+
         child_label = await app.service.node_create(
             type_name="Label",
             name="MarkerLabel",
@@ -416,6 +505,32 @@ def _node_data(hierarchy: dict, path: str) -> dict:
         if node.get("path") == path:
             return node
     raise RuntimeError(f"Node was not returned: {path}")
+
+
+def _signal_data(result: dict, name: str) -> dict | None:
+    for signal_data in result.get("signals", []):
+        if signal_data.get("name") == name:
+            return signal_data
+    return None
+
+
+def _has_signal_connection(
+    result: dict,
+    signal_name: str,
+    target_path: str,
+    method: str,
+    binds: list[object],
+) -> bool:
+    signal_data = _signal_data(result, signal_name)
+    return bool(
+        signal_data
+        and any(
+            connection.get("target_path") == target_path
+            and connection.get("method") == method
+            and connection.get("binds") == binds
+            for connection in signal_data.get("connections", [])
+        )
+    )
 
 
 async def _expect_godot_error(call: Awaitable[object], expected_code: str) -> None:

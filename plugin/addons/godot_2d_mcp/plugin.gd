@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.3.0"
+const PLUGIN_VERSION := "0.4.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 
 const ConnectionScript := preload("res://addons/godot_2d_mcp/transport/connection.gd")
@@ -11,6 +11,7 @@ const EditorHandlerScript := preload("res://addons/godot_2d_mcp/handlers/editor_
 const SceneHandlerScript := preload("res://addons/godot_2d_mcp/handlers/scene_handler.gd")
 const NodeHandlerScript := preload("res://addons/godot_2d_mcp/handlers/node_handler.gd")
 const ClassHandlerScript := preload("res://addons/godot_2d_mcp/handlers/class_handler.gd")
+const SignalHandlerScript := preload("res://addons/godot_2d_mcp/handlers/signal_handler.gd")
 
 var _connection: Node
 var _dispatcher: RefCounted
@@ -55,7 +56,8 @@ func _register_handlers() -> void:
 	var scene_handler: RefCounted = SceneHandlerScript.new(get_undo_redo())
 	var node_handler: RefCounted = NodeHandlerScript.new(get_undo_redo())
 	var class_handler: RefCounted = ClassHandlerScript.new()
-	_handlers.assign([editor_handler, scene_handler, node_handler, class_handler])
+	var signal_handler: RefCounted = SignalHandlerScript.new(get_undo_redo())
+	_handlers.assign([editor_handler, scene_handler, node_handler, class_handler, signal_handler])
 
 	_dispatcher.register("editor_get_state", editor_handler.get_state)
 	_dispatcher.register("scene_get_hierarchy", scene_handler.get_hierarchy)
@@ -63,6 +65,7 @@ func _register_handlers() -> void:
 	_dispatcher.register("scene_undo", scene_handler.undo_scene)
 	_dispatcher.register("scene_redo", scene_handler.redo_scene)
 	_dispatcher.register("node_get_properties", node_handler.get_properties)
+	_dispatcher.register("node_get_signals", signal_handler.get_signals)
 	_dispatcher.register("node_create", node_handler.create_node)
 	_dispatcher.register("node_set_properties", node_handler.set_properties)
 	_dispatcher.register("node_delete", node_handler.delete_node)
@@ -70,6 +73,8 @@ func _register_handlers() -> void:
 	_dispatcher.register("node_duplicate", node_handler.duplicate_node)
 	_dispatcher.register("node_reparent", node_handler.reparent_node)
 	_dispatcher.register("node_move", node_handler.move_node)
+	_dispatcher.register("signal_connect", signal_handler.connect_signal)
+	_dispatcher.register("signal_disconnect", signal_handler.disconnect_signal)
 	_dispatcher.register("class_search", class_handler.search)
 
 

@@ -213,3 +213,87 @@ async def test_node_structure_tools_validate_names_and_indexes() -> None:
         await service.node_move("/Main/UI/StartButton", index=-1)
     with pytest.raises(ValueError, match="keep_global_transform"):
         await service.node_reparent("/Main/UI/StartButton", "/Main", keep_global_transform=1)  # type: ignore[arg-type]
+
+
+@pytest.mark.asyncio
+async def test_signal_tools_forward_persistent_connection_options() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+
+    await service.node_get_signals(
+        path="/Main/UI/StartButton",
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
+    await service.signal_connect(
+        source_path="/Main/UI/StartButton",
+        signal="pressed",
+        target_path="/Main/ButtonAnimations",
+        method="play",
+        binds=["button_pulse", {"speed": 1.0}],
+        deferred=True,
+        one_shot=True,
+        scene_file="res://main.tscn",
+    )
+    await service.signal_disconnect(
+        source_path="/Main/UI/StartButton",
+        signal="pressed",
+        target_path="/Main/ButtonAnimations",
+        method="play",
+        scene_file="res://main.tscn",
+    )
+
+    assert bridge.calls == [
+        (
+            "node_get_signals",
+            {"path": "/Main/UI/StartButton", "scene_file": "res://main.tscn"},
+            "project@a1b2",
+        ),
+        (
+            "signal_connect",
+            {
+                "source_path": "/Main/UI/StartButton",
+                "signal": "pressed",
+                "target_path": "/Main/ButtonAnimations",
+                "method": "play",
+                "binds": ["button_pulse", {"speed": 1.0}],
+                "deferred": True,
+                "one_shot": True,
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "signal_disconnect",
+            {
+                "source_path": "/Main/UI/StartButton",
+                "signal": "pressed",
+                "target_path": "/Main/ButtonAnimations",
+                "method": "play",
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_signal_tools_reject_invalid_bind_values_and_options() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="binds"):
+        await service.signal_connect(
+            "/Main/UI/StartButton",
+            "pressed",
+            "/Main/ButtonAnimations",
+            "play",
+            binds=[object()],
+        )
+    with pytest.raises(ValueError, match="deferred"):
+        await service.signal_connect(
+            "/Main/UI/StartButton",
+            "pressed",
+            "/Main/ButtonAnimations",
+            "play",
+            deferred=1,  # type: ignore[arg-type]
+        )

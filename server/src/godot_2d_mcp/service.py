@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from typing import Any, Protocol
 
 from godot_2d_mcp.sessions import SessionRegistry
@@ -96,6 +97,19 @@ class GodotService:
         return await self.bridge.call(
             "node_get_properties",
             _scene_params(scene_file, path=path, fields=selected_fields),
+            session_id=session_id,
+        )
+
+    async def node_get_signals(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "node_get_signals",
+            _scene_params(scene_file, path=path),
             session_id=session_id,
         )
 
@@ -231,6 +245,66 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def signal_connect(
+        self,
+        source_path: str,
+        signal: str,
+        target_path: str,
+        method: str,
+        binds: list[Any] | None = None,
+        deferred: bool = False,
+        one_shot: bool = False,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(source_path)
+        _validate_node_path(target_path)
+        _validate_signal_member(signal, "signal")
+        _validate_signal_member(method, "method")
+        requested_binds = [] if binds is None else binds
+        _validate_binds(requested_binds)
+        if not isinstance(deferred, bool) or not isinstance(one_shot, bool):
+            raise ValueError("deferred and one_shot must be booleans")
+        return await self.bridge.call(
+            "signal_connect",
+            _scene_params(
+                scene_file,
+                source_path=source_path,
+                signal=signal,
+                target_path=target_path,
+                method=method,
+                binds=requested_binds,
+                deferred=deferred,
+                one_shot=one_shot,
+            ),
+            session_id=session_id,
+        )
+
+    async def signal_disconnect(
+        self,
+        source_path: str,
+        signal: str,
+        target_path: str,
+        method: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(source_path)
+        _validate_node_path(target_path)
+        _validate_signal_member(signal, "signal")
+        _validate_signal_member(method, "method")
+        return await self.bridge.call(
+            "signal_disconnect",
+            _scene_params(
+                scene_file,
+                source_path=source_path,
+                signal=signal,
+                target_path=target_path,
+                method=method,
+            ),
+            session_id=session_id,
+        )
+
     async def scene_save(
         self,
         session_id: str | None = None,
@@ -273,6 +347,42 @@ def _validate_node_path(path: str) -> None:
 def _validate_node_name(name: str) -> None:
     if not name or len(name) > 256:
         raise ValueError("name must contain between 1 and 256 characters")
+
+
+def _validate_signal_member(value: str, label: str) -> None:
+    if not isinstance(value, str) or not value or len(value) > 256:
+        raise ValueError(f"{label} must contain between 1 and 256 characters")
+
+
+def _validate_binds(binds: list[Any]) -> None:
+    if not isinstance(binds, list):
+        raise ValueError("binds must be an array")
+    if len(binds) > 16:
+        raise ValueError("binds can contain at most 16 values")
+    if any(not _is_json_bind_value(value) for value in binds):
+        raise ValueError("binds must contain bounded JSON-compatible values")
+
+
+def _is_json_bind_value(value: Any, depth: int = 0) -> bool:
+    if depth > 8:
+        return False
+    if value is None or isinstance(value, (bool, str)):
+        return True
+    if isinstance(value, int):
+        return -(2**63) <= value < 2**63
+    if isinstance(value, float):
+        return math.isfinite(value)
+    if isinstance(value, list):
+        return len(value) <= 128 and all(_is_json_bind_value(item, depth + 1) for item in value)
+    if isinstance(value, dict):
+        return (
+            len(value) <= 128
+            and all(
+                isinstance(key, str) and _is_json_bind_value(item, depth + 1)
+                for key, item in value.items()
+            )
+        )
+    return False
 
 
 def _scene_params(scene_file: str, **params: Any) -> dict[str, Any]:
