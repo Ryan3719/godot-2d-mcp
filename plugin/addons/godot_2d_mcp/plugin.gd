@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.4.0"
+const PLUGIN_VERSION := "0.5.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 
 const ConnectionScript := preload("res://addons/godot_2d_mcp/transport/connection.gd")
@@ -12,6 +12,7 @@ const SceneHandlerScript := preload("res://addons/godot_2d_mcp/handlers/scene_ha
 const NodeHandlerScript := preload("res://addons/godot_2d_mcp/handlers/node_handler.gd")
 const ClassHandlerScript := preload("res://addons/godot_2d_mcp/handlers/class_handler.gd")
 const SignalHandlerScript := preload("res://addons/godot_2d_mcp/handlers/signal_handler.gd")
+const AnimationHandlerScript := preload("res://addons/godot_2d_mcp/handlers/animation_handler.gd")
 
 var _connection: Node
 var _dispatcher: RefCounted
@@ -57,7 +58,10 @@ func _register_handlers() -> void:
 	var node_handler: RefCounted = NodeHandlerScript.new(get_undo_redo())
 	var class_handler: RefCounted = ClassHandlerScript.new()
 	var signal_handler: RefCounted = SignalHandlerScript.new(get_undo_redo())
-	_handlers.assign([editor_handler, scene_handler, node_handler, class_handler, signal_handler])
+	var animation_handler: RefCounted = AnimationHandlerScript.new(get_undo_redo())
+	_handlers.assign([
+		editor_handler, scene_handler, node_handler, class_handler, signal_handler, animation_handler
+	])
 
 	_dispatcher.register("editor_get_state", editor_handler.get_state)
 	_dispatcher.register("scene_get_hierarchy", scene_handler.get_hierarchy)
@@ -66,6 +70,8 @@ func _register_handlers() -> void:
 	_dispatcher.register("scene_redo", scene_handler.redo_scene)
 	_dispatcher.register("node_get_properties", node_handler.get_properties)
 	_dispatcher.register("node_get_signals", signal_handler.get_signals)
+	_dispatcher.register("animation_list", animation_handler.list_animations)
+	_dispatcher.register("animation_get", animation_handler.get_animation)
 	_dispatcher.register("node_create", node_handler.create_node)
 	_dispatcher.register("node_set_properties", node_handler.set_properties)
 	_dispatcher.register("node_delete", node_handler.delete_node)
@@ -75,6 +81,12 @@ func _register_handlers() -> void:
 	_dispatcher.register("node_move", node_handler.move_node)
 	_dispatcher.register("signal_connect", signal_handler.connect_signal)
 	_dispatcher.register("signal_disconnect", signal_handler.disconnect_signal)
+	_dispatcher.register("animation_create", animation_handler.create_animation)
+	_dispatcher.register("animation_delete", animation_handler.delete_animation)
+	_dispatcher.register("animation_track_upsert", animation_handler.upsert_value_track)
+	_dispatcher.register("animation_track_delete", animation_handler.delete_track)
+	_dispatcher.register("animation_key_upsert", animation_handler.upsert_key)
+	_dispatcher.register("animation_key_delete", animation_handler.delete_key)
 	_dispatcher.register("class_search", class_handler.search)
 
 
