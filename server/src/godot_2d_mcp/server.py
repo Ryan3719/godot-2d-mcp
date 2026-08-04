@@ -402,6 +402,25 @@ def create_application(
             scene_file=scene_file,
         )
 
+    @mcp.tool(annotations=READ_ONLY)
+    async def tile_set_atlas_tile_get(
+        path: str,
+        source_id: int,
+        atlas_coords: dict[str, int],
+        alternative_tile: int = 0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read collision and navigation geometry from an atlas tile or alternative."""
+        return await service.tile_set_atlas_tile_get(
+            path=path,
+            source_id=source_id,
+            atlas_coords=atlas_coords,
+            alternative_tile=alternative_tile,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
     @mcp.tool(annotations=WRITE)
     async def node_create(
         type: str,
@@ -1332,6 +1351,58 @@ def create_application(
             source_id=source_id,
             atlas_coords=atlas_coords,
             values=values,
+            alternative_tile=alternative_tile,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def tile_set_atlas_tile_collision_set(
+        path: str,
+        source_id: int,
+        atlas_coords: dict[str, int],
+        physics_layer: int,
+        polygons: list[dict[str, Any]],
+        alternative_tile: int = 0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically replace collision polygons for one atlas-tile physics layer."""
+        return await service.tile_set_atlas_tile_collision_set(
+            path=path,
+            source_id=source_id,
+            atlas_coords=atlas_coords,
+            physics_layer=physics_layer,
+            polygons=polygons,
+            alternative_tile=alternative_tile,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def tile_set_atlas_tile_navigation_set(
+        path: str,
+        source_id: int,
+        atlas_coords: dict[str, int],
+        navigation_layer: int,
+        vertices: list[dict[str, float | int]] | None = None,
+        polygons: list[list[int]] | None = None,
+        agent_radius: float | None = None,
+        clear: bool = False,
+        alternative_tile: int = 0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Replace or clear the NavigationPolygon on one atlas-tile navigation layer."""
+        return await service.tile_set_atlas_tile_navigation_set(
+            path=path,
+            source_id=source_id,
+            atlas_coords=atlas_coords,
+            navigation_layer=navigation_layer,
+            vertices=vertices,
+            polygons=polygons,
+            agent_radius=agent_radius,
+            clear=clear,
             alternative_tile=alternative_tile,
             session_id=session_id,
             scene_file=scene_file,

@@ -13,6 +13,11 @@ const MAX_TILESET_LAYERS := 64
 const MAX_TILESET_TERRAINS := 64
 const MAX_TILE_CUSTOM_DATA_VALUES := 16
 const MAX_TILESET_NAME_LENGTH := 128
+const MAX_TILE_COLLISION_POLYGONS := 128
+const MAX_TILE_COLLISION_POLYGON_POINTS := 512
+const MAX_TILE_COLLISION_TOTAL_POINTS := 2048
+const MAX_TILE_NAVIGATION_POLYGONS := 512
+const MAX_TILE_NAVIGATION_INDICES := 2048
 const TERRAIN_MODES := {
 	"match_corners_and_sides": 0,
 	"match_corners": 1,
@@ -370,6 +375,24 @@ func get_tile_set_layers(params: Dictionary) -> Dictionary:
 	return _tile_set_layers_response(tile_map_layer, resolved["scene_root"])
 
 
+func get_tile_set_atlas_tile(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tile_map_layer(params, false)
+	if resolved.has("_error"):
+		return resolved
+	var tile_map_layer: TileMapLayer = resolved["tile_map_layer"]
+	var tile_set: TileSet = tile_map_layer.tile_set
+	if tile_set == null:
+		return _tile_set_required(tile_map_layer)
+	var tile_result := _resolve_atlas_tile(params, tile_set)
+	if tile_result.has("_error"):
+		return tile_result
+	var tile_data: TileData = tile_result["tile_data"]
+	var result := _tile_data_response(tile_map_layer, resolved["scene_root"], tile_result)
+	result["physics_layers"] = _serialize_tile_collision_layers(tile_set, tile_data)
+	result["navigation_layers"] = _serialize_tile_navigation_layers(tile_set, tile_data)
+	return result
+
+
 func create_tile_set_physics_layer(params: Dictionary) -> Dictionary:
 	var resolved := _resolve_tile_map_layer(params)
 	if resolved.has("_error"):
@@ -682,6 +705,121 @@ func set_tile_set_atlas_tile_custom_data(params: Dictionary) -> Dictionary:
 	return result
 
 
+func set_tile_set_atlas_tile_collision(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tile_map_layer(params)
+	if resolved.has("_error"):
+		return resolved
+	var tile_map_layer: TileMapLayer = resolved["tile_map_layer"]
+	var current: TileSet = tile_map_layer.tile_set
+	if current == null:
+		return _tile_set_required(tile_map_layer)
+	var tile_result := _resolve_atlas_tile(params, current)
+	if tile_result.has("_error"):
+		return tile_result
+	var layer_result := _parse_existing_tile_set_layer(
+		params.get("physics_layer", null), "physics_layer", current.get_physics_layers_count()
+	)
+	if layer_result.has("_error"):
+		return layer_result
+	var polygons_result := _parse_tile_collision_polygons(params.get("polygons", null))
+	if polygons_result.has("_error"):
+		return polygons_result
+	var replacement_result := _duplicate_tile_set(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: TileSet = replacement_result["tile_set"]
+	var replacement_data_result := _get_replacement_tile_data(replacement, tile_result)
+	if replacement_data_result.has("_error"):
+		return replacement_data_result
+	var tile_data: TileData = replacement_data_result["tile_data"]
+	var physics_layer: int = layer_result["layer"]
+	var polygons: Array = polygons_result["polygons"]
+	tile_data.set_collision_polygons_count(physics_layer, polygons.size())
+	for polygon_index in polygons.size():
+		var polygon: Dictionary = polygons[polygon_index]
+		tile_data.set_collision_polygon_points(physics_layer, polygon_index, polygon["points"])
+		tile_data.set_collision_polygon_one_way(physics_layer, polygon_index, polygon["one_way"])
+		tile_data.set_collision_polygon_one_way_margin(
+			physics_layer, polygon_index, polygon["one_way_margin"]
+		)
+	_commit_tile_set(
+		tile_map_layer,
+		resolved["scene_root"],
+		replacement,
+		"Set TileSet atlas collision on %s" % tile_map_layer.name
+	)
+	var result := _tile_data_response(tile_map_layer, resolved["scene_root"], tile_result)
+	result["physics_layer"] = physics_layer
+	result["collision_polygons"] = _serialize_tile_collision_polygons(tile_data, physics_layer)
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func set_tile_set_atlas_tile_navigation(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tile_map_layer(params)
+	if resolved.has("_error"):
+		return resolved
+	var tile_map_layer: TileMapLayer = resolved["tile_map_layer"]
+	var current: TileSet = tile_map_layer.tile_set
+	if current == null:
+		return _tile_set_required(tile_map_layer)
+	var tile_result := _resolve_atlas_tile(params, current)
+	if tile_result.has("_error"):
+		return tile_result
+	var layer_result := _parse_existing_tile_set_layer(
+		params.get("navigation_layer", null), "navigation_layer", current.get_navigation_layers_count()
+	)
+	if layer_result.has("_error"):
+		return layer_result
+	var clear_result := _parse_tile_navigation_clear(params.get("clear", false))
+	if clear_result.has("_error"):
+		return clear_result
+	var geometry_result := {}
+	var agent_radius := 0.0
+	if not clear_result["clear"]:
+		geometry_result = _parse_tile_navigation_geometry(params)
+		if geometry_result.has("_error"):
+			return geometry_result
+		var radius_result := _parse_nonnegative_float(params.get("agent_radius", 0.0), "agent_radius")
+		if radius_result.has("_error"):
+			return Errors.make("INVALID_TILE_NAVIGATION", "agent_radius must be a finite number greater than or equal to zero")
+		agent_radius = radius_result["value"]
+	var replacement_result := _duplicate_tile_set(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: TileSet = replacement_result["tile_set"]
+	var replacement_data_result := _get_replacement_tile_data(replacement, tile_result)
+	if replacement_data_result.has("_error"):
+		return replacement_data_result
+	var tile_data: TileData = replacement_data_result["tile_data"]
+	var navigation_layer: int = layer_result["layer"]
+	if clear_result["clear"]:
+		tile_data.set_navigation_polygon(navigation_layer, null)
+	else:
+		var navigation_polygon := NavigationPolygon.new()
+		navigation_polygon.agent_radius = agent_radius
+		navigation_polygon.set_vertices(geometry_result["vertices"])
+		navigation_polygon.clear_polygons()
+		for polygon in geometry_result["polygons"]:
+			navigation_polygon.add_polygon(polygon)
+		tile_data.set_navigation_polygon(navigation_layer, navigation_polygon)
+	_commit_tile_set(
+		tile_map_layer,
+		resolved["scene_root"],
+		replacement,
+		"Set TileSet atlas navigation on %s" % tile_map_layer.name
+	)
+	var result := _tile_data_response(tile_map_layer, resolved["scene_root"], tile_result)
+	result["navigation_layer"] = navigation_layer
+	result["navigation_polygon"] = _serialize_tile_navigation_polygon(
+		tile_data.get_navigation_polygon(navigation_layer)
+	)
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
 func _parse_layer_numbers(raw_values: Variant, label: String) -> Dictionary:
 	if not raw_values is Array or raw_values.size() > 32:
 		return Errors.make("INVALID_TILESET_LAYERS", "%s must contain at most 32 layer numbers" % label)
@@ -961,6 +1099,255 @@ func _parse_tile_custom_data(raw_values: Variant, tile_set: TileSet, tile_data: 
 		values[raw_name] = decoded["value"]
 		serialized[raw_name] = VariantCodec.serialize(decoded["value"])
 	return {"values": values, "serialized": serialized}
+
+
+func _parse_existing_tile_set_layer(raw_value: Variant, label: String, layer_count: int) -> Dictionary:
+	if not _is_integral_number(raw_value):
+		return Errors.make("MISSING_PARAMETER", "%s must be an existing non-negative integer" % label)
+	var layer := int(raw_value)
+	if layer < 0 or layer >= layer_count:
+		return Errors.make("TILESET_LAYER_NOT_FOUND", "%s does not identify an existing TileSet layer" % label)
+	return {"layer": layer}
+
+
+func _parse_tile_collision_polygons(raw_value: Variant) -> Dictionary:
+	if not raw_value is Array or raw_value.size() > MAX_TILE_COLLISION_POLYGONS:
+		return Errors.make(
+			"INVALID_TILE_COLLISION",
+			"polygons must contain at most %d polygons" % MAX_TILE_COLLISION_POLYGONS
+		)
+	var polygons: Array = []
+	var total_points := 0
+	for polygon_index in raw_value.size():
+		var raw_polygon: Variant = raw_value[polygon_index]
+		if not raw_polygon is Dictionary or not raw_polygon.has("points"):
+			return Errors.make("INVALID_TILE_COLLISION", "polygons entries must contain points")
+		for name in raw_polygon:
+			if name != "points" and name != "one_way" and name != "one_way_margin":
+				return Errors.make("INVALID_TILE_COLLISION", "polygons entries contain an unsupported property")
+		var points_result := _parse_tile_collision_polygon_points(
+			raw_polygon["points"], "polygons[%d].points" % polygon_index
+		)
+		if points_result.has("_error"):
+			return points_result
+		var points: PackedVector2Array = points_result["points"]
+		total_points += points.size()
+		if total_points > MAX_TILE_COLLISION_TOTAL_POINTS:
+			return Errors.make("INVALID_TILE_COLLISION", "collision polygon points exceed the supported limit")
+		var one_way := false
+		if raw_polygon.has("one_way"):
+			if not raw_polygon["one_way"] is bool:
+				return Errors.make("INVALID_TILE_COLLISION", "polygons[].one_way must be a boolean")
+			one_way = raw_polygon["one_way"]
+		var one_way_margin := 1.0
+		if raw_polygon.has("one_way_margin"):
+			var margin_value: Variant = raw_polygon["one_way_margin"]
+			if not (margin_value is int or margin_value is float) or not is_finite(float(margin_value)) \
+				or float(margin_value) < 0.0:
+				return Errors.make(
+					"INVALID_TILE_COLLISION",
+					"polygons[].one_way_margin must be a finite number greater than or equal to zero"
+				)
+			one_way_margin = float(margin_value)
+		polygons.append({
+			"points": points,
+			"one_way": one_way,
+			"one_way_margin": one_way_margin,
+		})
+	return {"polygons": polygons}
+
+
+func _parse_tile_collision_polygon_points(raw_value: Variant, label: String) -> Dictionary:
+	var decoded := VariantCodec.decode(
+		raw_value, {"type": TYPE_PACKED_VECTOR2_ARRAY}, PackedVector2Array()
+	)
+	if decoded.has("_error"):
+		return Errors.make("INVALID_TILE_COLLISION", "%s must be an array of Vector2 objects" % label)
+	var points: PackedVector2Array = decoded["value"]
+	if points.size() < 3 or points.size() > MAX_TILE_COLLISION_POLYGON_POINTS:
+		return Errors.make(
+			"INVALID_TILE_COLLISION",
+			"%s must contain between 3 and %d points" % [label, MAX_TILE_COLLISION_POLYGON_POINTS]
+		)
+	for point_index in points.size():
+		if not is_finite(points[point_index].x) or not is_finite(points[point_index].y):
+			return Errors.make("INVALID_TILE_COLLISION", "%s points must be finite" % label)
+		for later_index in range(point_index + 1, points.size()):
+			if points[point_index].is_equal_approx(points[later_index]):
+				return Errors.make("INVALID_TILE_COLLISION", "%s points must be unique" % label)
+	var signed_area := 0.0
+	for point_index in points.size():
+		var next_index := (point_index + 1) % points.size()
+		signed_area += points[point_index].cross(points[next_index])
+	if is_zero_approx(signed_area):
+		return Errors.make("INVALID_TILE_COLLISION", "%s must enclose a non-zero area" % label)
+	if Geometry2D.decompose_polygon_in_convex(points).is_empty():
+		return Errors.make("INVALID_TILE_COLLISION", "%s must describe a valid simple polygon" % label)
+	return {"points": points}
+
+
+func _parse_tile_navigation_clear(raw_value: Variant) -> Dictionary:
+	if not raw_value is bool:
+		return Errors.make("INVALID_TILE_NAVIGATION", "clear must be a boolean")
+	return {"clear": raw_value}
+
+
+func _parse_tile_navigation_geometry(params: Dictionary) -> Dictionary:
+	if not params.has("vertices") or not params.has("polygons") \
+		or params["vertices"] == null or params["polygons"] == null:
+		return Errors.make("MISSING_PARAMETER", "vertices and polygons must be supplied unless clear is true")
+	var vertices_result := _parse_tile_navigation_points(params["vertices"], "vertices")
+	if vertices_result.has("_error"):
+		return vertices_result
+	var vertices: PackedVector2Array = vertices_result["points"]
+	var raw_polygons: Variant = params["polygons"]
+	if not raw_polygons is Array or raw_polygons.size() > MAX_TILE_NAVIGATION_POLYGONS:
+		return Errors.make(
+			"INVALID_TILE_NAVIGATION",
+			"polygons must contain at most %d polygons" % MAX_TILE_NAVIGATION_POLYGONS
+		)
+	if vertices.size() < 3:
+		return Errors.make("INVALID_TILE_NAVIGATION", "vertices must contain at least three points")
+	if raw_polygons.is_empty():
+		return Errors.make("INVALID_TILE_NAVIGATION", "polygons must contain at least one polygon")
+	var polygons: Array[PackedInt32Array] = []
+	var total_indices := 0
+	for polygon_index in raw_polygons.size():
+		var polygon_result := _parse_tile_navigation_indices(
+			raw_polygons[polygon_index], vertices, polygon_index, total_indices
+		)
+		if polygon_result.has("_error"):
+			return polygon_result
+		var polygon: PackedInt32Array = polygon_result["polygon"]
+		total_indices += polygon.size()
+		polygons.append(polygon)
+	return {"vertices": vertices, "polygons": polygons}
+
+
+func _parse_tile_navigation_points(raw_value: Variant, label: String) -> Dictionary:
+	var decoded := VariantCodec.decode(
+		raw_value, {"type": TYPE_PACKED_VECTOR2_ARRAY}, PackedVector2Array()
+	)
+	if decoded.has("_error"):
+		return Errors.make("INVALID_TILE_NAVIGATION", "%s must be an array of Vector2 objects" % label)
+	var points: PackedVector2Array = decoded["value"]
+	if points.size() > MAX_TILE_COLLISION_POLYGON_POINTS:
+		return Errors.make("INVALID_TILE_NAVIGATION", "%s exceeds the supported point limit" % label)
+	for point_index in points.size():
+		if not is_finite(points[point_index].x) or not is_finite(points[point_index].y):
+			return Errors.make("INVALID_TILE_NAVIGATION", "%s points must be finite" % label)
+		for later_index in range(point_index + 1, points.size()):
+			if points[point_index].is_equal_approx(points[later_index]):
+				return Errors.make("INVALID_TILE_NAVIGATION", "%s points must be unique" % label)
+	return {"points": points}
+
+
+func _parse_tile_navigation_indices(
+	raw_polygon: Variant,
+	vertices: PackedVector2Array,
+	polygon_index: int,
+	total_indices: int
+) -> Dictionary:
+	if not raw_polygon is Array or raw_polygon.size() < 3:
+		return Errors.make(
+			"INVALID_TILE_NAVIGATION",
+			"polygons[%d] must contain at least three vertex indices" % polygon_index
+		)
+	if raw_polygon.size() > MAX_TILE_COLLISION_POLYGON_POINTS \
+		or total_indices + raw_polygon.size() > MAX_TILE_NAVIGATION_INDICES:
+		return Errors.make("INVALID_TILE_NAVIGATION", "polygon indices exceed the supported limit")
+	var polygon := PackedInt32Array()
+	var seen := {}
+	for raw_index in raw_polygon:
+		if not _is_integral_number(raw_index):
+			return Errors.make("INVALID_TILE_NAVIGATION", "polygon indices must be integers")
+		var vertex_index := int(raw_index)
+		if vertex_index < 0 or vertex_index >= vertices.size():
+			return Errors.make("INVALID_TILE_NAVIGATION", "polygon index is outside the vertices array")
+		if seen.has(vertex_index):
+			return Errors.make("INVALID_TILE_NAVIGATION", "polygon indices must not repeat a vertex")
+		seen[vertex_index] = true
+		polygon.append(vertex_index)
+	var polygon_points := PackedVector2Array()
+	for vertex_index in polygon:
+		polygon_points.append(vertices[vertex_index])
+	var validity := _validate_tile_navigation_face(polygon_points, polygon_index)
+	if validity.has("_error"):
+		return validity
+	return {"polygon": polygon}
+
+
+func _validate_tile_navigation_face(points: PackedVector2Array, polygon_index: int) -> Dictionary:
+	var winding := 0.0
+	for point_index in points.size():
+		var next_index := (point_index + 1) % points.size()
+		var after_next_index := (point_index + 2) % points.size()
+		var cross := (points[next_index] - points[point_index]).cross(
+			points[after_next_index] - points[next_index]
+		)
+		if is_zero_approx(cross):
+			return Errors.make(
+				"INVALID_TILE_NAVIGATION",
+				"polygons[%d] cannot contain collinear edges" % polygon_index
+			)
+		if is_zero_approx(winding):
+			winding = sign(cross)
+		elif sign(cross) != winding:
+			return Errors.make(
+				"INVALID_TILE_NAVIGATION",
+				"polygons[%d] must be convex and ordered" % polygon_index
+			)
+	return {}
+
+
+func _serialize_tile_collision_layers(tile_set: TileSet, tile_data: TileData) -> Array:
+	var layers := []
+	for layer_index in tile_set.get_physics_layers_count():
+		layers.append({
+			"index": layer_index,
+			"collision_polygons": _serialize_tile_collision_polygons(tile_data, layer_index),
+		})
+	return layers
+
+
+func _serialize_tile_collision_polygons(tile_data: TileData, physics_layer: int) -> Array:
+	var polygons := []
+	for polygon_index in tile_data.get_collision_polygons_count(physics_layer):
+		polygons.append({
+			"points": VariantCodec.serialize(
+				tile_data.get_collision_polygon_points(physics_layer, polygon_index)
+			),
+			"one_way": tile_data.is_collision_polygon_one_way(physics_layer, polygon_index),
+			"one_way_margin": tile_data.get_collision_polygon_one_way_margin(
+				physics_layer, polygon_index
+			),
+		})
+	return polygons
+
+
+func _serialize_tile_navigation_layers(tile_set: TileSet, tile_data: TileData) -> Array:
+	var layers := []
+	for layer_index in tile_set.get_navigation_layers_count():
+		layers.append({
+			"index": layer_index,
+			"navigation_polygon": _serialize_tile_navigation_polygon(
+				tile_data.get_navigation_polygon(layer_index)
+			),
+		})
+	return layers
+
+
+func _serialize_tile_navigation_polygon(navigation_polygon: NavigationPolygon) -> Variant:
+	if navigation_polygon == null:
+		return null
+	var polygons := []
+	for polygon_index in navigation_polygon.get_polygon_count():
+		polygons.append(VariantCodec.serialize(navigation_polygon.get_polygon(polygon_index)))
+	return {
+		"agent_radius": navigation_polygon.agent_radius,
+		"vertices": VariantCodec.serialize(navigation_polygon.get_vertices()),
+		"polygons": polygons,
+	}
 
 
 func _tile_set_layers_response(tile_map_layer: TileMapLayer, scene_root: Node) -> Dictionary:
