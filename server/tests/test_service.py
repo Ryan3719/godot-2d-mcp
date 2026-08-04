@@ -598,3 +598,140 @@ async def test_control_layout_and_stylebox_tools_reject_invalid_payloads() -> No
         )
     with pytest.raises(ValueError, match="state"):
         await service.control_stylebox_override_clear("/Main/UI/StartButton", state="bad/state")
+
+
+@pytest.mark.asyncio
+async def test_control_theme_tools_forward_embedded_theme_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    font = {"source": "system", "families": ["Noto Sans CJK SC", "sans-serif"]}
+    color = {"r": 0.15, "g": 0.35, "b": 0.7, "a": 1.0}
+
+    await service.control_theme_get(
+        "/Main/UI/Root", scene_file="res://main.tscn", session_id="project@a1b2"
+    )
+    await service.control_theme_create(
+        "/Main/UI/Root",
+        resource_name="UiTheme",
+        scene_file="res://main.tscn",
+    )
+    await service.control_theme_assign(
+        "/Main/UI/Root", theme_path="res://themes/existing.tres", scene_file="res://main.tscn"
+    )
+    await service.control_theme_defaults_set(
+        "/Main/UI/Root",
+        font=font,
+        font_size=18,
+        base_scale=1.25,
+        scene_file="res://main.tscn",
+    )
+    await service.control_theme_defaults_clear(
+        "/Main/UI/Root", ["font", "base_scale"], scene_file="res://main.tscn"
+    )
+    await service.control_theme_item_upsert(
+        "/Main/UI/Root",
+        item_type="color",
+        theme_type="Button",
+        name="font_color",
+        value=color,
+        scene_file="res://main.tscn",
+    )
+    await service.control_theme_item_clear(
+        "/Main/UI/Root",
+        item_type="color",
+        theme_type="Button",
+        name="font_color",
+        scene_file="res://main.tscn",
+    )
+
+    assert bridge.calls == [
+        (
+            "control_theme_get",
+            {"path": "/Main/UI/Root", "scene_file": "res://main.tscn"},
+            "project@a1b2",
+        ),
+        (
+            "control_theme_create",
+            {
+                "path": "/Main/UI/Root",
+                "resource_name": "UiTheme",
+                "replace": False,
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "control_theme_assign",
+            {
+                "path": "/Main/UI/Root",
+                "theme_path": "res://themes/existing.tres",
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "control_theme_defaults_set",
+            {
+                "path": "/Main/UI/Root",
+                "font": font,
+                "font_size": 18,
+                "base_scale": 1.25,
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "control_theme_defaults_clear",
+            {
+                "path": "/Main/UI/Root",
+                "defaults": ["font", "base_scale"],
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "control_theme_item_upsert",
+            {
+                "path": "/Main/UI/Root",
+                "item_type": "color",
+                "theme_type": "Button",
+                "name": "font_color",
+                "value": color,
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "control_theme_item_clear",
+            {
+                "path": "/Main/UI/Root",
+                "item_type": "color",
+                "theme_type": "Button",
+                "name": "font_color",
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_control_theme_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="font, font_size, or base_scale"):
+        await service.control_theme_defaults_set("/Main/UI/Root")
+    with pytest.raises(ValueError, match="res://"):
+        await service.control_theme_assign("/Main/UI/Root", theme_path="/tmp/theme.tres")
+    with pytest.raises(ValueError, match="font.source"):
+        await service.control_theme_defaults_set(
+            "/Main/UI/Root", font={"source": "unknown", "families": ["sans-serif"]}
+        )
+    with pytest.raises(ValueError, match="item_type"):
+        await service.control_theme_item_upsert(
+            "/Main/UI/Root", "shader", "Button", "font_color", {"r": 1, "g": 1, "b": 1}
+        )
+    with pytest.raises(ValueError, match="Theme identifier"):
+        await service.control_theme_item_clear(
+            "/Main/UI/Root", "color", "Button", "bad/name"
+        )

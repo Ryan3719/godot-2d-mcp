@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：阶段 0 已完成；阶段 1 已交付首批场景写入、结构编辑、信号管理、动画编辑与 UI 布局/样式能力（v0.6.0）
+状态：阶段 0 已完成；阶段 1 已交付首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式与嵌入式 Theme 资源能力（v0.7.0）
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -125,10 +125,13 @@ Codex / Claude Code / MCP Client
 - `animation_list`、`animation_get`、`animation_create`、`animation_delete`、属性轨道 upsert/delete 和关键帧 upsert/delete；支持场景内嵌动画库、撤销/重做与保存。
 - `control_get_layout`、`control_set_layout`、`control_set_layout_preset`，支持精确 anchors/offsets 与 Godot 布局预设；Container 子节点会明确拒绝。
 - `control_get_styleboxes`、`control_stylebox_flat_upsert`、`control_stylebox_override_clear`，支持节点本地 `StyleBoxFlat` 状态覆盖及撤销/重做。
+- `control_theme_get`、`control_theme_create`、`control_theme_assign`，支持读取、创建、绑定、解除和撤销 Control 的 Theme 资源分配。
+- `control_theme_defaults_set`、`control_theme_defaults_clear`，支持嵌入式 Theme 默认字体、字体大小与基础缩放。
+- `control_theme_item_upsert`、`control_theme_item_clear`，支持嵌入式 Theme 的颜色、常量、字体大小、字体、图标和 `StyleBoxFlat` 条目。
 - 重命名和重新挂载时迁移场景内直接 `NodePath` 属性及内嵌 `AnimationPlayer` 动画轨道。
 - 重新挂载默认保持 `Node2D`/`Control` 的全局视觉位置，并允许调用方关闭该行为。
 
-当前结构编辑拒绝跨 PackedScene 边界、包含不受支持 3D 节点的子树，以及需要修改外部动画资源的操作；删除会预检直接 `NodePath` 和动画轨道，避免留下悬空引用。动画工具仅写入场景内嵌 `AnimationLibrary`/`Animation`，并且只创建或修改本地 2D/UI 节点的属性值轨道；外部资源、导入轨道和方法/音频/嵌套动画轨道仍属于后续阶段。布局工具拒绝由 `Container` 管理的子节点；样式工具只创建独立的节点本地 `StyleBoxFlat` override，不会修改共享 Theme 或外部资源。信号工具仅操作场景内本地节点的持久化连接，并要求目标方法已存在，不会生成或修改脚本回调。这是为了避免 Agent 在无法证明安全的情况下静默破坏引用。全局 Theme、字体、图标、自动脚本回调生成和完整 PackedScene 工作流仍属于后续阶段。
+当前结构编辑拒绝跨 PackedScene 边界、包含不受支持 3D 节点的子树，以及需要修改外部动画资源的操作；删除会预检直接 `NodePath` 和动画轨道，避免留下悬空引用。动画工具仅写入场景内嵌 `AnimationLibrary`/`Animation`，并且只创建或修改本地 2D/UI 节点的属性值轨道；外部资源、导入轨道和方法/音频/嵌套动画轨道仍属于后续阶段。布局工具拒绝由 `Container` 管理的子节点；样式工具只创建独立的节点本地 `StyleBoxFlat` override，不会修改共享 Theme 或外部资源。Theme 工具可绑定外部 `res://` Theme，但它们在 MCP 内只读；可写范围限于场景内嵌 Theme，因此全部 Theme 变更都能随场景撤销和重做。字体可绑定项目 `Font` 或新建内嵌 `SystemFont`，图标仅绑定项目中已有的 `Texture2D`。信号工具仅操作场景内本地节点的持久化连接，并要求目标方法已存在，不会生成或修改脚本回调。这是为了避免 Agent 在无法证明安全的情况下静默破坏引用。自动脚本回调生成和完整 PackedScene 工作流仍属于后续阶段。
 
 ## 6. 核心数据约定
 

@@ -23,6 +23,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "animation_get",
         "control_get_layout",
         "control_get_styleboxes",
+        "control_theme_get",
         "node_create",
         "node_set_properties",
         "node_delete",
@@ -42,6 +43,12 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "control_set_layout_preset",
         "control_stylebox_flat_upsert",
         "control_stylebox_override_clear",
+        "control_theme_create",
+        "control_theme_assign",
+        "control_theme_defaults_set",
+        "control_theme_defaults_clear",
+        "control_theme_item_upsert",
+        "control_theme_item_clear",
         "scene_save",
         "scene_undo",
         "scene_redo",
@@ -54,6 +61,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["animation_get"].readOnlyHint is True
     assert annotations["control_get_layout"].readOnlyHint is True
     assert annotations["control_get_styleboxes"].readOnlyHint is True
+    assert annotations["control_theme_get"].readOnlyHint is True
     assert annotations["node_create"].readOnlyHint is False
     assert annotations["node_delete"].destructiveHint is True
     assert annotations["node_rename"].destructiveHint is False
@@ -72,4 +80,10 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["control_set_layout_preset"].readOnlyHint is False
     assert annotations["control_stylebox_flat_upsert"].readOnlyHint is False
     assert annotations["control_stylebox_override_clear"].destructiveHint is True
+    assert annotations["control_theme_create"].readOnlyHint is False
+    assert annotations["control_theme_assign"].readOnlyHint is False
+    assert annotations["control_theme_defaults_set"].readOnlyHint is False
+    assert annotations["control_theme_defaults_clear"].destructiveHint is True
+    assert annotations["control_theme_item_upsert"].readOnlyHint is False
+    assert annotations["control_theme_item_clear"].destructiveHint is True
     assert annotations["scene_save"].idempotentHint is True
