@@ -63,12 +63,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         else:
             raise RuntimeError("Godot plugin did not connect within 10 seconds")
 
-        state = await app.service.editor_get_state()
+        state = await _wait_for_editor_ready(app)
         hierarchy = await app.service.scene_get_hierarchy(limit=20)
         classes = await app.service.class_search(query="Button", limit=20)
 
-        if state.get("readiness") != "ready":
-            raise RuntimeError(f"Unexpected editor readiness: {state.get('readiness')}")
         if hierarchy.get("total") != 5:
             raise RuntimeError(f"Unexpected scene node count: {hierarchy.get('total')}")
         if classes.get("total", 0) < 4:
@@ -1031,6 +1029,21 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
     fatal_markers = ("SCRIPT ERROR", "Parse Error", "ERROR: Failed to load script")
     if any(marker in editor_output for marker in fatal_markers):
         raise RuntimeError(f"Godot reported script errors:\n{editor_output}")
+
+
+async def _wait_for_editor_ready(app: object, timeout_seconds: float = 30.0) -> dict:
+    """Wait for a newly imported isolated project to become writable."""
+    attempts = int(timeout_seconds / 0.1)
+    state: dict = {}
+    for _ in range(attempts):
+        state = await app.service.editor_get_state()
+        if state.get("readiness") == "ready":
+            return state
+        await asyncio.sleep(0.1)
+    raise RuntimeError(
+        "Editor did not become ready within "
+        f"{timeout_seconds:.0f} seconds; last state: {state}"
+    )
 
 
 def _property_value(result: dict, name: str) -> object:
