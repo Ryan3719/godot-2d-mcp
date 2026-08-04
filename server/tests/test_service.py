@@ -816,3 +816,94 @@ async def test_collision_shape_and_layer_tools_reject_invalid_payloads() -> None
         await service.collision_object_set_layers("/Main/Wall", layers=[1, 1])
     with pytest.raises(ValueError, match="1 to 32"):
         await service.collision_object_set_layers("/Main/Wall", masks=[33])
+
+
+@pytest.mark.asyncio
+async def test_physics_behavior_tools_forward_semantic_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    area_properties = {
+        "monitoring": False,
+        "gravity_space_override": "replace",
+        "gravity_direction": {"x": 0, "y": 1},
+        "gravity": 420.0,
+    }
+    body_properties = {
+        "motion_mode": "grounded",
+        "up_direction": {"x": 0, "y": -1},
+        "platform_floor_layers": [1, 3],
+    }
+    joint_properties = {"softness": 0.5, "angular_limit_enabled": True}
+
+    await service.area_2d_get("/Main/GravityZone", scene_file="res://main.tscn")
+    await service.physics_body_2d_get("/Main/Player", scene_file="res://main.tscn")
+    await service.joint_2d_get("/Main/PlayerJoint", scene_file="res://main.tscn")
+    await service.area_2d_set(
+        "/Main/GravityZone",
+        area_properties,
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
+    await service.physics_body_2d_set(
+        "/Main/Player", body_properties, scene_file="res://main.tscn"
+    )
+    await service.joint_2d_set(
+        "/Main/PlayerJoint",
+        properties=joint_properties,
+        node_a_path="/Main/Player",
+        node_b_path="/Main/Wall",
+        scene_file="res://main.tscn",
+    )
+
+    assert bridge.calls == [
+        ("area_2d_get", {"path": "/Main/GravityZone", "scene_file": "res://main.tscn"}, None),
+        ("physics_body_2d_get", {"path": "/Main/Player", "scene_file": "res://main.tscn"}, None),
+        ("joint_2d_get", {"path": "/Main/PlayerJoint", "scene_file": "res://main.tscn"}, None),
+        (
+            "area_2d_set",
+            {
+                "path": "/Main/GravityZone",
+                "properties": area_properties,
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        ),
+        (
+            "physics_body_2d_set",
+            {
+                "path": "/Main/Player",
+                "properties": body_properties,
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "joint_2d_set",
+            {
+                "path": "/Main/PlayerJoint",
+                "properties": joint_properties,
+                "node_a_path": "/Main/Player",
+                "node_b_path": "/Main/Wall",
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_physics_behavior_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="non-empty"):
+        await service.area_2d_set("/Main/GravityZone", {})
+    with pytest.raises(ValueError, match="at most 32"):
+        await service.physics_body_2d_set(
+            "/Main/Player", {f"property_{index}": index for index in range(33)}
+        )
+    with pytest.raises(ValueError, match="properties, node_a_path, or node_b_path"):
+        await service.joint_2d_set("/Main/PlayerJoint")
+    with pytest.raises(ValueError, match="JSON-compatible"):
+        await service.joint_2d_set("/Main/PlayerJoint", properties={"bias": float("inf")})
+    with pytest.raises(ValueError, match="node_a_path"):
+        await service.joint_2d_set("/Main/PlayerJoint", node_a_path="x" * 4097)

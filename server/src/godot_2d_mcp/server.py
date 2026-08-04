@@ -251,6 +251,45 @@ def create_application(
             scene_file=scene_file,
         )
 
+    @mcp.tool(annotations=READ_ONLY)
+    async def area_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read Area2D monitoring, priority, gravity, and damping override configuration."""
+        return await service.area_2d_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def physics_body_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read the semantic configuration supported by a 2D physics body type."""
+        return await service.physics_body_2d_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def joint_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read a PinJoint2D, GrooveJoint2D, or DampedSpringJoint2D configuration."""
+        return await service.joint_2d_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
     @mcp.tool(annotations=WRITE)
     async def node_create(
         type: str,
@@ -755,6 +794,55 @@ def create_application(
             path=path,
             layers=layers,
             masks=masks,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def area_2d_set(
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically set allowed Area2D monitoring, gravity, and damping configuration."""
+        return await service.area_2d_set(
+            path=path,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def physics_body_2d_set(
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically set allowed Static, Animatable, Character, or RigidBody2D configuration."""
+        return await service.physics_body_2d_set(
+            path=path,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def joint_2d_set(
+        path: str,
+        properties: dict[str, Any] | None = None,
+        node_a_path: str | None = None,
+        node_b_path: str | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically configure a supported 2D joint and its stable scene-path endpoints."""
+        return await service.joint_2d_set(
+            path=path,
+            properties=properties,
+            node_a_path=node_a_path,
+            node_b_path=node_b_path,
             session_id=session_id,
             scene_file=scene_file,
         )

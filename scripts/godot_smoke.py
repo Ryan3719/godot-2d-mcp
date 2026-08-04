@@ -52,6 +52,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
     )
 
     output = b""
+    failure: BaseException | None = None
     try:
         for _ in range(100):
             sessions = await app.registry.list_sessions()
@@ -996,8 +997,234 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if not redo_layers.get("changed"):
             raise RuntimeError("Collision layer update was not redoable")
 
+        area = await app.service.node_create(
+            type_name="Area2D",
+            name="AgentGravityZone",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        area_path = area["path"]
+        initial_area = await app.service.area_2d_get(area_path, scene_file=scene_file)
+        if initial_area["configuration"]["gravity_space_override"] != "disabled":
+            raise RuntimeError("Area2D did not expose readable gravity override names")
+        await _expect_godot_error(
+            app.service.area_2d_set(
+                area_path,
+                {"gravity_space_override": "not_a_mode"},
+                scene_file=scene_file,
+            ),
+            "INVALID_PHYSICS_ENUM",
+        )
+        area_update = await app.service.area_2d_set(
+            area_path,
+            {
+                "monitoring": False,
+                "priority": 12,
+                "gravity_space_override": "replace",
+                "gravity_point": True,
+                "gravity_point_center": {"x": 16.0, "y": -8.0},
+                "gravity_point_unit_distance": 32.0,
+                "gravity_direction": {"x": 0.0, "y": 1.0},
+                "gravity": 420.0,
+                "linear_damp_space_override": "combine_replace",
+                "linear_damp": 2.0,
+                "angular_damp_space_override": "replace_combine",
+                "angular_damp": 3.0,
+            },
+            scene_file=scene_file,
+        )
+        if (
+            area_update["configuration"]["gravity_space_override"] != "replace"
+            or area_update["configuration"]["gravity"] != 420.0
+            or area_update["configuration"]["monitoring"] is not False
+        ):
+            raise RuntimeError("Area2D semantic configuration was not applied")
+
+        static_update = await app.service.physics_body_2d_set(
+            wall_path,
+            {
+                "constant_linear_velocity": {"x": 24.0, "y": 0.0},
+                "constant_angular_velocity": 0.5,
+            },
+            scene_file=scene_file,
+        )
+        if static_update["body_kind"] != "StaticBody2D" or static_update["configuration"][
+            "constant_linear_velocity"
+        ] != {"x": 24.0, "y": 0.0}:
+            raise RuntimeError("StaticBody2D configuration was not applied")
+        static_state = await app.service.physics_body_2d_get(wall_path, scene_file=scene_file)
+        if static_state["configuration"]["constant_angular_velocity"] != 0.5:
+            raise RuntimeError("physics_body_2d_get did not return the current StaticBody2D configuration")
+
+        animated_body = await app.service.node_create(
+            type_name="AnimatableBody2D",
+            name="AgentPlatform",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        animated_body_path = animated_body["path"]
+        animated_update = await app.service.physics_body_2d_set(
+            animated_body_path,
+            {
+                "constant_linear_velocity": {"x": 0.0, "y": 32.0},
+                "sync_to_physics": False,
+            },
+            scene_file=scene_file,
+        )
+        if animated_update["configuration"]["sync_to_physics"] is not False:
+            raise RuntimeError("AnimatableBody2D configuration was not applied")
+
+        character_body = await app.service.node_create(
+            type_name="CharacterBody2D",
+            name="AgentCharacter",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        character_body_path = character_body["path"]
+        character_update = await app.service.physics_body_2d_set(
+            character_body_path,
+            {
+                "motion_mode": "grounded",
+                "up_direction": {"x": 0.0, "y": -1.0},
+                "velocity": {"x": 160.0, "y": 0.0},
+                "max_slides": 6,
+                "floor_snap_length": 8.0,
+                "platform_on_leave": "add_upward_velocity",
+                "platform_floor_layers": [1, 3],
+                "platform_wall_layers": [2],
+                "safe_margin": 0.08,
+            },
+            scene_file=scene_file,
+        )
+        character_configuration = character_update.get("configuration")
+        if (
+            not isinstance(character_configuration, dict)
+            or character_configuration["platform_floor_layers"] != [1, 3]
+            or character_configuration["platform_on_leave"] != "add_upward_velocity"
+        ):
+            raise RuntimeError(
+                f"CharacterBody2D semantic configuration was not applied: {character_update!r}"
+            )
+
+        rigid_body = await app.service.node_create(
+            type_name="RigidBody2D",
+            name="AgentRigidBody",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        rigid_body_path = rigid_body["path"]
+        rigid_update = await app.service.physics_body_2d_set(
+            rigid_body_path,
+            {
+                "mass": 2.5,
+                "gravity_scale": 0.5,
+                "center_of_mass_mode": "custom",
+                "center_of_mass": {"x": 4.0, "y": -2.0},
+                "freeze_mode": "kinematic",
+                "continuous_cd": "cast_shape",
+                "contact_monitor": True,
+                "max_contacts_reported": 8,
+                "linear_damp_mode": "replace",
+                "linear_damp": 0.5,
+                "angular_damp_mode": "combine",
+                "angular_damp": 0.25,
+            },
+            scene_file=scene_file,
+        )
+        if (
+            rigid_update["body_kind"] != "RigidBody2D"
+            or rigid_update["configuration"]["center_of_mass_mode"] != "custom"
+            or rigid_update["configuration"]["continuous_cd"] != "cast_shape"
+        ):
+            raise RuntimeError("RigidBody2D semantic configuration was not applied")
+
+        pin_joint = await app.service.node_create(
+            type_name="PinJoint2D",
+            name="AgentPinJoint",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        pin_joint_path = pin_joint["path"]
+        await _expect_godot_error(
+            app.service.joint_2d_set(
+                pin_joint_path,
+                node_a_path=area_path,
+                scene_file=scene_file,
+            ),
+            "JOINT_ENDPOINT_BODY_REQUIRED",
+        )
+        pin_update = await app.service.joint_2d_set(
+            pin_joint_path,
+            properties={
+                "bias": 0.2,
+                "softness": 0.5,
+                "angular_limit_enabled": True,
+                "angular_limit_lower": -0.5,
+                "angular_limit_upper": 0.5,
+                "motor_enabled": True,
+                "motor_target_velocity": 1.0,
+            },
+            node_a_path=rigid_body_path,
+            node_b_path=wall_path,
+            scene_file=scene_file,
+        )
+        if (
+            pin_update["node_a_path"] != rigid_body_path
+            or pin_update["node_b_path"] != wall_path
+            or pin_update["configuration"]["angular_limit_enabled"] is not True
+        ):
+            raise RuntimeError("PinJoint2D configuration or endpoint path was not applied")
+        pin_state = await app.service.joint_2d_get(pin_joint_path, scene_file=scene_file)
+        if pin_state["node_a_path"] != rigid_body_path or pin_state["configuration"]["softness"] != 0.5:
+            raise RuntimeError("joint_2d_get did not return the current PinJoint2D configuration")
+
+        groove_joint = await app.service.node_create(
+            type_name="GrooveJoint2D",
+            name="AgentGrooveJoint",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        groove_update = await app.service.joint_2d_set(
+            groove_joint["path"],
+            properties={"bias": 0.3, "length": 96.0, "initial_offset": 24.0},
+            node_a_path=character_body_path,
+            node_b_path=wall_path,
+            scene_file=scene_file,
+        )
+        if groove_update["configuration"]["length"] != 96.0:
+            raise RuntimeError("GrooveJoint2D configuration was not applied")
+
+        spring_joint = await app.service.node_create(
+            type_name="DampedSpringJoint2D",
+            name="AgentSpringJoint",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        spring_joint_path = spring_joint["path"]
+        spring_update = await app.service.joint_2d_set(
+            spring_joint_path,
+            properties={
+                "bias": 0.4,
+                "length": 80.0,
+                "rest_length": 60.0,
+                "stiffness": 12.0,
+                "damping": 0.8,
+            },
+            node_a_path=rigid_body_path,
+            node_b_path=animated_body_path,
+            scene_file=scene_file,
+        )
+        if spring_update["configuration"]["stiffness"] != 12.0:
+            raise RuntimeError("DampedSpringJoint2D configuration was not applied")
+        undo_spring = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_spring.get("changed"):
+            raise RuntimeError("Joint configuration was not undoable")
+        redo_spring = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_spring.get("changed"):
+            raise RuntimeError("Joint configuration was not redoable")
+
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 13 or _has_node(final_hierarchy, marker_path):
+        if final_hierarchy.get("total") != 20 or _has_node(final_hierarchy, marker_path):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
@@ -1010,6 +1237,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentMarkerCopy" not in saved_scene
             or "AgentWall" not in saved_scene
             or "ConcavePolygonShape2D" not in saved_scene
+            or "AgentSpringJoint" not in saved_scene
         ):
             raise RuntimeError("Saved scene does not contain the created Button")
 
@@ -1019,11 +1247,16 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             f"nodes={final_hierarchy['total']} "
             f"button_classes={classes['total']}"
         )
+    except BaseException as error:
+        failure = error
+        raise
     finally:
         if process.returncode is None:
             process.terminate()
         output, _ = await process.communicate()
         await app.bridge.stop()
+        if failure is not None and output:
+            print("Godot output after smoke failure:\n" + output.decode(errors="replace"))
 
     editor_output = output.decode(errors="replace")
     fatal_markers = ("SCRIPT ERROR", "Parse Error", "ERROR: Failed to load script")
