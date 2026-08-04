@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.9.0"
+const PLUGIN_VERSION := "0.10.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 
 const ConnectionScript := preload("res://addons/godot_2d_mcp/transport/connection.gd")
@@ -87,6 +87,8 @@ func _register_handlers() -> void:
 	_dispatcher.register("area_2d_get", physics_handler.get_area)
 	_dispatcher.register("physics_body_2d_get", physics_handler.get_physics_body)
 	_dispatcher.register("joint_2d_get", physics_handler.get_joint)
+	_dispatcher.register("ray_cast_2d_get", physics_handler.get_ray_cast)
+	_dispatcher.register("shape_cast_2d_get", physics_handler.get_shape_cast)
 	_dispatcher.register("node_create", node_handler.create_node)
 	_dispatcher.register("node_set_properties", node_handler.set_properties)
 	_dispatcher.register("node_delete", node_handler.delete_node)
@@ -118,6 +120,9 @@ func _register_handlers() -> void:
 	_dispatcher.register("area_2d_set", physics_handler.set_area)
 	_dispatcher.register("physics_body_2d_set", physics_handler.set_physics_body)
 	_dispatcher.register("joint_2d_set", physics_handler.set_joint)
+	_dispatcher.register("ray_cast_2d_set", physics_handler.set_ray_cast)
+	_dispatcher.register("shape_cast_2d_set", physics_handler.set_shape_cast)
+	_dispatcher.register("shape_cast_2d_shape_clear", physics_handler.clear_shape_cast_shape)
 	_dispatcher.register("class_search", class_handler.search)
 
 

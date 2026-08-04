@@ -907,3 +907,85 @@ async def test_physics_behavior_tools_reject_invalid_payloads() -> None:
         await service.joint_2d_set("/Main/PlayerJoint", properties={"bias": float("inf")})
     with pytest.raises(ValueError, match="node_a_path"):
         await service.joint_2d_set("/Main/PlayerJoint", node_a_path="x" * 4097)
+
+
+@pytest.mark.asyncio
+async def test_cast_tools_forward_configuration_masks_and_shapes() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    ray_properties = {"target_position": {"x": 96, "y": 0}, "collide_with_areas": True}
+    shape_properties = {"margin": 2.0, "max_results": 8}
+    circle = {"radius": 12.0}
+
+    await service.ray_cast_2d_get("/Main/GroundRay", scene_file="res://main.tscn")
+    await service.shape_cast_2d_get("/Main/PlayerShapeCast", scene_file="res://main.tscn")
+    await service.ray_cast_2d_set(
+        "/Main/GroundRay",
+        properties=ray_properties,
+        masks=[1, 4],
+        scene_file="res://main.tscn",
+    )
+    await service.shape_cast_2d_set(
+        "/Main/PlayerShapeCast",
+        properties=shape_properties,
+        masks=[2],
+        shape_type="circle",
+        shape_properties=circle,
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
+    await service.shape_cast_2d_shape_clear("/Main/PlayerShapeCast", scene_file="res://main.tscn")
+
+    assert bridge.calls == [
+        ("ray_cast_2d_get", {"path": "/Main/GroundRay", "scene_file": "res://main.tscn"}, None),
+        (
+            "shape_cast_2d_get",
+            {"path": "/Main/PlayerShapeCast", "scene_file": "res://main.tscn"},
+            None,
+        ),
+        (
+            "ray_cast_2d_set",
+            {
+                "path": "/Main/GroundRay",
+                "properties": ray_properties,
+                "masks": [1, 4],
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "shape_cast_2d_set",
+            {
+                "path": "/Main/PlayerShapeCast",
+                "properties": shape_properties,
+                "masks": [2],
+                "shape_type": "circle",
+                "shape_properties": circle,
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        ),
+        (
+            "shape_cast_2d_shape_clear",
+            {"path": "/Main/PlayerShapeCast", "scene_file": "res://main.tscn"},
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_cast_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="properties or masks"):
+        await service.ray_cast_2d_set("/Main/GroundRay")
+    with pytest.raises(ValueError, match="unique"):
+        await service.ray_cast_2d_set("/Main/GroundRay", masks=[2, 2])
+    with pytest.raises(ValueError, match="properties, masks, or shape_type"):
+        await service.shape_cast_2d_set("/Main/PlayerShapeCast")
+    with pytest.raises(ValueError, match="shape_type"):
+        await service.shape_cast_2d_set(
+            "/Main/PlayerShapeCast", shape_properties={"radius": 12.0}
+        )
+    with pytest.raises(ValueError, match="shape_properties"):
+        await service.shape_cast_2d_set("/Main/PlayerShapeCast", shape_type="circle")

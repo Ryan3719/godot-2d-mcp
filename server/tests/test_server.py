@@ -29,6 +29,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "area_2d_get",
         "physics_body_2d_get",
         "joint_2d_get",
+        "ray_cast_2d_get",
+        "shape_cast_2d_get",
         "node_create",
         "node_set_properties",
         "node_delete",
@@ -60,6 +62,9 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "area_2d_set",
         "physics_body_2d_set",
         "joint_2d_set",
+        "ray_cast_2d_set",
+        "shape_cast_2d_set",
+        "shape_cast_2d_shape_clear",
         "scene_save",
         "scene_undo",
         "scene_redo",
@@ -78,6 +83,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["area_2d_get"].readOnlyHint is True
     assert annotations["physics_body_2d_get"].readOnlyHint is True
     assert annotations["joint_2d_get"].readOnlyHint is True
+    assert annotations["ray_cast_2d_get"].readOnlyHint is True
+    assert annotations["shape_cast_2d_get"].readOnlyHint is True
     assert annotations["node_create"].readOnlyHint is False
     assert annotations["node_delete"].destructiveHint is True
     assert annotations["node_rename"].destructiveHint is False
@@ -108,4 +115,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["area_2d_set"].readOnlyHint is False
     assert annotations["physics_body_2d_set"].readOnlyHint is False
     assert annotations["joint_2d_set"].readOnlyHint is False
+    assert annotations["ray_cast_2d_set"].readOnlyHint is False
+    assert annotations["shape_cast_2d_set"].readOnlyHint is False
+    assert annotations["shape_cast_2d_shape_clear"].destructiveHint is True
     assert annotations["scene_save"].idempotentHint is True
