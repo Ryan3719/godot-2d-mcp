@@ -773,6 +773,19 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def tile_set_layers_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "tile_set_layers_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def control_stylebox_flat_upsert(
         self,
         path: str,
@@ -1362,6 +1375,195 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def tile_set_physics_layer_create(
+        self,
+        path: str,
+        layers: list[int] | None = None,
+        masks: list[int] | None = None,
+        priority: float = 1.0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        requested_layers = [1] if layers is None else layers
+        requested_masks = [1] if masks is None else masks
+        _validate_collision_layer_numbers(requested_layers, "layers")
+        _validate_collision_layer_numbers(requested_masks, "masks")
+        _validate_nonnegative_finite_number(priority, "priority")
+        return await self.bridge.call(
+            "tile_set_physics_layer_create",
+            _scene_params(
+                scene_file,
+                path=path,
+                layers=requested_layers,
+                masks=requested_masks,
+                priority=priority,
+            ),
+            session_id=session_id,
+        )
+
+    async def tile_set_navigation_layer_create(
+        self,
+        path: str,
+        layers: list[int] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        requested_layers = [1] if layers is None else layers
+        _validate_collision_layer_numbers(requested_layers, "layers")
+        return await self.bridge.call(
+            "tile_set_navigation_layer_create",
+            _scene_params(scene_file, path=path, layers=requested_layers),
+            session_id=session_id,
+        )
+
+    async def tile_set_custom_data_layer_create(
+        self,
+        path: str,
+        name: str,
+        value_type: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tile_set_identifier(name, "name")
+        _validate_tile_set_custom_data_type(value_type)
+        return await self.bridge.call(
+            "tile_set_custom_data_layer_create",
+            _scene_params(scene_file, path=path, name=name, value_type=value_type),
+            session_id=session_id,
+        )
+
+    async def tile_set_terrain_set_create(
+        self,
+        path: str,
+        mode: str = "match_corners_and_sides",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tile_set_terrain_mode(mode)
+        return await self.bridge.call(
+            "tile_set_terrain_set_create",
+            _scene_params(scene_file, path=path, mode=mode),
+            session_id=session_id,
+        )
+
+    async def tile_set_terrain_create(
+        self,
+        path: str,
+        terrain_set: int,
+        name: str = "",
+        color: Any | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tile_set_terrain_set_index(terrain_set)
+        _validate_optional_tile_set_name(name, "name")
+        return await self.bridge.call(
+            "tile_set_terrain_create",
+            _scene_params(
+                scene_file,
+                path=path,
+                terrain_set=terrain_set,
+                name=name,
+                color=color,
+            ),
+            session_id=session_id,
+        )
+
+    async def tile_set_atlas_alternative_create(
+        self,
+        path: str,
+        source_id: int,
+        atlas_coords: dict[str, int],
+        alternative_tile: int | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tilemap_source_id(source_id)
+        _validate_tilemap_vector2i(atlas_coords, "atlas_coords", nonnegative=True)
+        _validate_optional_atlas_alternative_tile(alternative_tile, minimum=1)
+        return await self.bridge.call(
+            "tile_set_atlas_alternative_create",
+            _scene_params(
+                scene_file,
+                path=path,
+                source_id=source_id,
+                atlas_coords=atlas_coords,
+                alternative_tile=alternative_tile,
+            ),
+            session_id=session_id,
+        )
+
+    async def tile_set_atlas_tile_terrain_set(
+        self,
+        path: str,
+        source_id: int,
+        atlas_coords: dict[str, int],
+        terrain_set: int,
+        terrain: int,
+        peering_bits: dict[str, int] | None = None,
+        alternative_tile: int = 0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tilemap_source_id(source_id)
+        _validate_tilemap_vector2i(atlas_coords, "atlas_coords", nonnegative=True)
+        _validate_atlas_alternative_tile(alternative_tile)
+        _validate_tile_set_terrain_index(terrain_set, allow_clear=True, label="terrain_set")
+        _validate_tile_set_terrain_index(terrain, allow_clear=True, label="terrain")
+        if terrain_set == -1 and terrain != -1:
+            raise ValueError("terrain must be -1 when terrain_set is -1")
+        requested_peering_bits = {} if peering_bits is None else peering_bits
+        _validate_tile_set_peering_bits(requested_peering_bits)
+        return await self.bridge.call(
+            "tile_set_atlas_tile_terrain_set",
+            _scene_params(
+                scene_file,
+                path=path,
+                source_id=source_id,
+                atlas_coords=atlas_coords,
+                terrain_set=terrain_set,
+                terrain=terrain,
+                peering_bits=requested_peering_bits,
+                alternative_tile=alternative_tile,
+            ),
+            session_id=session_id,
+        )
+
+    async def tile_set_atlas_tile_custom_data_set(
+        self,
+        path: str,
+        source_id: int,
+        atlas_coords: dict[str, int],
+        values: dict[str, Any],
+        alternative_tile: int = 0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tilemap_source_id(source_id)
+        _validate_tilemap_vector2i(atlas_coords, "atlas_coords", nonnegative=True)
+        _validate_atlas_alternative_tile(alternative_tile)
+        _validate_tile_set_custom_data_values(values)
+        return await self.bridge.call(
+            "tile_set_atlas_tile_custom_data_set",
+            _scene_params(
+                scene_file,
+                path=path,
+                source_id=source_id,
+                atlas_coords=atlas_coords,
+                values=values,
+                alternative_tile=alternative_tile,
+            ),
+            session_id=session_id,
+        )
+
     async def scene_save(
         self,
         session_id: str | None = None,
@@ -1862,6 +2064,122 @@ def _validate_tilemap_coordinates(coords: list[dict[str, int]]) -> None:
         if coord_key in seen:
             raise ValueError("coords must not contain duplicates")
         seen.add(coord_key)
+
+
+def _validate_nonnegative_finite_number(value: float, label: str) -> None:
+    if not _is_finite_number(value) or float(value) < 0.0:
+        raise ValueError(f"{label} must be a finite number greater than or equal to zero")
+
+
+def _validate_tile_set_identifier(value: str, label: str) -> None:
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or len(value.strip()) > 128
+        or "/" in value
+        or ":" in value
+    ):
+        raise ValueError(
+            f"{label} must be a non-empty TileSet identifier with at most 128 characters"
+        )
+
+
+def _validate_optional_tile_set_name(value: str, label: str) -> None:
+    if not isinstance(value, str) or len(value) > 128:
+        raise ValueError(f"{label} must be a string with at most 128 characters")
+
+
+def _validate_tile_set_custom_data_type(value: str) -> None:
+    if not isinstance(value, str) or value.strip().lower() not in {
+        "bool",
+        "int",
+        "float",
+        "string",
+        "vector2",
+        "vector2i",
+        "color",
+    }:
+        raise ValueError(
+            "value_type must be one of: bool, int, float, string, vector2, vector2i, color"
+        )
+
+
+def _validate_tile_set_terrain_mode(value: str) -> None:
+    if not isinstance(value, str) or value.strip().lower() not in {
+        "match_corners_and_sides",
+        "match_corners",
+        "match_sides",
+    }:
+        raise ValueError(
+            "mode must be match_corners_and_sides, match_corners, or match_sides"
+        )
+
+
+def _validate_tile_set_terrain_set_index(value: int) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value < 64:
+        raise ValueError("terrain_set must be an integer between 0 and 63")
+
+
+def _validate_tile_set_terrain_index(
+    value: int, *, allow_clear: bool, label: str
+) -> None:
+    minimum = -1 if allow_clear else 0
+    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value < 64:
+        raise ValueError(f"{label} must be an integer between {minimum} and 63")
+
+
+def _validate_atlas_alternative_tile(value: int) -> None:
+    _validate_optional_atlas_alternative_tile(value, minimum=0)
+
+
+def _validate_optional_atlas_alternative_tile(value: int | None, *, minimum: int) -> None:
+    if value is None:
+        return
+    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= 4095:
+        raise ValueError(f"alternative_tile must be an integer between {minimum} and 4095")
+
+
+def _validate_tile_set_peering_bits(peering_bits: dict[str, int]) -> None:
+    supported_names = {
+        "right_side",
+        "right_corner",
+        "bottom_right_side",
+        "bottom_right_corner",
+        "bottom_side",
+        "bottom_corner",
+        "bottom_left_side",
+        "bottom_left_corner",
+        "left_side",
+        "left_corner",
+        "top_left_side",
+        "top_left_corner",
+        "top_side",
+        "top_corner",
+        "top_right_side",
+        "top_right_corner",
+    }
+    if not isinstance(peering_bits, dict) or len(peering_bits) > len(supported_names):
+        raise ValueError("peering_bits must be an object with at most 16 supported directions")
+    if any(
+        not isinstance(name, str)
+        or name not in supported_names
+        or isinstance(value, bool)
+        or not isinstance(value, int)
+        or not -1 <= value < 64
+        for name, value in peering_bits.items()
+    ):
+        raise ValueError(
+            "peering_bits must map supported directions to terrain indices from -1 to 63"
+        )
+
+
+def _validate_tile_set_custom_data_values(values: dict[str, Any]) -> None:
+    if not isinstance(values, dict) or not 1 <= len(values) <= 16:
+        raise ValueError("values must be a non-empty object with at most 16 entries")
+    for name, value in values.items():
+        _validate_tile_set_identifier(name, "custom data name")
+        if not _is_json_bind_value(value):
+            raise ValueError("values must contain bounded JSON-compatible values")
 
 
 def _validate_optional_joint_endpoint_path(value: str | None, label: str) -> None:

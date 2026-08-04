@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.13.0"
+const PLUGIN_VERSION := "0.14.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 
 const ConnectionScript := preload("res://addons/godot_2d_mcp/transport/connection.gd")
@@ -96,6 +96,7 @@ func _register_handlers() -> void:
 	_dispatcher.register("tile_map_layer_get", tile_map_handler.get_tile_map_layer)
 	_dispatcher.register("tile_map_layer_cells_get", tile_map_handler.get_tile_map_layer_cells)
 	_dispatcher.register("tile_set_get", tile_map_handler.get_tile_set)
+	_dispatcher.register("tile_set_layers_get", tile_map_handler.get_tile_set_layers)
 	_dispatcher.register("node_create", node_handler.create_node)
 	_dispatcher.register("node_set_properties", node_handler.set_properties)
 	_dispatcher.register("node_delete", node_handler.delete_node)
@@ -143,6 +144,14 @@ func _register_handlers() -> void:
 	_dispatcher.register("tile_set_atlas_tile_create", tile_map_handler.create_tile_set_atlas_tile)
 	_dispatcher.register("tile_map_layer_cells_set", tile_map_handler.set_tile_map_layer_cells)
 	_dispatcher.register("tile_map_layer_cells_clear", tile_map_handler.clear_tile_map_layer_cells)
+	_dispatcher.register("tile_set_physics_layer_create", tile_map_handler.create_tile_set_physics_layer)
+	_dispatcher.register("tile_set_navigation_layer_create", tile_map_handler.create_tile_set_navigation_layer)
+	_dispatcher.register("tile_set_custom_data_layer_create", tile_map_handler.create_tile_set_custom_data_layer)
+	_dispatcher.register("tile_set_terrain_set_create", tile_map_handler.create_tile_set_terrain_set)
+	_dispatcher.register("tile_set_terrain_create", tile_map_handler.create_tile_set_terrain)
+	_dispatcher.register("tile_set_atlas_alternative_create", tile_map_handler.create_tile_set_atlas_alternative)
+	_dispatcher.register("tile_set_atlas_tile_terrain_set", tile_map_handler.set_tile_set_atlas_tile_terrain)
+	_dispatcher.register("tile_set_atlas_tile_custom_data_set", tile_map_handler.set_tile_set_atlas_tile_custom_data)
 	_dispatcher.register("class_search", class_handler.search)
 
 
