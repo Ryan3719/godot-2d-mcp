@@ -1679,6 +1679,132 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         redo_tile_custom_data = await app.service.scene_redo(scene_file=scene_file)
         if not redo_tile_custom_data.get("changed"):
             raise RuntimeError("TileSet atlas custom-data edit was not redoable")
+        collision_polygons = [
+            {
+                "points": [
+                    {"x": -8.0, "y": -8.0},
+                    {"x": 8.0, "y": -8.0},
+                    {"x": 8.0, "y": 8.0},
+                    {"x": -8.0, "y": 8.0},
+                ],
+                "one_way": True,
+                "one_way_margin": 2.5,
+            }
+        ]
+        atlas_collision = await app.service.tile_set_atlas_tile_collision_set(
+            tile_map_layer_path,
+            source_id=3,
+            atlas_coords={"x": 0, "y": 0},
+            physics_layer=0,
+            polygons=collision_polygons,
+            alternative_tile=1,
+            scene_file=scene_file,
+        )
+        if atlas_collision["collision_polygons"] != collision_polygons:
+            raise RuntimeError("TileSet atlas collision polygons were not applied")
+        await _expect_godot_error(
+            app.service.tile_set_atlas_tile_collision_set(
+                tile_map_layer_path,
+                source_id=3,
+                atlas_coords={"x": 0, "y": 0},
+                physics_layer=0,
+                polygons=[
+                    {
+                        "points": [
+                            {"x": -8.0, "y": -8.0},
+                            {"x": 0.0, "y": 0.0},
+                            {"x": 8.0, "y": 8.0},
+                        ]
+                    }
+                ],
+                alternative_tile=1,
+                scene_file=scene_file,
+            ),
+            "INVALID_TILE_COLLISION",
+        )
+        navigation_vertices = [
+            {"x": -8.0, "y": -8.0},
+            {"x": 8.0, "y": -8.0},
+            {"x": 8.0, "y": 8.0},
+            {"x": -8.0, "y": 8.0},
+        ]
+        atlas_navigation = await app.service.tile_set_atlas_tile_navigation_set(
+            tile_map_layer_path,
+            source_id=3,
+            atlas_coords={"x": 0, "y": 0},
+            navigation_layer=0,
+            vertices=navigation_vertices,
+            polygons=[[0, 1, 2, 3]],
+            agent_radius=0.5,
+            alternative_tile=1,
+            scene_file=scene_file,
+        )
+        navigation_polygon = atlas_navigation["navigation_polygon"]
+        if (
+            navigation_polygon["agent_radius"] != 0.5
+            or navigation_polygon["vertices"] != navigation_vertices
+            or navigation_polygon["polygons"] != [[0, 1, 2, 3]]
+        ):
+            raise RuntimeError("TileSet atlas navigation polygon was not applied")
+        atlas_tile_state = await app.service.tile_set_atlas_tile_get(
+            tile_map_layer_path,
+            source_id=3,
+            atlas_coords={"x": 0, "y": 0},
+            alternative_tile=1,
+            scene_file=scene_file,
+        )
+        if (
+            atlas_tile_state["physics_layers"] != [
+                {"index": 0, "collision_polygons": collision_polygons}
+            ]
+            or atlas_tile_state["navigation_layers"]
+            != [{"index": 0, "navigation_polygon": navigation_polygon}]
+        ):
+            raise RuntimeError("tile_set_atlas_tile_get did not return TileData geometry")
+        await _expect_godot_error(
+            app.service.tile_set_atlas_tile_navigation_set(
+                tile_map_layer_path,
+                source_id=3,
+                atlas_coords={"x": 0, "y": 0},
+                navigation_layer=0,
+                vertices=[
+                    {"x": -8.0, "y": -8.0},
+                    {"x": 8.0, "y": -8.0},
+                    {"x": -8.0, "y": 8.0},
+                    {"x": 8.0, "y": 8.0},
+                ],
+                polygons=[[0, 1, 2, 3]],
+                alternative_tile=1,
+                scene_file=scene_file,
+            ),
+            "INVALID_TILE_NAVIGATION",
+        )
+        cleared_atlas_navigation = await app.service.tile_set_atlas_tile_navigation_set(
+            tile_map_layer_path,
+            source_id=3,
+            atlas_coords={"x": 0, "y": 0},
+            navigation_layer=0,
+            clear=True,
+            alternative_tile=1,
+            scene_file=scene_file,
+        )
+        if cleared_atlas_navigation["navigation_polygon"] is not None:
+            raise RuntimeError("TileSet atlas navigation polygon was not cleared")
+        undo_tile_navigation_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_tile_navigation_clear.get("changed"):
+            raise RuntimeError("TileSet atlas navigation clear was not undoable")
+        restored_atlas_tile = await app.service.tile_set_atlas_tile_get(
+            tile_map_layer_path,
+            source_id=3,
+            atlas_coords={"x": 0, "y": 0},
+            alternative_tile=1,
+            scene_file=scene_file,
+        )
+        if restored_atlas_tile["navigation_layers"][0]["navigation_polygon"] != navigation_polygon:
+            raise RuntimeError("Undo did not restore TileSet atlas navigation geometry")
+        redo_tile_navigation_clear = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_tile_navigation_clear.get("changed"):
+            raise RuntimeError("TileSet atlas navigation clear was not redoable")
         tile_set_state = await app.service.tile_set_get(tile_map_layer_path, scene_file=scene_file)
         if (
             tile_set_state["total"] != 1

@@ -1278,7 +1278,31 @@ async def test_tileset_semantic_tools_forward_atomic_payloads() -> None:
     path = "/Main/Tiles"
     scene_file = "res://main.tscn"
 
+    collision_polygons = [
+        {
+            "points": [
+                {"x": -8.0, "y": -8.0},
+                {"x": 8.0, "y": -8.0},
+                {"x": 8.0, "y": 8.0},
+            ],
+            "one_way": True,
+            "one_way_margin": 2.5,
+        }
+    ]
+    navigation_vertices = [
+        {"x": -8.0, "y": -8.0},
+        {"x": 8.0, "y": -8.0},
+        {"x": 8.0, "y": 8.0},
+    ]
+
     await service.tile_set_layers_get(path, scene_file=scene_file)
+    await service.tile_set_atlas_tile_get(
+        path,
+        source_id=4,
+        atlas_coords={"x": 1, "y": 2},
+        alternative_tile=1,
+        scene_file=scene_file,
+    )
     await service.tile_set_physics_layer_create(
         path,
         layers=[2],
@@ -1323,9 +1347,49 @@ async def test_tileset_semantic_tools_forward_atomic_payloads() -> None:
         alternative_tile=1,
         scene_file=scene_file,
     )
+    await service.tile_set_atlas_tile_collision_set(
+        path,
+        source_id=4,
+        atlas_coords={"x": 1, "y": 2},
+        physics_layer=0,
+        polygons=collision_polygons,
+        alternative_tile=1,
+        scene_file=scene_file,
+    )
+    await service.tile_set_atlas_tile_navigation_set(
+        path,
+        source_id=4,
+        atlas_coords={"x": 1, "y": 2},
+        navigation_layer=0,
+        vertices=navigation_vertices,
+        polygons=[[0, 1, 2]],
+        agent_radius=0.5,
+        alternative_tile=1,
+        scene_file=scene_file,
+    )
+    await service.tile_set_atlas_tile_navigation_set(
+        path,
+        source_id=4,
+        atlas_coords={"x": 1, "y": 2},
+        navigation_layer=0,
+        clear=True,
+        alternative_tile=1,
+        scene_file=scene_file,
+    )
 
     assert bridge.calls == [
         ("tile_set_layers_get", {"path": path, "scene_file": scene_file}, None),
+        (
+            "tile_set_atlas_tile_get",
+            {
+                "path": path,
+                "source_id": 4,
+                "atlas_coords": {"x": 1, "y": 2},
+                "alternative_tile": 1,
+                "scene_file": scene_file,
+            },
+            None,
+        ),
         (
             "tile_set_physics_layer_create",
             {
@@ -1405,6 +1469,48 @@ async def test_tileset_semantic_tools_forward_atomic_payloads() -> None:
             },
             None,
         ),
+        (
+            "tile_set_atlas_tile_collision_set",
+            {
+                "path": path,
+                "source_id": 4,
+                "atlas_coords": {"x": 1, "y": 2},
+                "physics_layer": 0,
+                "polygons": collision_polygons,
+                "alternative_tile": 1,
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "tile_set_atlas_tile_navigation_set",
+            {
+                "path": path,
+                "source_id": 4,
+                "atlas_coords": {"x": 1, "y": 2},
+                "navigation_layer": 0,
+                "clear": False,
+                "alternative_tile": 1,
+                "vertices": navigation_vertices,
+                "polygons": [[0, 1, 2]],
+                "agent_radius": 0.5,
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "tile_set_atlas_tile_navigation_set",
+            {
+                "path": path,
+                "source_id": 4,
+                "atlas_coords": {"x": 1, "y": 2},
+                "navigation_layer": 0,
+                "clear": True,
+                "alternative_tile": 1,
+                "scene_file": scene_file,
+            },
+            None,
+        ),
     ]
 
 
@@ -1464,4 +1570,36 @@ async def test_tilemap_tools_reject_invalid_payloads() -> None:
             source_id=0,
             atlas_coords={"x": 0, "y": 0},
             values={},
+        )
+    with pytest.raises(ValueError, match="physics_layer"):
+        await service.tile_set_atlas_tile_collision_set(
+            "/Main/Tiles",
+            source_id=0,
+            atlas_coords={"x": 0, "y": 0},
+            physics_layer=-1,
+            polygons=[],
+        )
+    with pytest.raises(ValueError, match="between three"):
+        await service.tile_set_atlas_tile_collision_set(
+            "/Main/Tiles",
+            source_id=0,
+            atlas_coords={"x": 0, "y": 0},
+            physics_layer=0,
+            polygons=[{"points": [{"x": 0, "y": 0}, {"x": 1, "y": 1}]}],
+        )
+    with pytest.raises(ValueError, match="vertices and polygons"):
+        await service.tile_set_atlas_tile_navigation_set(
+            "/Main/Tiles",
+            source_id=0,
+            atlas_coords={"x": 0, "y": 0},
+            navigation_layer=0,
+        )
+    with pytest.raises(ValueError, match="clear cannot"):
+        await service.tile_set_atlas_tile_navigation_set(
+            "/Main/Tiles",
+            source_id=0,
+            atlas_coords={"x": 0, "y": 0},
+            navigation_layer=0,
+            vertices=[],
+            clear=True,
         )

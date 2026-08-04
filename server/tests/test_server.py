@@ -37,6 +37,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "tile_map_layer_cells_get",
         "tile_set_get",
         "tile_set_layers_get",
+        "tile_set_atlas_tile_get",
         "node_create",
         "node_set_properties",
         "node_delete",
@@ -90,6 +91,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "tile_set_atlas_alternative_create",
         "tile_set_atlas_tile_terrain_set",
         "tile_set_atlas_tile_custom_data_set",
+        "tile_set_atlas_tile_collision_set",
+        "tile_set_atlas_tile_navigation_set",
         "tile_map_layer_cells_set",
         "tile_map_layer_cells_clear",
         "scene_save",
@@ -118,6 +121,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["tile_map_layer_cells_get"].readOnlyHint is True
     assert annotations["tile_set_get"].readOnlyHint is True
     assert annotations["tile_set_layers_get"].readOnlyHint is True
+    assert annotations["tile_set_atlas_tile_get"].readOnlyHint is True
     assert annotations["node_create"].readOnlyHint is False
     assert annotations["node_delete"].destructiveHint is True
     assert annotations["node_rename"].destructiveHint is False
@@ -170,6 +174,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["tile_set_atlas_alternative_create"].readOnlyHint is False
     assert annotations["tile_set_atlas_tile_terrain_set"].readOnlyHint is False
     assert annotations["tile_set_atlas_tile_custom_data_set"].readOnlyHint is False
+    assert annotations["tile_set_atlas_tile_collision_set"].readOnlyHint is False
+    assert annotations["tile_set_atlas_tile_navigation_set"].readOnlyHint is False
     assert annotations["tile_map_layer_cells_set"].readOnlyHint is False
     assert annotations["tile_map_layer_cells_clear"].destructiveHint is True
     assert annotations["scene_save"].idempotentHint is True

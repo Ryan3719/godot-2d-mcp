@@ -786,6 +786,31 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def tile_set_atlas_tile_get(
+        self,
+        path: str,
+        source_id: int,
+        atlas_coords: dict[str, int],
+        alternative_tile: int = 0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tilemap_source_id(source_id)
+        _validate_tilemap_vector2i(atlas_coords, "atlas_coords", nonnegative=True)
+        _validate_atlas_alternative_tile(alternative_tile)
+        return await self.bridge.call(
+            "tile_set_atlas_tile_get",
+            _scene_params(
+                scene_file,
+                path=path,
+                source_id=source_id,
+                atlas_coords=atlas_coords,
+                alternative_tile=alternative_tile,
+            ),
+            session_id=session_id,
+        )
+
     async def control_stylebox_flat_upsert(
         self,
         path: str,
@@ -1564,6 +1589,87 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def tile_set_atlas_tile_collision_set(
+        self,
+        path: str,
+        source_id: int,
+        atlas_coords: dict[str, int],
+        physics_layer: int,
+        polygons: list[dict[str, Any]],
+        alternative_tile: int = 0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tilemap_source_id(source_id)
+        _validate_tilemap_vector2i(atlas_coords, "atlas_coords", nonnegative=True)
+        _validate_tile_set_layer_index(physics_layer, "physics_layer")
+        _validate_tile_collision_polygons(polygons)
+        _validate_atlas_alternative_tile(alternative_tile)
+        return await self.bridge.call(
+            "tile_set_atlas_tile_collision_set",
+            _scene_params(
+                scene_file,
+                path=path,
+                source_id=source_id,
+                atlas_coords=atlas_coords,
+                physics_layer=physics_layer,
+                polygons=polygons,
+                alternative_tile=alternative_tile,
+            ),
+            session_id=session_id,
+        )
+
+    async def tile_set_atlas_tile_navigation_set(
+        self,
+        path: str,
+        source_id: int,
+        atlas_coords: dict[str, int],
+        navigation_layer: int,
+        vertices: list[dict[str, float | int]] | None = None,
+        polygons: list[list[int]] | None = None,
+        agent_radius: float | None = None,
+        clear: bool = False,
+        alternative_tile: int = 0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tilemap_source_id(source_id)
+        _validate_tilemap_vector2i(atlas_coords, "atlas_coords", nonnegative=True)
+        _validate_tile_set_layer_index(navigation_layer, "navigation_layer")
+        _validate_atlas_alternative_tile(alternative_tile)
+        if not isinstance(clear, bool):
+            raise ValueError("clear must be a boolean")
+        params = _scene_params(
+            scene_file,
+            path=path,
+            source_id=source_id,
+            atlas_coords=atlas_coords,
+            navigation_layer=navigation_layer,
+            clear=clear,
+            alternative_tile=alternative_tile,
+        )
+        if clear:
+            if vertices is not None or polygons is not None or agent_radius is not None:
+                raise ValueError(
+                    "clear cannot be combined with vertices, polygons, or agent_radius"
+                )
+        else:
+            if vertices is None or polygons is None:
+                raise ValueError("vertices and polygons are required unless clear is true")
+            _validate_tile_navigation_geometry(vertices, polygons)
+            requested_radius = 0.0 if agent_radius is None else agent_radius
+            _validate_navigation_polygon_agent_radius(requested_radius)
+            params["vertices"] = vertices
+            params["polygons"] = polygons
+            params["agent_radius"] = requested_radius
+        return await self.bridge.call(
+            "tile_set_atlas_tile_navigation_set",
+            params,
+            session_id=session_id,
+        )
+
     async def scene_save(
         self,
         session_id: str | None = None,
@@ -1973,6 +2079,75 @@ def _validate_navigation_polygon_indices(polygons: list[list[int]]) -> None:
         for index in polygon
     ):
         raise ValueError("polygon indices must be non-negative integers")
+
+
+def _validate_tile_set_layer_index(value: int, label: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value < 64:
+        raise ValueError(f"{label} must be an integer between 0 and 63")
+
+
+def _validate_tile_geometry_points(points: list[dict[str, float | int]], label: str) -> None:
+    if not isinstance(points, list) or not 3 <= len(points) <= 512:
+        raise ValueError(f"{label} must contain between three and 512 Vector2 points")
+    if any(
+        not isinstance(point, dict)
+        or set(point) != {"x", "y"}
+        or not _is_finite_number(point["x"])
+        or not _is_finite_number(point["y"])
+        for point in points
+    ):
+        raise ValueError(f"{label} must contain Vector2 objects with finite x and y values")
+    point_keys = {(float(point["x"]), float(point["y"])) for point in points}
+    if len(point_keys) != len(points):
+        raise ValueError(f"{label} points must be unique")
+
+
+def _validate_tile_collision_polygons(polygons: list[dict[str, Any]]) -> None:
+    if not isinstance(polygons, list) or len(polygons) > 128:
+        raise ValueError("polygons must contain at most 128 polygons")
+    total_points = sum(
+        len(polygon["points"])
+        for polygon in polygons
+        if isinstance(polygon, dict) and isinstance(polygon.get("points"), list)
+    )
+    if total_points > 2048:
+        raise ValueError("collision polygon points exceed the supported limit")
+    for index, polygon in enumerate(polygons):
+        if not isinstance(polygon, dict) or "points" not in polygon or set(polygon) - {
+            "points",
+            "one_way",
+            "one_way_margin",
+        }:
+            raise ValueError("each collision polygon must contain points and supported options")
+        _validate_tile_geometry_points(polygon["points"], f"polygons[{index}].points")
+        if "one_way" in polygon and not isinstance(polygon["one_way"], bool):
+            raise ValueError("polygons[].one_way must be a boolean")
+        if "one_way_margin" in polygon:
+            _validate_nonnegative_finite_number(
+                polygon["one_way_margin"], "polygons[].one_way_margin"
+            )
+
+
+def _validate_tile_navigation_geometry(
+    vertices: list[dict[str, float | int]], polygons: list[list[int]]
+) -> None:
+    _validate_tile_geometry_points(vertices, "vertices")
+    if not isinstance(polygons, list) or not 1 <= len(polygons) <= 512:
+        raise ValueError("polygons must contain between one and 512 index arrays")
+    if sum(len(polygon) for polygon in polygons if isinstance(polygon, list)) > 2048:
+        raise ValueError("polygon indices exceed the supported limit")
+    for polygon in polygons:
+        if not isinstance(polygon, list) or not 3 <= len(polygon) <= 512:
+            raise ValueError("each polygon must contain between three and 512 vertex indices")
+        if any(
+            isinstance(index, bool)
+            or not isinstance(index, int)
+            or not 0 <= index < len(vertices)
+            for index in polygon
+        ):
+            raise ValueError("polygon indices must identify vertices")
+        if len(set(polygon)) != len(polygon):
+            raise ValueError("polygon indices must not repeat a vertex")
 
 
 def _validate_navigation_outline_index(value: int | None, *, allow_none: bool = False) -> None:
