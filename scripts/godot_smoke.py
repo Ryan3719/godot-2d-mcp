@@ -1306,8 +1306,138 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if restored_shape_cast["shape"]["resource_type"] != "CircleShape2D":
             raise RuntimeError("Undo did not restore the ShapeCast2D Shape2D resource")
 
+        navigation_region = await app.service.node_create(
+            type_name="NavigationRegion2D",
+            name="AgentNavigationRegion",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        navigation_region_path = navigation_region["path"]
+        region_update = await app.service.navigation_2d_set(
+            navigation_region_path,
+            {
+                "enabled": True,
+                "use_edge_connections": False,
+                "navigation_layers": [1, 3],
+                "enter_cost": 2.0,
+                "travel_cost": 1.5,
+            },
+            scene_file=scene_file,
+        )
+        if (
+            region_update["navigation_kind"] != "NavigationRegion2D"
+            or region_update["configuration"]["navigation_layers"] != [1, 3]
+            or region_update["configuration"]["travel_cost"] != 1.5
+        ):
+            raise RuntimeError("NavigationRegion2D configuration was not applied")
+
+        navigation_agent = await app.service.node_create(
+            type_name="NavigationAgent2D",
+            name="AgentNavigationAgent",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        navigation_agent_path = navigation_agent["path"]
+        agent_update = await app.service.navigation_2d_set(
+            navigation_agent_path,
+            {
+                "target_position": {"x": 320.0, "y": 160.0},
+                "path_desired_distance": 8.0,
+                "target_desired_distance": 6.0,
+                "path_max_distance": 160.0,
+                "navigation_layers": [1],
+                "pathfinding_algorithm": "astar",
+                "path_postprocessing": "edge_centered",
+                "simplify_path": True,
+                "simplify_epsilon": 1.5,
+                "avoidance_enabled": True,
+                "radius": 12.0,
+                "neighbor_distance": 120.0,
+                "max_neighbors": 8,
+                "time_horizon_agents": 1.5,
+                "max_speed": 240.0,
+                "avoidance_layers": [2],
+                "avoidance_mask": [1, 3],
+                "avoidance_priority": 0.5,
+            },
+            scene_file=scene_file,
+        )
+        if (
+            agent_update["configuration"]["path_postprocessing"] != "edge_centered"
+            or agent_update["configuration"]["avoidance_layers"] != [2]
+            or agent_update["configuration"]["avoidance_mask"] != [1, 3]
+        ):
+            raise RuntimeError("NavigationAgent2D configuration was not applied")
+
+        navigation_obstacle = await app.service.node_create(
+            type_name="NavigationObstacle2D",
+            name="AgentNavigationObstacle",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        obstacle_update = await app.service.navigation_2d_set(
+            navigation_obstacle["path"],
+            {
+                "radius": 16.0,
+                "vertices": [
+                    {"x": -12.0, "y": -12.0},
+                    {"x": 12.0, "y": -12.0},
+                    {"x": 12.0, "y": 12.0},
+                    {"x": -12.0, "y": 12.0},
+                ],
+                "affect_navigation_mesh": True,
+                "carve_navigation_mesh": True,
+                "avoidance_enabled": True,
+                "velocity": {"x": 20.0, "y": 0.0},
+                "avoidance_layers": [2],
+            },
+            scene_file=scene_file,
+        )
+        if (
+            obstacle_update["configuration"]["radius"] != 16.0
+            or obstacle_update["configuration"]["avoidance_layers"] != [2]
+        ):
+            raise RuntimeError("NavigationObstacle2D configuration was not applied")
+
+        navigation_link = await app.service.node_create(
+            type_name="NavigationLink2D",
+            name="AgentNavigationLink",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        navigation_link_path = navigation_link["path"]
+        link_update = await app.service.navigation_2d_set(
+            navigation_link_path,
+            {
+                "enabled": True,
+                "bidirectional": False,
+                "navigation_layers": [1, 4],
+                "start_position": {"x": 0.0, "y": 0.0},
+                "end_position": {"x": 128.0, "y": 32.0},
+                "enter_cost": 1.0,
+                "travel_cost": 2.0,
+            },
+            scene_file=scene_file,
+        )
+        if (
+            link_update["configuration"]["navigation_layers"] != [1, 4]
+            or link_update["configuration"]["bidirectional"] is not False
+        ):
+            raise RuntimeError("NavigationLink2D configuration was not applied")
+        navigation_link_state = await app.service.navigation_2d_get(
+            navigation_link_path, scene_file=scene_file
+        )
+        if navigation_link_state["configuration"]["end_position"] != {"x": 128.0, "y": 32.0}:
+            raise RuntimeError("navigation_2d_get did not return the current NavigationLink2D configuration")
+        undo_navigation_link = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_navigation_link.get("changed"):
+            raise RuntimeError("NavigationLink2D configuration was not undoable")
+        redo_navigation_link = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_navigation_link.get("changed"):
+            raise RuntimeError("NavigationLink2D configuration was not redoable")
+
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 22 or _has_node(final_hierarchy, marker_path):
+        if final_hierarchy.get("total") != 26 or _has_node(final_hierarchy, marker_path):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
@@ -1322,6 +1452,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "ConcavePolygonShape2D" not in saved_scene
             or "AgentSpringJoint" not in saved_scene
             or "AgentShapeCast" not in saved_scene
+            or "AgentNavigationLink" not in saved_scene
         ):
             raise RuntimeError("Saved scene does not contain the created Button")
 

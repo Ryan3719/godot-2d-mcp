@@ -2,7 +2,7 @@
 
 Godot 2D MCP connects Codex, Claude Code, and other MCP clients to a live Godot editor. The project is designed for comprehensive Godot 2D authoring while keeping editor mutations on Godot's main thread and inside its undo/redo system.
 
-The current `0.10.0` preview adds persistent 2D physics query authoring to safe scene, signal, animation, UI, Theme, and collision editing. Agents can configure RayCast2D and ShapeCast2D alongside Area2D, bodies, and joints through Godot's native model while retaining editor undo/redo before explicitly saving the scene.
+The current `0.11.0` preview adds semantic 2D navigation-node authoring to safe scene, signal, animation, UI, Theme, collision, and query editing. Agents can configure NavigationRegion2D, NavigationAgent2D, NavigationObstacle2D, and NavigationLink2D through Godot's native model while retaining editor undo/redo before explicitly saving the scene.
 
 ## Current capabilities
 
@@ -29,6 +29,7 @@ The current `0.10.0` preview adds persistent 2D physics query authoring to safe 
 - `joint_2d_get` and `joint_2d_set` for `PinJoint2D`, `GrooveJoint2D`, and `DampedSpringJoint2D`, with stable MCP node paths translated to Godot-relative joint endpoints.
 - `ray_cast_2d_get` and `ray_cast_2d_set` for persistent RayCast2D query behavior and collision-mask layer numbers.
 - `shape_cast_2d_get`, `shape_cast_2d_set`, and `shape_cast_2d_shape_clear` for ShapeCast2D behavior and independent built-in `Shape2D` resources.
+- `navigation_2d_get` and `navigation_2d_set` for `NavigationRegion2D`, `NavigationAgent2D`, `NavigationObstacle2D`, and `NavigationLink2D` configuration, with navigation and avoidance bitfields expressed as 1 through 32 layer-number arrays.
 - `node_create`, `node_set_properties`, `node_delete`, `node_rename`, `node_duplicate`, `node_reparent`, and `node_move` with scene-file guards.
 - `signal_connect` and `signal_disconnect` for persistent local-node connections, including bounded JSON binding arguments, deferred, and one-shot options.
 - `animation_create`, `animation_delete`, `animation_track_upsert`, `animation_track_delete`, `animation_key_upsert`, and `animation_key_delete` for scene-embedded 2D/UI property animation.
@@ -90,6 +91,8 @@ For a `StaticBody2D`, `CharacterBody2D`, `RigidBody2D`, or `Area2D`, create a lo
 Use `area_2d_set` for environment behavior such as `gravity_space_override: "replace"`, `gravity_direction: {"x": 0, "y": 1}`, and readable damp override modes. Use `physics_body_2d_set` for body-specific behavior only; its `supported_properties` response prevents invalid cross-type fields. `CharacterBody2D` platform-layer properties accept arrays such as `platform_floor_layers: [1, 3]`, not raw bitmasks. `joint_2d_set` accepts `node_a_path` and `node_b_path` from `scene_get_hierarchy`, converts them to paths relative to the joint, and verifies both endpoints are distinct `PhysicsBody2D` nodes. Pin joints support limits and motors, Groove joints expose length and offset, and DampedSpring joints expose length, rest length, stiffness, and damping.
 
 Use `ray_cast_2d_set` with `target_position`, filter flags, and `masks: [2, 4]` to author a persistent RayCast2D. `shape_cast_2d_set` accepts the same filtering configuration plus an optional `shape_type` and `shape_properties`, for example `shape_type: "circle"` and `shape_properties: {"radius": 16}`. Shape resources are independent built-in resources, so shared or external `Shape2D` files are never mutated. Static editor scenes have no simulated physics tick, therefore these tools author query configuration rather than claiming runtime hit results; runtime sampling belongs to the later play-mode integration.
+
+Use `navigation_2d_set` on each navigation node type and first inspect `supported_properties` from `navigation_2d_get`. `navigation_layers`, `avoidance_layers`, and `avoidance_mask` use arrays such as `[1, 3]`; no raw bitmask arithmetic is needed. The tool validates costs, path and avoidance limits, and prevents enabling obstacle carving without enabling navigation-mesh influence. `NavigationPolygon` geometry is intentionally a later dedicated resource workflow, so a Region can be configured safely now without silently inventing a navigable polygon.
 
 ## Requirements
 

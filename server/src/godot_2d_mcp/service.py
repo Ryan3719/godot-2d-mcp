@@ -702,6 +702,19 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def navigation_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "navigation_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def control_stylebox_flat_upsert(
         self,
         path: str,
@@ -1047,6 +1060,21 @@ class GodotService:
         return await self.bridge.call(
             "shape_cast_2d_shape_clear",
             _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def navigation_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_physics_configuration_properties(properties)
+        return await self.bridge.call(
+            "navigation_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
             session_id=session_id,
         )
 

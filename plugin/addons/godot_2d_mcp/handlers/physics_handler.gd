@@ -65,6 +65,28 @@ const SHAPE_CAST_CONFIGURATION_PROPERTIES := [
 	"enabled", "exclude_parent", "target_position", "margin", "max_results", "collide_with_areas",
 	"collide_with_bodies",
 ]
+const NAVIGATION_REGION_CONFIGURATION_PROPERTIES := [
+	"enabled", "use_edge_connections", "navigation_layers", "enter_cost", "travel_cost",
+]
+const NAVIGATION_AGENT_CONFIGURATION_PROPERTIES := [
+	"target_position", "path_desired_distance", "target_desired_distance", "path_max_distance",
+	"navigation_layers", "pathfinding_algorithm", "path_postprocessing", "path_metadata_flags",
+	"simplify_path", "simplify_epsilon", "path_return_max_length", "path_return_max_radius",
+	"path_search_max_polygons", "path_search_max_distance", "avoidance_enabled", "velocity", "radius",
+	"neighbor_distance", "max_neighbors", "time_horizon_agents", "time_horizon_obstacles",
+	"max_speed", "avoidance_layers", "avoidance_mask", "avoidance_priority",
+]
+const NAVIGATION_OBSTACLE_CONFIGURATION_PROPERTIES := [
+	"radius", "vertices", "affect_navigation_mesh", "carve_navigation_mesh", "avoidance_enabled",
+	"velocity", "avoidance_layers",
+]
+const NAVIGATION_LINK_CONFIGURATION_PROPERTIES := [
+	"enabled", "bidirectional", "navigation_layers", "start_position", "end_position", "enter_cost",
+	"travel_cost",
+]
+const LAYER_NUMBER_PROPERTIES := [
+	"platform_floor_layers", "platform_wall_layers", "navigation_layers", "avoidance_layers", "avoidance_mask",
+]
 const ENUM_OPTIONS_BY_PROPERTY := {
 	"gravity_space_override": {
 		"disabled": 0, "combine": 1, "combine_replace": 2, "replace": 3, "replace_combine": 4,
@@ -84,6 +106,8 @@ const ENUM_OPTIONS_BY_PROPERTY := {
 	"continuous_cd": {"disabled": 0, "cast_ray": 1, "cast_shape": 2},
 	"linear_damp_mode": {"combine": 0, "replace": 1},
 	"angular_damp_mode": {"combine": 0, "replace": 1},
+	"pathfinding_algorithm": {"astar": 0},
+	"path_postprocessing": {"corridor_funnel": 0, "edge_centered": 1, "none": 2},
 }
 
 var _undo_redo: EditorUndoRedoManager
@@ -436,6 +460,47 @@ func clear_shape_cast_shape(params: Dictionary) -> Dictionary:
 	return result
 
 
+func get_navigation_node(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_navigation_node(params, false)
+	if resolved.has("_error"):
+		return resolved
+	var navigation_node: Node = resolved["navigation_node"]
+	var configuration_properties := _navigation_configuration_properties(navigation_node)
+	if configuration_properties.is_empty():
+		return _unsupported_navigation_node(navigation_node)
+	var response := _configuration_response(
+		navigation_node, resolved["scene_root"], configuration_properties
+	)
+	response["navigation_kind"] = navigation_node.get_class()
+	return response
+
+
+func set_navigation_node(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_navigation_node(params)
+	if resolved.has("_error"):
+		return resolved
+	var navigation_node: Node = resolved["navigation_node"]
+	var configuration_properties := _navigation_configuration_properties(navigation_node)
+	if configuration_properties.is_empty():
+		return _unsupported_navigation_node(navigation_node)
+	var parsed := _parse_configuration(params, navigation_node, configuration_properties, true)
+	if parsed.has("_error"):
+		return parsed
+	var validity := _validate_navigation_configuration(navigation_node, parsed["updates"])
+	if validity.has("_error"):
+		return validity
+	var result := _commit_configuration(
+		navigation_node,
+		resolved["scene_root"],
+		configuration_properties,
+		parsed["updates"],
+		"Update %s configuration" % navigation_node.get_class()
+	)
+	if not result.has("_error"):
+		result["navigation_kind"] = navigation_node.get_class()
+	return result
+
+
 func _resolve_area(params: Dictionary, require_writable: bool = true) -> Dictionary:
 	var resolved := _resolve_node(params, require_writable)
 	if resolved.has("_error"):
@@ -508,6 +573,27 @@ func _resolve_shape_cast(params: Dictionary, require_writable: bool = true) -> D
 			"Target a ShapeCast2D node."
 		)
 	resolved["shape_cast"] = resolved["node"] as ShapeCast2D
+	return resolved
+
+
+func _resolve_navigation_node(params: Dictionary, require_writable: bool = true) -> Dictionary:
+	var resolved := _resolve_node(params, require_writable)
+	if resolved.has("_error"):
+		return resolved
+	var node: Node = resolved["node"]
+	if not (
+		node is NavigationRegion2D
+		or node is NavigationAgent2D
+		or node is NavigationObstacle2D
+		or node is NavigationLink2D
+	):
+		return Errors.make(
+			"NAVIGATION_2D_NODE_REQUIRED",
+			"Node '%s' is %s, not a supported 2D navigation node" % [node.name, node.get_class()],
+			false,
+			"Target a NavigationRegion2D, NavigationAgent2D, NavigationObstacle2D, or NavigationLink2D node."
+		)
+	resolved["navigation_node"] = node
 	return resolved
 
 
@@ -594,7 +680,7 @@ func _serialize_configuration_value(property_name: String, value: Variant) -> Va
 		for label in options:
 			if int(options[label]) == int(value):
 				return label
-	if property_name in ["platform_floor_layers", "platform_wall_layers"]:
+	if LAYER_NUMBER_PROPERTIES.has(property_name):
 		return _mask_to_layer_numbers(int(value))
 	return VariantCodec.serialize(value)
 
@@ -658,7 +744,7 @@ func _decode_configuration_value(
 				"%s must use one of: %s" % [property_name, ", ".join(options.keys())]
 			)
 		return {"value": options[label]}
-	if property_name in ["platform_floor_layers", "platform_wall_layers"]:
+	if LAYER_NUMBER_PROPERTIES.has(property_name):
 		var layers := _parse_layer_numbers(raw_value, property_name)
 		if layers.has("_error"):
 			return layers
@@ -822,6 +908,77 @@ func _commit_shape_cast_configuration(
 	result["undoable"] = true
 	result["_scene_mutated"] = true
 	return result
+
+
+func _navigation_configuration_properties(navigation_node: Node) -> Array:
+	if navigation_node is NavigationRegion2D:
+		return NAVIGATION_REGION_CONFIGURATION_PROPERTIES
+	if navigation_node is NavigationAgent2D:
+		return NAVIGATION_AGENT_CONFIGURATION_PROPERTIES
+	if navigation_node is NavigationObstacle2D:
+		return NAVIGATION_OBSTACLE_CONFIGURATION_PROPERTIES
+	if navigation_node is NavigationLink2D:
+		return NAVIGATION_LINK_CONFIGURATION_PROPERTIES
+	return []
+
+
+func _unsupported_navigation_node(navigation_node: Node) -> Dictionary:
+	return Errors.make(
+		"UNSUPPORTED_NAVIGATION_2D_NODE",
+		"Navigation node type '%s' is not yet supported" % navigation_node.get_class(),
+		false,
+		"Use a supported NavigationRegion2D, NavigationAgent2D, NavigationObstacle2D, or NavigationLink2D node."
+	)
+
+
+func _validate_navigation_configuration(navigation_node: Node, updates: Dictionary) -> Dictionary:
+	if navigation_node is NavigationRegion2D or navigation_node is NavigationLink2D:
+		if float(_configuration_value(navigation_node, updates, "enter_cost")) < 0.0:
+			return _invalid_physics_configuration("enter_cost must be greater than or equal to zero")
+		if float(_configuration_value(navigation_node, updates, "travel_cost")) <= 0.0:
+			return _invalid_physics_configuration("travel_cost must be greater than zero")
+	if navigation_node is NavigationAgent2D:
+		if float(_configuration_value(navigation_node, updates, "path_desired_distance")) < 0.1:
+			return _invalid_physics_configuration("path_desired_distance must be at least 0.1")
+		if float(_configuration_value(navigation_node, updates, "target_desired_distance")) < 0.1:
+			return _invalid_physics_configuration("target_desired_distance must be at least 0.1")
+		if float(_configuration_value(navigation_node, updates, "path_max_distance")) < 10.0:
+			return _invalid_physics_configuration("path_max_distance must be at least 10")
+		if float(_configuration_value(navigation_node, updates, "simplify_epsilon")) < 0.0:
+			return _invalid_physics_configuration("simplify_epsilon must be greater than or equal to zero")
+		if float(_configuration_value(navigation_node, updates, "path_return_max_length")) < 0.0:
+			return _invalid_physics_configuration("path_return_max_length must be greater than or equal to zero")
+		if float(_configuration_value(navigation_node, updates, "path_return_max_radius")) < 0.0:
+			return _invalid_physics_configuration("path_return_max_radius must be greater than or equal to zero")
+		if int(_configuration_value(navigation_node, updates, "path_search_max_polygons")) < 0:
+			return _invalid_physics_configuration("path_search_max_polygons must be greater than or equal to zero")
+		if float(_configuration_value(navigation_node, updates, "path_search_max_distance")) < 0.0:
+			return _invalid_physics_configuration("path_search_max_distance must be greater than or equal to zero")
+		if float(_configuration_value(navigation_node, updates, "radius")) < 0.01:
+			return _invalid_physics_configuration("radius must be at least 0.01")
+		if float(_configuration_value(navigation_node, updates, "neighbor_distance")) < 0.1:
+			return _invalid_physics_configuration("neighbor_distance must be at least 0.1")
+		if int(_configuration_value(navigation_node, updates, "max_neighbors")) < 1:
+			return _invalid_physics_configuration("max_neighbors must be at least one")
+		if float(_configuration_value(navigation_node, updates, "time_horizon_agents")) < 0.0:
+			return _invalid_physics_configuration("time_horizon_agents must be greater than or equal to zero")
+		if float(_configuration_value(navigation_node, updates, "time_horizon_obstacles")) < 0.0:
+			return _invalid_physics_configuration("time_horizon_obstacles must be greater than or equal to zero")
+		if float(_configuration_value(navigation_node, updates, "max_speed")) < 0.01:
+			return _invalid_physics_configuration("max_speed must be at least 0.01")
+		var avoidance_priority := float(_configuration_value(navigation_node, updates, "avoidance_priority"))
+		if avoidance_priority < 0.0 or avoidance_priority > 1.0:
+			return _invalid_physics_configuration("avoidance_priority must be between zero and one")
+	if navigation_node is NavigationObstacle2D:
+		if float(_configuration_value(navigation_node, updates, "radius")) < 0.0:
+			return _invalid_physics_configuration("radius must be greater than or equal to zero")
+		if bool(_configuration_value(navigation_node, updates, "carve_navigation_mesh")) and not bool(
+			_configuration_value(navigation_node, updates, "affect_navigation_mesh")
+		):
+			return _invalid_physics_configuration(
+				"carve_navigation_mesh requires affect_navigation_mesh to be enabled"
+			)
+	return {}
 
 
 func _body_configuration_properties(body: PhysicsBody2D) -> Array:
