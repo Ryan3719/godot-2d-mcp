@@ -1512,6 +1512,147 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if not redo_navigation_link.get("changed"):
             raise RuntimeError("NavigationLink2D configuration was not redoable")
 
+        point_light = await app.service.node_create(
+            type_name="PointLight2D",
+            name="AgentPointLight",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        point_light_path = point_light["path"]
+        initial_point_light = await app.service.light_2d_get(
+            point_light_path, scene_file=scene_file
+        )
+        if initial_point_light["configuration"]["texture_path"] != "":
+            raise RuntimeError("New PointLight2D unexpectedly had a texture")
+        point_light_update = await app.service.light_2d_set(
+            point_light_path,
+            {
+                "enabled": True,
+                "color": {"r": 1.0, "g": 0.8, "b": 0.4, "a": 1.0},
+                "energy": 2.5,
+                "blend_mode": "add",
+                "range_item_cull_layers": [1, 3],
+                "shadow_enabled": True,
+                "shadow_filter": "pcf5",
+                "shadow_filter_smooth": 2.0,
+                "shadow_item_cull_layers": [2],
+                "height": 64.0,
+                "texture_path": "res://test_icon.svg",
+                "offset": {"x": 4.0, "y": -2.0},
+                "texture_scale": 1.25,
+            },
+            scene_file=scene_file,
+        )
+        point_configuration = point_light_update["configuration"]
+        if (
+            point_configuration["energy"] != 2.5
+            or point_configuration["range_item_cull_layers"] != [1, 3]
+            or point_configuration["shadow_item_cull_layers"] != [2]
+            or point_configuration["texture_path"] != "res://test_icon.svg"
+            or point_configuration["offset"] != {"x": 4.0, "y": -2.0}
+        ):
+            raise RuntimeError("PointLight2D configuration was not applied")
+        undo_point_light = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_point_light.get("changed"):
+            raise RuntimeError("PointLight2D configuration was not undoable")
+        restored_point_light = await app.service.light_2d_get(
+            point_light_path, scene_file=scene_file
+        )
+        if restored_point_light["configuration"]["energy"] != 1.0:
+            raise RuntimeError("Undo did not restore PointLight2D configuration")
+        redo_point_light = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_point_light.get("changed"):
+            raise RuntimeError("PointLight2D configuration was not redoable")
+
+        directional_light = await app.service.node_create(
+            type_name="DirectionalLight2D",
+            name="AgentDirectionalLight",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        directional_light_path = directional_light["path"]
+        directional_light_update = await app.service.light_2d_set(
+            directional_light_path,
+            {"height": 0.75, "max_distance": 4096.0, "shadow_enabled": True},
+            scene_file=scene_file,
+        )
+        if (
+            directional_light_update["configuration"]["height"] != 0.75
+            or directional_light_update["configuration"]["max_distance"] != 4096.0
+        ):
+            raise RuntimeError("DirectionalLight2D configuration was not applied")
+        await _expect_godot_error(
+            app.service.light_2d_set(
+                directional_light_path,
+                {"texture_path": "res://test_icon.svg"},
+                scene_file=scene_file,
+            ),
+            "UNSUPPORTED_LIGHT_PROPERTY",
+        )
+
+        light_occluder = await app.service.node_create(
+            type_name="LightOccluder2D",
+            name="AgentLightOccluder",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        light_occluder_path = light_occluder["path"]
+        occluder_polygon = {
+            "points": [
+                {"x": -16.0, "y": -16.0},
+                {"x": 16.0, "y": -16.0},
+                {"x": 16.0, "y": 16.0},
+                {"x": -16.0, "y": 16.0},
+            ],
+            "closed": True,
+            "cull_mode": "counter_clockwise",
+        }
+        light_occluder_update = await app.service.light_occluder_2d_set(
+            light_occluder_path,
+            layers=[2, 5],
+            sdf_collision=False,
+            polygon=occluder_polygon,
+            scene_file=scene_file,
+        )
+        if (
+            light_occluder_update["layers"] != [2, 5]
+            or light_occluder_update["sdf_collision"] is not False
+            or light_occluder_update["polygon"] is None
+            or light_occluder_update["polygon"]["points"] != occluder_polygon["points"]
+        ):
+            raise RuntimeError("LightOccluder2D configuration was not applied")
+        await _expect_godot_error(
+            app.service.light_occluder_2d_set(
+                light_occluder_path,
+                polygon={
+                    "points": [
+                        {"x": -8.0, "y": -8.0},
+                        {"x": 8.0, "y": 8.0},
+                        {"x": -8.0, "y": 8.0},
+                        {"x": 8.0, "y": -8.0},
+                    ]
+                },
+                scene_file=scene_file,
+            ),
+            "INVALID_LIGHT_OCCLUDER_POLYGON",
+        )
+        cleared_light_occluder = await app.service.light_occluder_2d_set(
+            light_occluder_path, clear=True, scene_file=scene_file
+        )
+        if cleared_light_occluder["polygon"] is not None:
+            raise RuntimeError("LightOccluder2D polygon was not cleared")
+        undo_light_occluder = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_light_occluder.get("changed"):
+            raise RuntimeError("LightOccluder2D clear was not undoable")
+        restored_light_occluder = await app.service.light_occluder_2d_get(
+            light_occluder_path, scene_file=scene_file
+        )
+        if restored_light_occluder["polygon"]["points"] != occluder_polygon["points"]:
+            raise RuntimeError("Undo did not restore LightOccluder2D polygon")
+        redo_light_occluder = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_light_occluder.get("changed"):
+            raise RuntimeError("LightOccluder2D clear was not redoable")
+
         tile_map_layer = await app.service.node_create(
             type_name="TileMapLayer",
             name="AgentTileMap",
@@ -1951,7 +2092,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 27 or _has_node(final_hierarchy, marker_path):
+        if final_hierarchy.get("total") != 30 or _has_node(final_hierarchy, marker_path):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
@@ -1967,6 +2108,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentSpringJoint" not in saved_scene
             or "AgentShapeCast" not in saved_scene
             or "AgentNavigationLink" not in saved_scene
+            or "AgentPointLight" not in saved_scene
+            or "AgentDirectionalLight" not in saved_scene
+            or "AgentLightOccluder" not in saved_scene
             or "NavigationPolygon" not in saved_scene
             or "AgentTileMap" not in saved_scene
             or "TileSetAtlasSource" not in saved_scene

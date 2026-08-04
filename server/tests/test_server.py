@@ -33,6 +33,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "shape_cast_2d_get",
         "navigation_2d_get",
         "navigation_polygon_get",
+        "light_2d_get",
+        "light_occluder_2d_get",
         "tile_map_layer_get",
         "tile_map_layer_cells_get",
         "tile_set_get",
@@ -79,6 +81,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "navigation_polygon_outline_remove",
         "navigation_polygon_make_from_outlines",
         "navigation_polygon_clear",
+        "light_2d_set",
+        "light_occluder_2d_set",
         "tile_set_create",
         "tile_set_clear",
         "tile_set_atlas_source_create",
@@ -119,6 +123,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["shape_cast_2d_get"].readOnlyHint is True
     assert annotations["navigation_2d_get"].readOnlyHint is True
     assert annotations["navigation_polygon_get"].readOnlyHint is True
+    assert annotations["light_2d_get"].readOnlyHint is True
+    assert annotations["light_occluder_2d_get"].readOnlyHint is True
     assert annotations["tile_map_layer_get"].readOnlyHint is True
     assert annotations["tile_map_layer_cells_get"].readOnlyHint is True
     assert annotations["tile_set_get"].readOnlyHint is True
@@ -164,6 +170,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["navigation_polygon_outline_remove"].destructiveHint is True
     assert annotations["navigation_polygon_make_from_outlines"].readOnlyHint is False
     assert annotations["navigation_polygon_clear"].destructiveHint is True
+    assert annotations["light_2d_set"].readOnlyHint is False
+    assert annotations["light_occluder_2d_set"].readOnlyHint is False
     assert annotations["tile_set_create"].readOnlyHint is False
     assert annotations["tile_set_clear"].destructiveHint is True
     assert annotations["tile_set_atlas_source_create"].readOnlyHint is False

@@ -343,6 +343,32 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def light_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Inspect PointLight2D or DirectionalLight2D configuration using semantic values."""
+        return await service.light_2d_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def light_occluder_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Inspect a LightOccluder2D mask, SDF setting, and assigned polygon."""
+        return await service.light_occluder_2d_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def tile_map_layer_get(
         path: str,
         session_id: str | None = None,
@@ -1132,6 +1158,42 @@ def create_application(
         """Detach the NavigationPolygon resource from a NavigationRegion2D."""
         return await service.navigation_polygon_clear(
             path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def light_2d_set(
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically configure a PointLight2D or DirectionalLight2D with safe semantic values."""
+        return await service.light_2d_set(
+            path=path,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def light_occluder_2d_set(
+        path: str,
+        layers: list[int] | None = None,
+        sdf_collision: bool | None = None,
+        polygon: dict[str, Any] | None = None,
+        clear: bool = False,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically configure a LightOccluder2D and replace or clear its embedded polygon."""
+        return await service.light_occluder_2d_set(
+            path=path,
+            layers=layers,
+            sdf_collision=sdf_collision,
+            polygon=polygon,
+            clear=clear,
             session_id=session_id,
             scene_file=scene_file,
         )
