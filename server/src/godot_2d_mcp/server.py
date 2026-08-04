@@ -316,6 +316,19 @@ def create_application(
             scene_file=scene_file,
         )
 
+    @mcp.tool(annotations=READ_ONLY)
+    async def navigation_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read the semantic configuration supported by a 2D navigation node."""
+        return await service.navigation_2d_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
     @mcp.tool(annotations=WRITE)
     async def node_create(
         type: str,
@@ -920,6 +933,21 @@ def create_application(
         """Detach a ShapeCast2D Shape2D resource while retaining editor undo support."""
         return await service.shape_cast_2d_shape_clear(
             path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def navigation_2d_set(
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically set allowed Region, Agent, Obstacle, or Link 2D navigation configuration."""
+        return await service.navigation_2d_set(
+            path=path,
+            properties=properties,
             session_id=session_id,
             scene_file=scene_file,
         )

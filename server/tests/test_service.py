@@ -989,3 +989,46 @@ async def test_cast_tools_reject_invalid_payloads() -> None:
         )
     with pytest.raises(ValueError, match="shape_properties"):
         await service.shape_cast_2d_set("/Main/PlayerShapeCast", shape_type="circle")
+
+
+@pytest.mark.asyncio
+async def test_navigation_tools_forward_semantic_configuration() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    region_properties = {"navigation_layers": [1, 3], "travel_cost": 1.5}
+
+    await service.navigation_2d_get(
+        "/Main/NavigationRegion", scene_file="res://main.tscn", session_id="project@a1b2"
+    )
+    await service.navigation_2d_set(
+        "/Main/NavigationRegion", region_properties, scene_file="res://main.tscn"
+    )
+
+    assert bridge.calls == [
+        (
+            "navigation_2d_get",
+            {"path": "/Main/NavigationRegion", "scene_file": "res://main.tscn"},
+            "project@a1b2",
+        ),
+        (
+            "navigation_2d_set",
+            {
+                "path": "/Main/NavigationRegion",
+                "properties": region_properties,
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_navigation_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="non-empty"):
+        await service.navigation_2d_set("/Main/NavigationRegion", {})
+    with pytest.raises(ValueError, match="JSON-compatible"):
+        await service.navigation_2d_set(
+            "/Main/NavigationRegion", {"enter_cost": float("inf")}
+        )
