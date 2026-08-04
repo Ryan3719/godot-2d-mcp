@@ -1443,6 +1443,30 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def tile_set_occlusion_layer_create(
+        self,
+        path: str,
+        layers: list[int] | None = None,
+        sdf_collision: bool = False,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        requested_layers = [1] if layers is None else layers
+        _validate_collision_layer_numbers(requested_layers, "layers")
+        if not isinstance(sdf_collision, bool):
+            raise ValueError("sdf_collision must be a boolean")
+        return await self.bridge.call(
+            "tile_set_occlusion_layer_create",
+            _scene_params(
+                scene_file,
+                path=path,
+                layers=requested_layers,
+                sdf_collision=sdf_collision,
+            ),
+            session_id=session_id,
+        )
+
     async def tile_set_custom_data_layer_create(
         self,
         path: str,
@@ -1667,6 +1691,37 @@ class GodotService:
         return await self.bridge.call(
             "tile_set_atlas_tile_navigation_set",
             params,
+            session_id=session_id,
+        )
+
+    async def tile_set_atlas_tile_occlusion_set(
+        self,
+        path: str,
+        source_id: int,
+        atlas_coords: dict[str, int],
+        occlusion_layer: int,
+        polygons: list[dict[str, Any]],
+        alternative_tile: int = 0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tilemap_source_id(source_id)
+        _validate_tilemap_vector2i(atlas_coords, "atlas_coords", nonnegative=True)
+        _validate_tile_set_layer_index(occlusion_layer, "occlusion_layer")
+        _validate_tile_occlusion_polygons(polygons)
+        _validate_atlas_alternative_tile(alternative_tile)
+        return await self.bridge.call(
+            "tile_set_atlas_tile_occlusion_set",
+            _scene_params(
+                scene_file,
+                path=path,
+                source_id=source_id,
+                atlas_coords=atlas_coords,
+                occlusion_layer=occlusion_layer,
+                polygons=polygons,
+                alternative_tile=alternative_tile,
+            ),
             session_id=session_id,
         )
 
@@ -2126,6 +2181,57 @@ def _validate_tile_collision_polygons(polygons: list[dict[str, Any]]) -> None:
             _validate_nonnegative_finite_number(
                 polygon["one_way_margin"], "polygons[].one_way_margin"
             )
+
+
+def _validate_tile_occlusion_polygons(polygons: list[dict[str, Any]]) -> None:
+    if not isinstance(polygons, list) or len(polygons) > 128:
+        raise ValueError("polygons must contain at most 128 polygons")
+    total_points = sum(
+        len(polygon["points"])
+        for polygon in polygons
+        if isinstance(polygon, dict) and isinstance(polygon.get("points"), list)
+    )
+    if total_points > 2048:
+        raise ValueError("occlusion polygon points exceed the supported limit")
+    supported_cull_modes = {"disabled", "clockwise", "counter_clockwise"}
+    for index, polygon in enumerate(polygons):
+        if not isinstance(polygon, dict) or "points" not in polygon or set(polygon) - {
+            "points",
+            "closed",
+            "cull_mode",
+        }:
+            raise ValueError("each occlusion polygon must contain points and supported options")
+        closed = polygon.get("closed", True)
+        if not isinstance(closed, bool):
+            raise ValueError("polygons[].closed must be a boolean")
+        _validate_tile_occlusion_points(polygon["points"], f"polygons[{index}].points", closed)
+        if "cull_mode" in polygon and (
+            not isinstance(polygon["cull_mode"], str)
+            or polygon["cull_mode"].strip().lower() not in supported_cull_modes
+        ):
+            raise ValueError(
+                "polygons[].cull_mode must be disabled, clockwise, or counter_clockwise"
+            )
+
+
+def _validate_tile_occlusion_points(
+    points: list[dict[str, float | int]], label: str, closed: bool
+) -> None:
+    minimum = 3 if closed else 2
+    minimum_word = "three" if closed else "two"
+    if not isinstance(points, list) or not minimum <= len(points) <= 512:
+        raise ValueError(f"{label} must contain between {minimum_word} and 512 Vector2 points")
+    if any(
+        not isinstance(point, dict)
+        or set(point) != {"x", "y"}
+        or not _is_finite_number(point["x"])
+        or not _is_finite_number(point["y"])
+        for point in points
+    ):
+        raise ValueError(f"{label} must contain Vector2 objects with finite x and y values")
+    point_keys = {(float(point["x"]), float(point["y"])) for point in points}
+    if len(point_keys) != len(points):
+        raise ValueError(f"{label} points must be unique")
 
 
 def _validate_tile_navigation_geometry(

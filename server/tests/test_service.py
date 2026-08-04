@@ -1294,6 +1294,18 @@ async def test_tileset_semantic_tools_forward_atomic_payloads() -> None:
         {"x": 8.0, "y": -8.0},
         {"x": 8.0, "y": 8.0},
     ]
+    occlusion_polygons = [
+        {
+            "points": [
+                {"x": -8.0, "y": -8.0},
+                {"x": 8.0, "y": -8.0},
+                {"x": 8.0, "y": 8.0},
+                {"x": -8.0, "y": 8.0},
+            ],
+            "closed": True,
+            "cull_mode": "counter_clockwise",
+        }
+    ]
 
     await service.tile_set_layers_get(path, scene_file=scene_file)
     await service.tile_set_atlas_tile_get(
@@ -1311,6 +1323,12 @@ async def test_tileset_semantic_tools_forward_atomic_payloads() -> None:
         scene_file=scene_file,
     )
     await service.tile_set_navigation_layer_create(path, layers=[4], scene_file=scene_file)
+    await service.tile_set_occlusion_layer_create(
+        path,
+        layers=[2, 5],
+        sdf_collision=True,
+        scene_file=scene_file,
+    )
     await service.tile_set_custom_data_layer_create(
         path, name="damage", value_type="int", scene_file=scene_file
     )
@@ -1367,6 +1385,15 @@ async def test_tileset_semantic_tools_forward_atomic_payloads() -> None:
         alternative_tile=1,
         scene_file=scene_file,
     )
+    await service.tile_set_atlas_tile_occlusion_set(
+        path,
+        source_id=4,
+        atlas_coords={"x": 1, "y": 2},
+        occlusion_layer=0,
+        polygons=occlusion_polygons,
+        alternative_tile=1,
+        scene_file=scene_file,
+    )
     await service.tile_set_atlas_tile_navigation_set(
         path,
         source_id=4,
@@ -1404,6 +1431,16 @@ async def test_tileset_semantic_tools_forward_atomic_payloads() -> None:
         (
             "tile_set_navigation_layer_create",
             {"path": path, "layers": [4], "scene_file": scene_file},
+            None,
+        ),
+        (
+            "tile_set_occlusion_layer_create",
+            {
+                "path": path,
+                "layers": [2, 5],
+                "sdf_collision": True,
+                "scene_file": scene_file,
+            },
             None,
         ),
         (
@@ -1494,6 +1531,19 @@ async def test_tileset_semantic_tools_forward_atomic_payloads() -> None:
                 "vertices": navigation_vertices,
                 "polygons": [[0, 1, 2]],
                 "agent_radius": 0.5,
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "tile_set_atlas_tile_occlusion_set",
+            {
+                "path": path,
+                "source_id": 4,
+                "atlas_coords": {"x": 1, "y": 2},
+                "occlusion_layer": 0,
+                "polygons": occlusion_polygons,
+                "alternative_tile": 1,
                 "scene_file": scene_file,
             },
             None,
@@ -1602,4 +1652,39 @@ async def test_tilemap_tools_reject_invalid_payloads() -> None:
             navigation_layer=0,
             vertices=[],
             clear=True,
+        )
+    with pytest.raises(ValueError, match="sdf_collision"):
+        await service.tile_set_occlusion_layer_create("/Main/Tiles", sdf_collision=1)
+    with pytest.raises(ValueError, match="occlusion_layer"):
+        await service.tile_set_atlas_tile_occlusion_set(
+            "/Main/Tiles",
+            source_id=0,
+            atlas_coords={"x": 0, "y": 0},
+            occlusion_layer=-1,
+            polygons=[],
+        )
+    with pytest.raises(ValueError, match="between two"):
+        await service.tile_set_atlas_tile_occlusion_set(
+            "/Main/Tiles",
+            source_id=0,
+            atlas_coords={"x": 0, "y": 0},
+            occlusion_layer=0,
+            polygons=[{"points": [{"x": 0, "y": 0}], "closed": False}],
+        )
+    with pytest.raises(ValueError, match="cull_mode"):
+        await service.tile_set_atlas_tile_occlusion_set(
+            "/Main/Tiles",
+            source_id=0,
+            atlas_coords={"x": 0, "y": 0},
+            occlusion_layer=0,
+            polygons=[
+                {
+                    "points": [
+                        {"x": 0, "y": 0},
+                        {"x": 1, "y": 0},
+                        {"x": 0, "y": 1},
+                    ],
+                    "cull_mode": "front",
+                }
+            ],
         )
