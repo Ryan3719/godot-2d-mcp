@@ -377,6 +377,136 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if 'resource_name = "button_hover"' not in saved_scene:
             raise RuntimeError("Created animation was not saved in the scene")
 
+        styled_button = await app.service.node_create(
+            type_name="Button",
+            name="StyledButton",
+            parent_path="/Main/UI",
+            scene_file=scene_file,
+        )
+        styled_button_path = styled_button["path"]
+        await app.service.node_set_properties(
+            styled_button_path,
+            {"text": "Styled"},
+            scene_file=scene_file,
+        )
+        initial_layout = await app.service.control_get_layout(
+            styled_button_path,
+            scene_file=scene_file,
+        )
+        if initial_layout["layout"]["container_managed"]:
+            raise RuntimeError("Styled button should not be Container-managed")
+        managed_button = await app.service.node_create(
+            type_name="Button",
+            name="ManagedButton",
+            parent_path="/Main/UI/Panel",
+            scene_file=scene_file,
+        )
+        await _expect_godot_error(
+            app.service.control_set_layout(
+                managed_button["path"],
+                anchors={"left": 0.0, "top": 0.0, "right": 1.0, "bottom": 1.0},
+                scene_file=scene_file,
+            ),
+            "CONTAINER_LAYOUT_MANAGED",
+        )
+        await app.service.node_delete(managed_button["path"], scene_file=scene_file)
+        preset_layout = await app.service.control_set_layout_preset(
+            styled_button_path,
+            preset="full_rect",
+            resize_mode="keep_size",
+            margin=4,
+            scene_file=scene_file,
+        )
+        if not _layout_sides_match(
+            preset_layout["layout"]["anchors"],
+            {"left": 0.0, "top": 0.0, "right": 1.0, "bottom": 1.0},
+        ):
+            raise RuntimeError("Layout preset did not update anchors")
+        undo_layout_preset = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_layout_preset.get("changed"):
+            raise RuntimeError("Layout preset was not undoable")
+        redo_layout_preset = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_layout_preset.get("changed"):
+            raise RuntimeError("Layout preset was not redoable")
+        exact_layout = await app.service.control_set_layout(
+            styled_button_path,
+            anchors={"left": 0.1, "top": 0.2, "right": 0.9, "bottom": 0.8},
+            offsets={"left": 8.0, "top": 12.0, "right": -8.0, "bottom": -12.0},
+            scene_file=scene_file,
+        )
+        if not _layout_sides_match(
+            exact_layout["layout"]["anchors"],
+            {"left": 0.1, "top": 0.2, "right": 0.9, "bottom": 0.8},
+        ):
+            raise RuntimeError("Exact layout did not retain requested anchors")
+        if not _layout_sides_match(
+            exact_layout["layout"]["offsets"],
+            {"left": 8.0, "top": 12.0, "right": -8.0, "bottom": -12.0},
+        ):
+            raise RuntimeError("Exact layout did not retain requested offsets")
+        undo_exact_layout = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_exact_layout.get("changed"):
+            raise RuntimeError("Exact layout was not undoable")
+        redo_exact_layout = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_exact_layout.get("changed"):
+            raise RuntimeError("Exact layout was not redoable")
+        styles_before = await app.service.control_get_styleboxes(
+            styled_button_path,
+            scene_file=scene_file,
+        )
+        if _stylebox_state(styles_before, "normal") is None:
+            raise RuntimeError("Button normal style state was not returned")
+        style_update = await app.service.control_stylebox_flat_upsert(
+            styled_button_path,
+            state="normal",
+            properties={
+                "bg_color": {"r": 0.08, "g": 0.3, "b": 0.55, "a": 1.0},
+                "border_color": {"r": 0.25, "g": 0.75, "b": 1.0, "a": 1.0},
+                "border_width_left": 2,
+                "border_width_top": 2,
+                "border_width_right": 2,
+                "border_width_bottom": 2,
+                "corner_radius_top_left": 10,
+                "corner_radius_top_right": 10,
+                "corner_radius_bottom_left": 10,
+                "corner_radius_bottom_right": 10,
+            },
+            scene_file=scene_file,
+        )
+        normal_style = style_update["style"]
+        if (
+            normal_style["effective_type"] != "StyleBoxFlat"
+            or not _color_matches(
+                normal_style["flat_properties"].get("bg_color"),
+                {"r": 0.08, "g": 0.3, "b": 0.55, "a": 1.0},
+            )
+        ):
+            raise RuntimeError("StyleBoxFlat override did not retain requested properties")
+        undo_style = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_style.get("changed"):
+            raise RuntimeError("StyleBoxFlat update was not undoable")
+        styles_after_undo = await app.service.control_get_styleboxes(
+            styled_button_path,
+            scene_file=scene_file,
+        )
+        if _stylebox_state(styles_after_undo, "normal").get("has_override"):
+            raise RuntimeError("Undo did not remove the new StyleBoxFlat override")
+        redo_style = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_style.get("changed"):
+            raise RuntimeError("StyleBoxFlat update was not redoable")
+        await app.service.control_stylebox_override_clear(
+            styled_button_path,
+            state="normal",
+            scene_file=scene_file,
+        )
+        undo_style_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_style_clear.get("changed"):
+            raise RuntimeError("StyleBoxFlat override clear was not undoable")
+        await app.service.scene_save(scene_file=scene_file)
+        saved_scene = (project_path / "test_scene.tscn").read_text(encoding="utf-8")
+        if 'sub_resource type="StyleBoxFlat"' not in saved_scene:
+            raise RuntimeError("StyleBoxFlat override was not saved in the scene")
+
         button_signals = await app.service.node_get_signals(
             reparented_button_path,
             scene_file=scene_file,
@@ -577,7 +707,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Deleted node was not removable by redo")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 10 or _has_node(final_hierarchy, marker_path):
+        if final_hierarchy.get("total") != 11 or _has_node(final_hierarchy, marker_path):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
@@ -654,6 +784,22 @@ def _animation_track(animation: dict, target_path: str, property_name: str) -> d
         if track.get("target_path") == target_path and track.get("property") == property_name:
             return track
     raise RuntimeError(f"Animation track was not returned: {target_path}:{property_name}")
+
+
+def _layout_sides_match(actual: object, expected: dict[str, float]) -> bool:
+    return isinstance(actual, dict) and all(
+        key in actual
+        and isinstance(actual[key], (int, float))
+        and abs(float(actual[key]) - value) < 1e-6
+        for key, value in expected.items()
+    )
+
+
+def _stylebox_state(result: dict, state_name: str) -> dict | None:
+    for state in result.get("styles", []):
+        if state.get("state") == state_name:
+            return state
+    return None
 
 
 def _has_signal_connection(
