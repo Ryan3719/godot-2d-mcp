@@ -715,6 +715,19 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def navigation_polygon_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "navigation_polygon_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def control_stylebox_flat_upsert(
         self,
         path: str,
@@ -1075,6 +1088,107 @@ class GodotService:
         return await self.bridge.call(
             "navigation_2d_set",
             _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def navigation_polygon_create(
+        self,
+        path: str,
+        agent_radius: float = 0.0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_navigation_polygon_agent_radius(agent_radius)
+        return await self.bridge.call(
+            "navigation_polygon_create",
+            _scene_params(scene_file, path=path, agent_radius=agent_radius),
+            session_id=session_id,
+        )
+
+    async def navigation_polygon_geometry_set(
+        self,
+        path: str,
+        vertices: list[dict[str, float | int]],
+        polygons: list[list[int]],
+        agent_radius: float | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_navigation_polygon_vertices(vertices, "vertices", allow_empty=True)
+        _validate_navigation_polygon_indices(polygons)
+        if bool(vertices) != bool(polygons):
+            raise ValueError("vertices and polygons must both be empty or non-empty")
+        if agent_radius is not None:
+            _validate_navigation_polygon_agent_radius(agent_radius)
+        return await self.bridge.call(
+            "navigation_polygon_geometry_set",
+            _scene_params(
+                scene_file,
+                path=path,
+                vertices=vertices,
+                polygons=polygons,
+                agent_radius=agent_radius,
+            ),
+            session_id=session_id,
+        )
+
+    async def navigation_polygon_outline_set(
+        self,
+        path: str,
+        outline: list[dict[str, float | int]],
+        index: int | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_navigation_polygon_vertices(outline, "outline")
+        _validate_navigation_outline_index(index, allow_none=True)
+        return await self.bridge.call(
+            "navigation_polygon_outline_set",
+            _scene_params(scene_file, path=path, outline=outline, index=index),
+            session_id=session_id,
+        )
+
+    async def navigation_polygon_outline_remove(
+        self,
+        path: str,
+        index: int,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_navigation_outline_index(index)
+        return await self.bridge.call(
+            "navigation_polygon_outline_remove",
+            _scene_params(scene_file, path=path, index=index),
+            session_id=session_id,
+        )
+
+    async def navigation_polygon_make_from_outlines(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "navigation_polygon_make_from_outlines",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def navigation_polygon_clear(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "navigation_polygon_clear",
+            _scene_params(scene_file, path=path),
             session_id=session_id,
         )
 
@@ -1447,6 +1561,53 @@ def _validate_physics_configuration_properties(
         for name, property_value in properties.items()
     ):
         raise ValueError("properties must contain bounded JSON-compatible values")
+
+
+def _validate_navigation_polygon_agent_radius(value: float) -> None:
+    if not _is_finite_number(value) or float(value) < 0.0:
+        raise ValueError("agent_radius must be a finite number greater than or equal to zero")
+
+
+def _validate_navigation_polygon_vertices(
+    points: list[dict[str, float | int]], label: str, *, allow_empty: bool = False
+) -> None:
+    if not isinstance(points, list) or len(points) > 512:
+        raise ValueError(f"{label} must contain at most 512 Vector2 points")
+    if len(points) < 3 and (not allow_empty or points):
+        raise ValueError(f"{label} must contain at least three Vector2 points")
+    if any(
+        not isinstance(point, dict)
+        or set(point) != {"x", "y"}
+        or not _is_finite_number(point["x"])
+        or not _is_finite_number(point["y"])
+        for point in points
+    ):
+        raise ValueError(f"{label} must contain Vector2 objects with finite x and y values")
+
+
+def _validate_navigation_polygon_indices(polygons: list[list[int]]) -> None:
+    if not isinstance(polygons, list) or len(polygons) > 512:
+        raise ValueError("polygons must contain at most 512 index arrays")
+    if any(
+        not isinstance(polygon, list) or len(polygon) < 3 or len(polygon) > 512
+        for polygon in polygons
+    ):
+        raise ValueError("each polygon must contain between three and 512 vertex indices")
+    if sum(len(polygon) for polygon in polygons) > 2048:
+        raise ValueError("polygon indices exceed the supported limit")
+    if any(
+        isinstance(index, bool) or not isinstance(index, int) or index < 0
+        for polygon in polygons
+        for index in polygon
+    ):
+        raise ValueError("polygon indices must be non-negative integers")
+
+
+def _validate_navigation_outline_index(value: int | None, *, allow_none: bool = False) -> None:
+    if value is None and allow_none:
+        return
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError("index must be a non-negative integer")
 
 
 def _validate_optional_joint_endpoint_path(value: str | None, label: str) -> None:

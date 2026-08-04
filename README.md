@@ -2,7 +2,7 @@
 
 Godot 2D MCP connects Codex, Claude Code, and other MCP clients to a live Godot editor. The project is designed for comprehensive Godot 2D authoring while keeping editor mutations on Godot's main thread and inside its undo/redo system.
 
-The current `0.11.0` preview adds semantic 2D navigation-node authoring to safe scene, signal, animation, UI, Theme, collision, and query editing. Agents can configure NavigationRegion2D, NavigationAgent2D, NavigationObstacle2D, and NavigationLink2D through Godot's native model while retaining editor undo/redo before explicitly saving the scene.
+The current `0.12.0` preview adds NavigationPolygon resource authoring to safe scene, signal, animation, UI, Theme, collision, query, and navigation editing. Agents can configure 2D navigation nodes and create, bind, edit, build, detach, undo, and save NavigationPolygon resources through Godot's native model.
 
 ## Current capabilities
 
@@ -30,6 +30,7 @@ The current `0.11.0` preview adds semantic 2D navigation-node authoring to safe 
 - `ray_cast_2d_get` and `ray_cast_2d_set` for persistent RayCast2D query behavior and collision-mask layer numbers.
 - `shape_cast_2d_get`, `shape_cast_2d_set`, and `shape_cast_2d_shape_clear` for ShapeCast2D behavior and independent built-in `Shape2D` resources.
 - `navigation_2d_get` and `navigation_2d_set` for `NavigationRegion2D`, `NavigationAgent2D`, `NavigationObstacle2D`, and `NavigationLink2D` configuration, with navigation and avoidance bitfields expressed as 1 through 32 layer-number arrays.
+- `navigation_polygon_get`, `navigation_polygon_create`, `navigation_polygon_geometry_set`, `navigation_polygon_outline_set`, `navigation_polygon_outline_remove`, `navigation_polygon_make_from_outlines`, and `navigation_polygon_clear` for independent `NavigationPolygon` resources attached to `NavigationRegion2D`.
 - `node_create`, `node_set_properties`, `node_delete`, `node_rename`, `node_duplicate`, `node_reparent`, and `node_move` with scene-file guards.
 - `signal_connect` and `signal_disconnect` for persistent local-node connections, including bounded JSON binding arguments, deferred, and one-shot options.
 - `animation_create`, `animation_delete`, `animation_track_upsert`, `animation_track_delete`, `animation_key_upsert`, and `animation_key_delete` for scene-embedded 2D/UI property animation.
@@ -92,7 +93,7 @@ Use `area_2d_set` for environment behavior such as `gravity_space_override: "rep
 
 Use `ray_cast_2d_set` with `target_position`, filter flags, and `masks: [2, 4]` to author a persistent RayCast2D. `shape_cast_2d_set` accepts the same filtering configuration plus an optional `shape_type` and `shape_properties`, for example `shape_type: "circle"` and `shape_properties: {"radius": 16}`. Shape resources are independent built-in resources, so shared or external `Shape2D` files are never mutated. Static editor scenes have no simulated physics tick, therefore these tools author query configuration rather than claiming runtime hit results; runtime sampling belongs to the later play-mode integration.
 
-Use `navigation_2d_set` on each navigation node type and first inspect `supported_properties` from `navigation_2d_get`. `navigation_layers`, `avoidance_layers`, and `avoidance_mask` use arrays such as `[1, 3]`; no raw bitmask arithmetic is needed. The tool validates costs, path and avoidance limits, and prevents enabling obstacle carving without enabling navigation-mesh influence. `NavigationPolygon` geometry is intentionally a later dedicated resource workflow, so a Region can be configured safely now without silently inventing a navigable polygon.
+Use `navigation_2d_set` on each navigation node type and first inspect `supported_properties` from `navigation_2d_get`. `navigation_layers`, `avoidance_layers`, and `avoidance_mask` use arrays such as `[1, 3]`; no raw bitmask arithmetic is needed. The tool validates costs, path and avoidance limits, and prevents enabling obstacle carving without enabling navigation-mesh influence. For a Region, first call `navigation_polygon_create`, then either use `navigation_polygon_geometry_set` with shared vertex arrays and convex polygon index arrays, or append outlines with `navigation_polygon_outline_set` and call `navigation_polygon_make_from_outlines`. Geometry and outlines are copied into a new embedded resource for each change, so external and shared NavigationPolygon resources are never edited in place. `navigation_polygon_outline_remove` and `navigation_polygon_clear` are undoable destructive operations. Scene-source geometry baking is intentionally deferred because it requires a separate asynchronous source-geometry workflow.
 
 ## Requirements
 
