@@ -57,6 +57,14 @@ const GROOVE_JOINT_CONFIGURATION_PROPERTIES := ["bias", "disable_collision", "le
 const DAMPED_SPRING_JOINT_CONFIGURATION_PROPERTIES := [
 	"bias", "disable_collision", "length", "rest_length", "stiffness", "damping",
 ]
+const RAY_CAST_CONFIGURATION_PROPERTIES := [
+	"enabled", "exclude_parent", "target_position", "hit_from_inside", "collide_with_areas",
+	"collide_with_bodies",
+]
+const SHAPE_CAST_CONFIGURATION_PROPERTIES := [
+	"enabled", "exclude_parent", "target_position", "margin", "max_results", "collide_with_areas",
+	"collide_with_bodies",
+]
 const ENUM_OPTIONS_BY_PROPERTY := {
 	"gravity_space_override": {
 		"disabled": 0, "combine": 1, "combine_replace": 2, "replace": 3, "replace_combine": 4,
@@ -327,6 +335,107 @@ func set_joint(params: Dictionary) -> Dictionary:
 	return _joint_response_with_mutation(result, joint, scene_root, configuration_properties)
 
 
+func get_ray_cast(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_ray_cast(params, false)
+	if resolved.has("_error"):
+		return resolved
+	return _cast_response(
+		resolved["ray_cast"], resolved["scene_root"], RAY_CAST_CONFIGURATION_PROPERTIES
+	)
+
+
+func set_ray_cast(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_ray_cast(params)
+	if resolved.has("_error"):
+		return resolved
+	var ray_cast: RayCast2D = resolved["ray_cast"]
+	var parsed := _parse_configuration(params, ray_cast, RAY_CAST_CONFIGURATION_PROPERTIES, false)
+	if parsed.has("_error"):
+		return parsed
+	var mask_update := _parse_cast_mask_update(params)
+	if mask_update.has("_error"):
+		return mask_update
+	var updates: Dictionary = parsed["updates"].duplicate()
+	updates.merge(mask_update["updates"])
+	if updates.is_empty():
+		return Errors.make("MISSING_PARAMETER", "properties or masks must be supplied")
+	var result := _commit_configuration(
+		ray_cast,
+		resolved["scene_root"],
+		RAY_CAST_CONFIGURATION_PROPERTIES,
+		updates,
+		"Update RayCast2D configuration"
+	)
+	if result.has("_error"):
+		return result
+	return _cast_response_with_mutation(
+		result, ray_cast, resolved["scene_root"], RAY_CAST_CONFIGURATION_PROPERTIES
+	)
+
+
+func get_shape_cast(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_shape_cast(params, false)
+	if resolved.has("_error"):
+		return resolved
+	return _shape_cast_response(resolved["shape_cast"], resolved["scene_root"])
+
+
+func set_shape_cast(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_shape_cast(params)
+	if resolved.has("_error"):
+		return resolved
+	var shape_cast: ShapeCast2D = resolved["shape_cast"]
+	var scene_root: Node = resolved["scene_root"]
+	var parsed := _parse_configuration(params, shape_cast, SHAPE_CAST_CONFIGURATION_PROPERTIES, false)
+	if parsed.has("_error"):
+		return parsed
+	var mask_update := _parse_cast_mask_update(params)
+	if mask_update.has("_error"):
+		return mask_update
+	var shape_update := _parse_shape_cast_shape(params, shape_cast.shape)
+	if shape_update.has("_error"):
+		return shape_update
+	var updates: Dictionary = parsed["updates"].duplicate()
+	updates.merge(mask_update["updates"])
+	if updates.is_empty() and not shape_update["requested"]:
+		return Errors.make("MISSING_PARAMETER", "properties, masks, or shape_type must be supplied")
+	var validity := _validate_shape_cast_configuration(shape_cast, updates)
+	if validity.has("_error"):
+		return validity
+	return _commit_shape_cast_configuration(shape_cast, scene_root, updates, shape_update)
+
+
+func clear_shape_cast_shape(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_shape_cast(params)
+	if resolved.has("_error"):
+		return resolved
+	var shape_cast: ShapeCast2D = resolved["shape_cast"]
+	var scene_root: Node = resolved["scene_root"]
+	var old_shape: Shape2D = shape_cast.shape
+	if old_shape == null:
+		return Errors.make(
+			"SHAPE_CAST_SHAPE_NOT_ASSIGNED",
+			"ShapeCast2D '%s' has no Shape2D resource" % shape_cast.name,
+			false,
+			"Call shape_cast_2d_get before clearing a shape."
+		)
+	_undo_redo.create_action(
+		"Godot 2D MCP: Clear shape on %s" % shape_cast.name,
+		UndoRedo.MERGE_DISABLE,
+		scene_root,
+		true
+	)
+	_undo_redo.add_do_property(shape_cast, "shape", null)
+	_undo_redo.add_undo_property(shape_cast, "shape", old_shape)
+	_undo_redo.add_undo_reference(old_shape)
+	_undo_redo.commit_action()
+	var result := _shape_cast_response(shape_cast, scene_root)
+	result["cleared"] = true
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
 func _resolve_area(params: Dictionary, require_writable: bool = true) -> Dictionary:
 	var resolved := _resolve_node(params, require_writable)
 	if resolved.has("_error"):
@@ -369,6 +478,36 @@ func _resolve_joint(params: Dictionary, require_writable: bool = true) -> Dictio
 			"Target a PinJoint2D, GrooveJoint2D, or DampedSpringJoint2D node."
 		)
 	resolved["joint"] = resolved["node"] as Joint2D
+	return resolved
+
+
+func _resolve_ray_cast(params: Dictionary, require_writable: bool = true) -> Dictionary:
+	var resolved := _resolve_node(params, require_writable)
+	if resolved.has("_error"):
+		return resolved
+	if not resolved["node"] is RayCast2D:
+		return Errors.make(
+			"RAY_CAST_2D_REQUIRED",
+			"Node '%s' is %s, not RayCast2D" % [resolved["node"].name, resolved["node"].get_class()],
+			false,
+			"Target a RayCast2D node."
+		)
+	resolved["ray_cast"] = resolved["node"] as RayCast2D
+	return resolved
+
+
+func _resolve_shape_cast(params: Dictionary, require_writable: bool = true) -> Dictionary:
+	var resolved := _resolve_node(params, require_writable)
+	if resolved.has("_error"):
+		return resolved
+	if not resolved["node"] is ShapeCast2D:
+		return Errors.make(
+			"SHAPE_CAST_2D_REQUIRED",
+			"Node '%s' is %s, not ShapeCast2D" % [resolved["node"].name, resolved["node"].get_class()],
+			false,
+			"Target a ShapeCast2D node."
+		)
+	resolved["shape_cast"] = resolved["node"] as ShapeCast2D
 	return resolved
 
 
@@ -579,6 +718,106 @@ func _commit_configuration(
 		_undo_redo.add_undo_property(node, property_name, node.get(property_name))
 	_undo_redo.commit_action()
 	var result := _configuration_response(node, scene_root, allowed_properties)
+	result["changed"] = true
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func _parse_cast_mask_update(params: Dictionary) -> Dictionary:
+	if not params.has("masks") or params["masks"] == null:
+		return {"updates": {}}
+	var mask_result := _parse_layer_numbers(params["masks"], "masks")
+	if mask_result.has("_error"):
+		return mask_result
+	return {"updates": {"collision_mask": mask_result["mask"]}}
+
+
+func _cast_response(cast_node: Node, scene_root: Node, configuration_properties: Array) -> Dictionary:
+	var response := _configuration_response(cast_node, scene_root, configuration_properties)
+	var mask := int(cast_node.get("collision_mask"))
+	response["collision_mask"] = mask
+	response["masks"] = _mask_to_layer_numbers(mask)
+	return response
+
+
+func _cast_response_with_mutation(
+	mutation: Dictionary,
+	cast_node: Node,
+	scene_root: Node,
+	configuration_properties: Array
+) -> Dictionary:
+	var response := _cast_response(cast_node, scene_root, configuration_properties)
+	for key in ["changed", "undoable", "_scene_mutated"]:
+		if mutation.has(key):
+			response[key] = mutation[key]
+	return response
+
+
+func _shape_cast_response(shape_cast: ShapeCast2D, scene_root: Node) -> Dictionary:
+	var response := _cast_response(shape_cast, scene_root, SHAPE_CAST_CONFIGURATION_PROPERTIES)
+	response["shape"] = _serialize_shape(shape_cast.shape)
+	return response
+
+
+func _parse_shape_cast_shape(params: Dictionary, existing: Shape2D) -> Dictionary:
+	if not params.has("shape_type") or params["shape_type"] == null:
+		return {"requested": false, "shape": null}
+	var shape_params := {
+		"shape_type": params["shape_type"],
+		"properties": params.get("shape_properties", null),
+	}
+	var built := _build_shape(shape_params, existing)
+	if built.has("_error"):
+		return built
+	return {"requested": true, "shape": built["shape"]}
+
+
+func _validate_shape_cast_configuration(shape_cast: ShapeCast2D, updates: Dictionary) -> Dictionary:
+	if float(_configuration_value(shape_cast, updates, "margin")) < 0.0:
+		return _invalid_physics_configuration("margin must be greater than or equal to zero")
+	if int(_configuration_value(shape_cast, updates, "max_results")) < 1:
+		return _invalid_physics_configuration("max_results must be at least one")
+	return {}
+
+
+func _commit_shape_cast_configuration(
+	shape_cast: ShapeCast2D,
+	scene_root: Node,
+	updates: Dictionary,
+	shape_update: Dictionary
+) -> Dictionary:
+	var changed := {}
+	for property_name_value in updates:
+		var property_name := str(property_name_value)
+		if shape_cast.get(property_name) != updates[property_name_value]:
+			changed[property_name] = updates[property_name_value]
+	var new_shape: Shape2D = shape_update["shape"]
+	var old_shape: Shape2D = shape_cast.shape
+	var replacing_shape: bool = bool(shape_update["requested"])
+	if changed.is_empty() and not replacing_shape:
+		var unchanged := _shape_cast_response(shape_cast, scene_root)
+		unchanged["changed"] = false
+		unchanged["undoable"] = false
+		return unchanged
+	_undo_redo.create_action(
+		"Godot 2D MCP: Update ShapeCast2D configuration",
+		UndoRedo.MERGE_DISABLE,
+		scene_root,
+		true
+	)
+	for property_name_value in changed:
+		var property_name := str(property_name_value)
+		_undo_redo.add_do_property(shape_cast, property_name, changed[property_name])
+		_undo_redo.add_undo_property(shape_cast, property_name, shape_cast.get(property_name))
+	if replacing_shape:
+		_undo_redo.add_do_property(shape_cast, "shape", new_shape)
+		_undo_redo.add_do_reference(new_shape)
+		_undo_redo.add_undo_property(shape_cast, "shape", old_shape)
+		if old_shape != null:
+			_undo_redo.add_undo_reference(old_shape)
+	_undo_redo.commit_action()
+	var result := _shape_cast_response(shape_cast, scene_root)
 	result["changed"] = true
 	result["undoable"] = true
 	result["_scene_mutated"] = true

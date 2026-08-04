@@ -1223,8 +1223,91 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if not redo_spring.get("changed"):
             raise RuntimeError("Joint configuration was not redoable")
 
+        ray_cast = await app.service.node_create(
+            type_name="RayCast2D",
+            name="AgentGroundRay",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        ray_cast_path = ray_cast["path"]
+        initial_ray_cast = await app.service.ray_cast_2d_get(ray_cast_path, scene_file=scene_file)
+        if initial_ray_cast["masks"] != [1]:
+            raise RuntimeError("RayCast2D did not expose its default collision mask")
+        ray_cast_update = await app.service.ray_cast_2d_set(
+            ray_cast_path,
+            properties={
+                "enabled": True,
+                "exclude_parent": False,
+                "target_position": {"x": 96.0, "y": 24.0},
+                "hit_from_inside": True,
+                "collide_with_areas": True,
+                "collide_with_bodies": True,
+            },
+            masks=[2, 4],
+            scene_file=scene_file,
+        )
+        if (
+            ray_cast_update["masks"] != [2, 4]
+            or ray_cast_update["configuration"]["target_position"] != {"x": 96.0, "y": 24.0}
+            or ray_cast_update["configuration"]["hit_from_inside"] is not True
+        ):
+            raise RuntimeError("RayCast2D configuration was not applied")
+
+        shape_cast = await app.service.node_create(
+            type_name="ShapeCast2D",
+            name="AgentShapeCast",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        shape_cast_path = shape_cast["path"]
+        initial_shape_cast = await app.service.shape_cast_2d_get(
+            shape_cast_path, scene_file=scene_file
+        )
+        if initial_shape_cast["shape"] is not None:
+            raise RuntimeError("New ShapeCast2D unexpectedly had a Shape2D resource")
+        await _expect_godot_error(
+            app.service.shape_cast_2d_set(
+                shape_cast_path,
+                shape_type="circle",
+                shape_properties={"radius": 0.0},
+                scene_file=scene_file,
+            ),
+            "INVALID_SHAPE_GEOMETRY",
+        )
+        shape_cast_update = await app.service.shape_cast_2d_set(
+            shape_cast_path,
+            properties={
+                "enabled": True,
+                "target_position": {"x": 48.0, "y": 0.0},
+                "margin": 1.5,
+                "max_results": 12,
+                "collide_with_areas": True,
+            },
+            masks=[1, 3],
+            shape_type="circle",
+            shape_properties={"radius": 16.0},
+            scene_file=scene_file,
+        )
+        if (
+            shape_cast_update["shape"]["resource_type"] != "CircleShape2D"
+            or shape_cast_update["masks"] != [1, 3]
+            or shape_cast_update["configuration"]["max_results"] != 12
+        ):
+            raise RuntimeError("ShapeCast2D configuration or Shape2D was not applied")
+        cleared_shape_cast = await app.service.shape_cast_2d_shape_clear(
+            shape_cast_path, scene_file=scene_file
+        )
+        if not cleared_shape_cast["cleared"]:
+            raise RuntimeError("ShapeCast2D clear did not report a change")
+        undo_shape_cast_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_shape_cast_clear.get("changed"):
+            raise RuntimeError("ShapeCast2D clear was not undoable")
+        restored_shape_cast = await app.service.shape_cast_2d_get(shape_cast_path, scene_file=scene_file)
+        if restored_shape_cast["shape"]["resource_type"] != "CircleShape2D":
+            raise RuntimeError("Undo did not restore the ShapeCast2D Shape2D resource")
+
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 20 or _has_node(final_hierarchy, marker_path):
+        if final_hierarchy.get("total") != 22 or _has_node(final_hierarchy, marker_path):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
@@ -1238,6 +1321,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentWall" not in saved_scene
             or "ConcavePolygonShape2D" not in saved_scene
             or "AgentSpringJoint" not in saved_scene
+            or "AgentShapeCast" not in saved_scene
         ):
             raise RuntimeError("Saved scene does not contain the created Button")
 

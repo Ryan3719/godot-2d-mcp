@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：阶段 0 已完成；阶段 1 已交付首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式与嵌入式 Theme 资源能力；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D 与 Joint2D 语义能力（v0.9.0）
+状态：阶段 0 已完成；阶段 1 已交付首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式与嵌入式 Theme 资源能力；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D 与 ShapeCast2D 语义能力（v0.10.0）
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -133,10 +133,12 @@ Codex / Claude Code / MCP Client
 - `area_2d_get`、`area_2d_set`，支持 `Area2D` 的监测、优先级、重力与阻尼覆盖，枚举使用稳定的可读名称。
 - `physics_body_2d_get`、`physics_body_2d_set`，支持 `StaticBody2D`、`AnimatableBody2D`、`CharacterBody2D` 与 `RigidBody2D` 的专属行为配置；角色平台层以 1-32 层编号数组表示。
 - `joint_2d_get`、`joint_2d_set`，支持 `PinJoint2D`、`GrooveJoint2D`、`DampedSpringJoint2D` 的物理参数与安全端点绑定；端点采用稳定场景路径并由插件转换为相对 `NodePath`。
+- `ray_cast_2d_get`、`ray_cast_2d_set`，支持 `RayCast2D` 的持久查询配置、筛选标志和以 1-32 层编号表示的碰撞掩码。
+- `shape_cast_2d_get`、`shape_cast_2d_set`、`shape_cast_2d_shape_clear`，支持 `ShapeCast2D` 的持久查询配置与独立内嵌 `Shape2D` 的创建、替换、清除、撤销/重做。
 - 重命名和重新挂载时迁移场景内直接 `NodePath` 属性及内嵌 `AnimationPlayer` 动画轨道。
 - 重新挂载默认保持 `Node2D`/`Control` 的全局视觉位置，并允许调用方关闭该行为。
 
-当前结构编辑拒绝跨 PackedScene 边界、包含不受支持 3D 节点的子树，以及需要修改外部动画资源的操作；删除会预检直接 `NodePath` 和动画轨道，避免留下悬空引用。动画工具仅写入场景内嵌 `AnimationLibrary`/`Animation`，并且只创建或修改本地 2D/UI 节点的属性值轨道；外部资源、导入轨道和方法/音频/嵌套动画轨道仍属于后续阶段。布局工具拒绝由 `Container` 管理的子节点；样式工具只创建独立的节点本地 `StyleBoxFlat` override，不会修改共享 Theme 或外部资源。Theme 工具可绑定外部 `res://` Theme，但它们在 MCP 内只读；可写范围限于场景内嵌 Theme，因此全部 Theme 变更都能随场景撤销和重做。字体可绑定项目 `Font` 或新建内嵌 `SystemFont`，图标仅绑定项目中已有的 `Texture2D`。碰撞形状工具创建或复制独立内嵌的 `Shape2D` 后替换节点分配，不修改共享或外部 Shape2D；碰撞层工具只改动本地 `CollisionObject2D` 的 layer/mask。Area/Body/Joint 工具仅允许已核验的公开物理配置，并在写入前校验枚举、层位、端点类型与关键数值约束；全部更新均在同一撤销事务中完成。RayCast、ShapeCast、导航与 TileMap 仍在后续阶段。信号工具仅操作场景内本地节点的持久化连接，并要求目标方法已存在，不会生成或修改脚本回调。这是为了避免 Agent 在无法证明安全的情况下静默破坏引用。自动脚本回调生成和完整 PackedScene 工作流仍属于后续阶段。
+当前结构编辑拒绝跨 PackedScene 边界、包含不受支持 3D 节点的子树，以及需要修改外部动画资源的操作；删除会预检直接 `NodePath` 和动画轨道，避免留下悬空引用。动画工具仅写入场景内嵌 `AnimationLibrary`/`Animation`，并且只创建或修改本地 2D/UI 节点的属性值轨道；外部资源、导入轨道和方法/音频/嵌套动画轨道仍属于后续阶段。布局工具拒绝由 `Container` 管理的子节点；样式工具只创建独立的节点本地 `StyleBoxFlat` override，不会修改共享 Theme 或外部资源。Theme 工具可绑定外部 `res://` Theme，但它们在 MCP 内只读；可写范围限于场景内嵌 Theme，因此全部 Theme 变更都能随场景撤销和重做。字体可绑定项目 `Font` 或新建内嵌 `SystemFont`，图标仅绑定项目中已有的 `Texture2D`。碰撞形状工具创建或复制独立内嵌的 `Shape2D` 后替换节点分配，不修改共享或外部 Shape2D；碰撞层工具只改动本地 `CollisionObject2D` 的 layer/mask。Area/Body/Joint 工具仅允许已核验的公开物理配置，并在写入前校验枚举、层位、端点类型与关键数值约束；RayCast/ShapeCast 工具仅保存配置和独立内嵌 Shape2D，不在静态编辑器场景中伪造运行时命中结果；全部更新均在同一撤销事务中完成。导航与 TileMap 仍在后续阶段。信号工具仅操作场景内本地节点的持久化连接，并要求目标方法已存在，不会生成或修改脚本回调。这是为了避免 Agent 在无法证明安全的情况下静默破坏引用。自动脚本回调生成和完整 PackedScene 工作流仍属于后续阶段。
 
 ## 6. 核心数据约定
 

@@ -290,6 +290,32 @@ def create_application(
             scene_file=scene_file,
         )
 
+    @mcp.tool(annotations=READ_ONLY)
+    async def ray_cast_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read the persistent query configuration of a RayCast2D node."""
+        return await service.ray_cast_2d_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def shape_cast_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read the persistent query configuration and Shape2D of a ShapeCast2D node."""
+        return await service.shape_cast_2d_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
     @mcp.tool(annotations=WRITE)
     async def node_create(
         type: str,
@@ -843,6 +869,57 @@ def create_application(
             properties=properties,
             node_a_path=node_a_path,
             node_b_path=node_b_path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def ray_cast_2d_set(
+        path: str,
+        properties: dict[str, Any] | None = None,
+        masks: list[int] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically configure RayCast2D behavior and its collision-mask layer numbers."""
+        return await service.ray_cast_2d_set(
+            path=path,
+            properties=properties,
+            masks=masks,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def shape_cast_2d_set(
+        path: str,
+        properties: dict[str, Any] | None = None,
+        masks: list[int] | None = None,
+        shape_type: str | None = None,
+        shape_properties: dict[str, Any] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically configure ShapeCast2D behavior and optionally replace its embedded Shape2D."""
+        return await service.shape_cast_2d_set(
+            path=path,
+            properties=properties,
+            masks=masks,
+            shape_type=shape_type,
+            shape_properties=shape_properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def shape_cast_2d_shape_clear(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Detach a ShapeCast2D Shape2D resource while retaining editor undo support."""
+        return await service.shape_cast_2d_shape_clear(
+            path=path,
             session_id=session_id,
             scene_file=scene_file,
         )

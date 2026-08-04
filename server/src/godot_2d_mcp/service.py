@@ -676,6 +676,32 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def ray_cast_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "ray_cast_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def shape_cast_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "shape_cast_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def control_stylebox_flat_upsert(
         self,
         path: str,
@@ -950,6 +976,77 @@ class GodotService:
                 node_a_path=node_a_path,
                 node_b_path=node_b_path,
             ),
+            session_id=session_id,
+        )
+
+    async def ray_cast_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any] | None = None,
+        masks: list[int] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        if properties is None and masks is None:
+            raise ValueError("properties or masks must be supplied")
+        if properties is not None:
+            _validate_physics_configuration_properties(properties, allow_empty=True)
+        if masks is not None:
+            _validate_collision_layer_numbers(masks, "masks")
+        return await self.bridge.call(
+            "ray_cast_2d_set",
+            _scene_params(scene_file, path=path, properties=properties, masks=masks),
+            session_id=session_id,
+        )
+
+    async def shape_cast_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any] | None = None,
+        masks: list[int] | None = None,
+        shape_type: str | None = None,
+        shape_properties: dict[str, Any] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        if properties is None and masks is None and shape_type is None:
+            raise ValueError("properties, masks, or shape_type must be supplied")
+        if properties is not None:
+            _validate_physics_configuration_properties(properties, allow_empty=True)
+        if masks is not None:
+            _validate_collision_layer_numbers(masks, "masks")
+        if shape_type is None and shape_properties is not None:
+            raise ValueError("shape_type must be supplied with shape_properties")
+        if shape_type is not None:
+            _validate_collision_shape_type(shape_type)
+            if shape_properties is None:
+                raise ValueError("shape_properties must be supplied with shape_type")
+            _validate_collision_shape_properties(shape_type, shape_properties)
+        return await self.bridge.call(
+            "shape_cast_2d_set",
+            _scene_params(
+                scene_file,
+                path=path,
+                properties=properties,
+                masks=masks,
+                shape_type=shape_type,
+                shape_properties=shape_properties,
+            ),
+            session_id=session_id,
+        )
+
+    async def shape_cast_2d_shape_clear(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "shape_cast_2d_shape_clear",
+            _scene_params(scene_file, path=path),
             session_id=session_id,
         )
 
