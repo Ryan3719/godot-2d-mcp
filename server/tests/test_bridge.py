@@ -60,6 +60,13 @@ async def test_command_round_trip_with_fake_godot_plugin() -> None:
                 )
             )
 
-            assert await call_task == {"readiness": "ready"}
+            assert await call_task == {
+                "readiness": "ready",
+                "meta": {
+                    "session_id": "project@a1b2",
+                    "readiness": "ready",
+                    "scene_revision": 0,
+                },
+            }
     finally:
         await bridge.stop()

@@ -60,7 +60,12 @@ func _dispatch(message: Dictionary, meta: Dictionary) -> Dictionary:
 	var result = (_handlers[command] as Callable).call(params)
 	if not result is Dictionary:
 		result = Errors.make("INTERNAL_ERROR", "Command handler returned an invalid result")
-	return _response(request_id, result, meta)
+	var scene_mutated := bool(result.get("_scene_mutated", false))
+	result.erase("_scene_mutated")
+	var response := _response(request_id, result, meta)
+	if scene_mutated and response["status"] == "ok":
+		response["_scene_mutated"] = true
+	return response
 
 
 func _response(request_id: String, result: Dictionary, meta: Dictionary) -> Dictionary:

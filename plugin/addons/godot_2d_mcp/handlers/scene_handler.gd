@@ -2,10 +2,17 @@
 extends RefCounted
 
 const Errors := preload("res://addons/godot_2d_mcp/utils/errors.gd")
+const MutationGuard := preload("res://addons/godot_2d_mcp/utils/mutation_guard.gd")
 const ScenePath := preload("res://addons/godot_2d_mcp/utils/scene_path.gd")
 const TypePolicy := preload("res://addons/godot_2d_mcp/utils/type_policy.gd")
 
 const MAX_SCANNED_NODES := 10000
+
+var _undo_redo: EditorUndoRedoManager
+
+
+func _init(undo_redo: EditorUndoRedoManager) -> void:
+	_undo_redo = undo_redo
 
 
 func get_hierarchy(params: Dictionary) -> Dictionary:
@@ -57,6 +64,87 @@ func get_hierarchy(params: Dictionary) -> Dictionary:
 		"limit": limit,
 		"has_more": end < items.size(),
 		"scan_truncated": not stack.is_empty(),
+	}
+
+
+func save_scene(params: Dictionary) -> Dictionary:
+	var guarded := MutationGuard.require_scene(params)
+	if guarded.has("_error"):
+		return guarded
+	var scene_root: Node = guarded["scene_root"]
+	if scene_root.scene_file_path.is_empty():
+		return Errors.make(
+			"SCENE_HAS_NO_PATH",
+			"The current scene has never been saved",
+			false,
+			"Save the scene once in Godot before calling scene_save."
+		)
+	var error := EditorInterface.save_scene()
+	if error != OK:
+		return Errors.make(
+			"SCENE_SAVE_FAILED",
+			"Godot failed to save the current scene: %s" % error_string(error),
+			false,
+			"Check editor output and project file permissions.",
+			{"error": error, "error_name": error_string(error)}
+		)
+	return {
+		"scene_file": scene_root.scene_file_path,
+		"saved": true,
+		"undoable": false,
+	}
+
+
+func undo_scene(params: Dictionary) -> Dictionary:
+	var history_result := _get_scene_history(params)
+	if history_result.has("_error"):
+		return history_result
+	var history: UndoRedo = history_result["history"]
+	if not history.has_undo():
+		return _history_response(history, false, "")
+	var action_name := history.get_current_action_name()
+	var changed := history.undo()
+	var response := _history_response(history, changed, action_name)
+	if changed:
+		response["_scene_mutated"] = true
+	return response
+
+
+func redo_scene(params: Dictionary) -> Dictionary:
+	var history_result := _get_scene_history(params)
+	if history_result.has("_error"):
+		return history_result
+	var history: UndoRedo = history_result["history"]
+	if not history.has_redo():
+		return _history_response(history, false, "")
+	var next_action := history.get_current_action() + 1
+	var action_name := history.get_action_name(next_action)
+	var changed := history.redo()
+	var response := _history_response(history, changed, action_name)
+	if changed:
+		response["_scene_mutated"] = true
+	return response
+
+
+func _get_scene_history(params: Dictionary) -> Dictionary:
+	var guarded := MutationGuard.require_scene(params)
+	if guarded.has("_error"):
+		return guarded
+	var scene_root: Node = guarded["scene_root"]
+	var history_id := _undo_redo.get_object_history_id(scene_root)
+	var history := _undo_redo.get_history_undo_redo(history_id)
+	if history == null:
+		return Errors.make("UNDO_HISTORY_UNAVAILABLE", "No undo history exists for the edited scene")
+	return {"history": history}
+
+
+func _history_response(history: UndoRedo, changed: bool, action_name: String) -> Dictionary:
+	return {
+		"changed": changed,
+		"action": action_name,
+		"has_undo": history.has_undo(),
+		"has_redo": history.has_redo(),
+		"version": history.get_version(),
 	}
 
 

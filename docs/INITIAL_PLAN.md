@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：已确认，进入实施阶段  
+状态：阶段 0 已完成，阶段 1 实施中
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -282,4 +282,3 @@ godot-2d-mcp/
 - [Godot AI](https://github.com/hi-godot/godot-ai)
 - [Model Context Protocol](https://modelcontextprotocol.io/)
 - [Codex MCP documentation](https://learn.chatgpt.com/docs/extend/mcp)
-
