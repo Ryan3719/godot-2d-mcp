@@ -157,6 +157,80 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def node_rename(
+        self,
+        path: str,
+        name: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_node_name(name)
+        return await self.bridge.call(
+            "node_rename",
+            _scene_params(scene_file, path=path, name=name),
+            session_id=session_id,
+        )
+
+    async def node_duplicate(
+        self,
+        path: str,
+        name: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        if name:
+            _validate_node_name(name)
+        return await self.bridge.call(
+            "node_duplicate",
+            _scene_params(scene_file, path=path, name=name),
+            session_id=session_id,
+        )
+
+    async def node_reparent(
+        self,
+        path: str,
+        new_parent_path: str,
+        index: int | None = None,
+        keep_global_transform: bool = True,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_node_path(new_parent_path)
+        if index is not None and (isinstance(index, bool) or index < 0):
+            raise ValueError("index must be non-negative when supplied")
+        if not isinstance(keep_global_transform, bool):
+            raise ValueError("keep_global_transform must be a boolean")
+        return await self.bridge.call(
+            "node_reparent",
+            _scene_params(
+                scene_file,
+                path=path,
+                new_parent_path=new_parent_path,
+                index=-1 if index is None else index,
+                keep_global_transform=keep_global_transform,
+            ),
+            session_id=session_id,
+        )
+
+    async def node_move(
+        self,
+        path: str,
+        index: int,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        if isinstance(index, bool) or index < 0:
+            raise ValueError("index must be non-negative")
+        return await self.bridge.call(
+            "node_move",
+            _scene_params(scene_file, path=path, index=index),
+            session_id=session_id,
+        )
+
     async def scene_save(
         self,
         session_id: str | None = None,
@@ -194,6 +268,11 @@ class GodotService:
 def _validate_node_path(path: str) -> None:
     if not path or len(path) > 4096:
         raise ValueError("path must contain between 1 and 4096 characters")
+
+
+def _validate_node_name(name: str) -> None:
+    if not name or len(name) > 256:
+        raise ValueError("name must contain between 1 and 256 characters")
 
 
 def _scene_params(scene_file: str, **params: Any) -> dict[str, Any]:

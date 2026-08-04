@@ -188,6 +188,70 @@ def create_application(
             scene_file=scene_file,
         )
 
+    @mcp.tool(annotations=WRITE)
+    async def node_rename(
+        path: str,
+        name: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Rename a local 2D node and migrate scene-local NodePath and animation references."""
+        return await service.node_rename(
+            path=path,
+            name=name,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def node_duplicate(
+        path: str,
+        name: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Duplicate a local 2D node subtree into its current parent and retain undo support."""
+        return await service.node_duplicate(
+            path=path,
+            name=name,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def node_reparent(
+        path: str,
+        new_parent_path: str,
+        index: int | None = None,
+        keep_global_transform: bool = True,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Move a local node under a new 2D parent while preserving paths and visual placement."""
+        return await service.node_reparent(
+            path=path,
+            new_parent_path=new_parent_path,
+            index=index,
+            keep_global_transform=keep_global_transform,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def node_move(
+        path: str,
+        index: int,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Reorder a local node among siblings without changing its parent or references."""
+        return await service.node_move(
+            path=path,
+            index=index,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
     @mcp.tool(annotations=SAVE)
     async def scene_save(
         session_id: str | None = None,

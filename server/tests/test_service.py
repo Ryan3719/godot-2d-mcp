@@ -128,3 +128,88 @@ async def test_scene_commands_forward_to_godot() -> None:
         ("scene_redo", {"scene_file": "res://main.tscn"}, None),
         ("scene_save", {"scene_file": "res://main.tscn"}, None),
     ]
+
+
+@pytest.mark.asyncio
+async def test_node_structure_tools_forward_scene_guard_and_options() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+
+    await service.node_rename(
+        path="/Main/UI/StartButton",
+        name="PlayButton",
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
+    await service.node_duplicate(
+        path="/Main/UI/PlayButton",
+        name="PlayButtonCopy",
+        scene_file="res://main.tscn",
+    )
+    await service.node_reparent(
+        path="/Main/UI/PlayButton",
+        new_parent_path="/Main",
+        index=1,
+        keep_global_transform=False,
+        scene_file="res://main.tscn",
+    )
+    await service.node_move(
+        path="/Main/PlayButton",
+        index=0,
+        scene_file="res://main.tscn",
+    )
+
+    assert bridge.calls == [
+        (
+            "node_rename",
+            {
+                "path": "/Main/UI/StartButton",
+                "name": "PlayButton",
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        ),
+        (
+            "node_duplicate",
+            {
+                "path": "/Main/UI/PlayButton",
+                "name": "PlayButtonCopy",
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "node_reparent",
+            {
+                "path": "/Main/UI/PlayButton",
+                "new_parent_path": "/Main",
+                "index": 1,
+                "keep_global_transform": False,
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "node_move",
+            {
+                "path": "/Main/PlayButton",
+                "index": 0,
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_node_structure_tools_validate_names_and_indexes() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="name"):
+        await service.node_rename("/Main/UI/StartButton", "")
+    with pytest.raises(ValueError, match="index"):
+        await service.node_reparent("/Main/UI/StartButton", "/Main", index=-1)
+    with pytest.raises(ValueError, match="index"):
+        await service.node_move("/Main/UI/StartButton", index=-1)
+    with pytest.raises(ValueError, match="keep_global_transform"):
+        await service.node_reparent("/Main/UI/StartButton", "/Main", keep_global_transform=1)  # type: ignore[arg-type]

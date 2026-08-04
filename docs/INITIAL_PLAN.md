@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：阶段 0 已完成，阶段 1 实施中
+状态：阶段 0 已完成；阶段 1 已交付首批场景写入与结构编辑能力（v0.3.0）
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -115,6 +115,16 @@ Codex / Claude Code / MCP Client
 | `resource_manage` | 创建、加载、修改和保存 2D 资源 |
 
 通用反射层应让所有合法 2D 节点从初版起具备基础创建和属性编辑能力。后续阶段增加复杂领域的专用工具，而不是重新设计底层协议。
+
+### 当前已交付
+
+- 会话选择、编辑器状态、2D 类型检索、场景树和节点属性读取。
+- 内置 `ClassDB` 2D/UI 节点创建、原子属性修改、删除、撤销/重做和显式保存。
+- `node_rename`、`node_duplicate`、`node_reparent` 和 `node_move`。
+- 重命名和重新挂载时迁移场景内直接 `NodePath` 属性及内嵌 `AnimationPlayer` 动画轨道。
+- 重新挂载默认保持 `Node2D`/`Control` 的全局视觉位置，并允许调用方关闭该行为。
+
+当前结构编辑拒绝跨 PackedScene 边界、包含不受支持 3D 节点的子树，以及需要修改外部动画资源的操作；删除会预检直接 `NodePath` 和动画轨道，避免留下悬空引用。这是为了避免 Agent 在无法证明安全的情况下静默破坏引用。资源编辑、信号管理、语义化动画编辑和完整 PackedScene 工作流仍属于后续阶段。
 
 ## 6. 核心数据约定
 

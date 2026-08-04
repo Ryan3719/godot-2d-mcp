@@ -69,7 +69,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
 
         if state.get("readiness") != "ready":
             raise RuntimeError(f"Unexpected editor readiness: {state.get('readiness')}")
-        if hierarchy.get("total") != 4:
+        if hierarchy.get("total") != 5:
             raise RuntimeError(f"Unexpected scene node count: {hierarchy.get('total')}")
         if classes.get("total", 0) < 4:
             raise RuntimeError("2D class search returned too few Button types")
@@ -138,6 +138,125 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if not redo_update.get("changed"):
             raise RuntimeError("Property update was not redoable")
 
+        transform_parent = await app.service.node_create(
+            type_name="Node2D",
+            name="TransformParent",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        transform_parent_path = transform_parent["path"]
+        await app.service.node_set_properties(
+            transform_parent_path,
+            {"position": {"x": 100, "y": 50}},
+            scene_file=scene_file,
+        )
+        reparented_marker = await app.service.node_reparent(
+            marker_path,
+            transform_parent_path,
+            scene_file=scene_file,
+        )
+        marker_path = reparented_marker["path"]
+        marker_properties = await app.service.node_get_properties(
+            marker_path,
+            fields=["position"],
+            scene_file=scene_file,
+        )
+        if _property_value(marker_properties, "position") != {"x": -58.0, "y": -26.0}:
+            raise RuntimeError("Reparent did not preserve the Node2D global position")
+
+        follower = await app.service.node_create(
+            type_name="RemoteTransform2D",
+            name="TargetFollower",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        follower_path = follower["path"]
+        await app.service.node_set_properties(
+            follower_path,
+            {"remote_path": "../UI/Panel/StartButton"},
+            scene_file=scene_file,
+        )
+        renamed_button = await app.service.node_rename(
+            "/Main/UI/Panel/StartButton",
+            "RenamedButton",
+            scene_file=scene_file,
+        )
+        renamed_button_path = renamed_button["path"]
+        if renamed_button_path != "/Main/UI/Panel/RenamedButton":
+            raise RuntimeError(f"Unexpected renamed path: {renamed_button_path}")
+        if (
+            renamed_button["migrated_node_paths"] < 1
+            or renamed_button["migrated_animation_tracks"] < 1
+        ):
+            raise RuntimeError(
+                f"Rename did not migrate NodePath and animation references: {renamed_button!r}"
+            )
+        follower_properties = await app.service.node_get_properties(
+            follower_path,
+            fields=["remote_path"],
+            scene_file=scene_file,
+        )
+        if _property_value(follower_properties, "remote_path") != "../UI/Panel/RenamedButton":
+            raise RuntimeError("Rename did not update the RemoteTransform2D path")
+
+        undo_rename = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_rename.get("changed"):
+            raise RuntimeError("Rename was not undoable")
+        follower_properties = await app.service.node_get_properties(
+            follower_path,
+            fields=["remote_path"],
+            scene_file=scene_file,
+        )
+        if _property_value(follower_properties, "remote_path") != "../UI/Panel/StartButton":
+            raise RuntimeError("Undo did not restore the renamed NodePath")
+        redo_rename = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_rename.get("changed"):
+            raise RuntimeError("Rename was not redoable")
+
+        reparented_button = await app.service.node_reparent(
+            renamed_button_path,
+            "/Main/UI",
+            scene_file=scene_file,
+        )
+        reparented_button_path = reparented_button["path"]
+        if reparented_button_path != "/Main/UI/RenamedButton":
+            raise RuntimeError(f"Unexpected reparented path: {reparented_button_path}")
+        if not reparented_button.get("kept_global_transform"):
+            raise RuntimeError("Reparent did not preserve the default global transform policy")
+        if (
+            reparented_button["migrated_node_paths"] < 1
+            or reparented_button["migrated_animation_tracks"] < 1
+        ):
+            raise RuntimeError(
+                "Reparent did not migrate NodePath and animation references: "
+                f"{reparented_button!r}"
+            )
+        follower_properties = await app.service.node_get_properties(
+            follower_path,
+            fields=["remote_path"],
+            scene_file=scene_file,
+        )
+        if _property_value(follower_properties, "remote_path") != "../UI/RenamedButton":
+            raise RuntimeError("Reparent did not update the RemoteTransform2D path")
+        await app.service.scene_save(scene_file=scene_file)
+        saved_scene = (project_path / "test_scene.tscn").read_text(encoding="utf-8")
+        if 'NodePath("UI/RenamedButton:modulate")' not in saved_scene:
+            raise RuntimeError("Reparent did not update the animation track path")
+
+        undo_reparent = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_reparent.get("changed"):
+            raise RuntimeError("Reparent was not undoable")
+        follower_properties = await app.service.node_get_properties(
+            follower_path,
+            fields=["remote_path"],
+            scene_file=scene_file,
+        )
+        if _property_value(follower_properties, "remote_path") != "../UI/Panel/RenamedButton":
+            raise RuntimeError("Undo did not restore the reparented NodePath")
+        redo_reparent = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_reparent.get("changed"):
+            raise RuntimeError("Reparent was not redoable")
+
         child_label = await app.service.node_create(
             type_name="Label",
             name="MarkerLabel",
@@ -149,6 +268,50 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             child_label_path,
             {"text": "Nested node"},
             scene_file=scene_file,
+        )
+
+        marker_copy = await app.service.node_duplicate(
+            marker_path,
+            name="AgentMarkerCopy",
+            scene_file=scene_file,
+        )
+        marker_copy_path = marker_copy["path"]
+        marker_copy_label_path = f"{marker_copy_path}/MarkerLabel"
+        if marker_copy["copied_node_count"] != 2:
+            raise RuntimeError("Duplicate did not copy the whole local subtree")
+        copy_label_properties = await app.service.node_get_properties(
+            marker_copy_label_path,
+            fields=["text"],
+            scene_file=scene_file,
+        )
+        if _property_value(copy_label_properties, "text") != "Nested node":
+            raise RuntimeError("Duplicate did not retain child properties")
+        await _expect_godot_error(
+            app.service.node_rename(marker_copy_path, "AgentMarker", scene_file=scene_file),
+            "NODE_NAME_CONFLICT",
+        )
+        await _expect_godot_error(
+            app.service.node_reparent(
+                marker_path,
+                child_label_path,
+                scene_file=scene_file,
+            ),
+            "NODE_CYCLE",
+        )
+        moved_copy = await app.service.node_move(marker_copy_path, index=0, scene_file=scene_file)
+        if moved_copy.get("index") != 0:
+            raise RuntimeError("Move did not report the requested sibling index")
+        reordered = await app.service.scene_get_hierarchy(limit=30)
+        reordered_marker_paths = [
+            node["path"]
+            for node in reordered["nodes"]
+            if node.get("path") in {marker_path, marker_copy_path}
+        ]
+        if reordered_marker_paths != [marker_copy_path, marker_path]:
+            raise RuntimeError("Move did not update sibling order")
+        await _expect_godot_error(
+            app.service.node_delete(reparented_button_path, scene_file=scene_file),
+            "NODE_PATH_TARGET_DELETED",
         )
 
         button = await app.service.node_create(
@@ -204,15 +367,19 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if not redo_delete.get("changed"):
             raise RuntimeError("Deleted node was not removable by redo")
 
-        final_hierarchy = await app.service.scene_get_hierarchy(limit=20)
-        if final_hierarchy.get("total") != 5 or _has_node(final_hierarchy, marker_path):
+        final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
+        if final_hierarchy.get("total") != 10 or _has_node(final_hierarchy, marker_path):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
             raise RuntimeError("Scene save did not report success")
 
         saved_scene = (project_path / "test_scene.tscn").read_text(encoding="utf-8")
-        if "AgentButton" not in saved_scene or "Created by MCP" not in saved_scene:
+        if (
+            "AgentButton" not in saved_scene
+            or "Created by MCP" not in saved_scene
+            or "AgentMarkerCopy" not in saved_scene
+        ):
             raise RuntimeError("Saved scene does not contain the created Button")
 
         print(
