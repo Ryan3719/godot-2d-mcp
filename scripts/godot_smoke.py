@@ -1801,6 +1801,161 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if restored_audio_stream["configuration"]["stream_path"] != "res://test_audio.tres":
             raise RuntimeError("Undo did not restore the AudioStreamPlayer2D stream binding")
 
+        sparks = await app.service.node_create(
+            type_name="GPUParticles2D",
+            name="AgentSparks",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        sparks_path = sparks["path"]
+        fire = await app.service.node_create(
+            type_name="GPUParticles2D",
+            name="AgentFire",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        fire_path = fire["path"]
+        initial_fire = await app.service.gpu_particles_2d_get(fire_path, scene_file=scene_file)
+        if (
+            initial_fire["configuration"]["texture_path"] != ""
+            or initial_fire["configuration"]["process_material_path"] != ""
+            or initial_fire["configuration"]["sub_emitter_path"] != ""
+        ):
+            raise RuntimeError("New GPUParticles2D had unexpected resource bindings")
+        await _expect_godot_error(
+            app.service.gpu_particles_2d_set(
+                fire_path,
+                {"texture_path": "res://test_audio.tres"},
+                scene_file=scene_file,
+            ),
+            "RESOURCE_TYPE_MISMATCH",
+        )
+        await _expect_godot_error(
+            app.service.gpu_particles_2d_set(
+                fire_path,
+                {"process_material_path": "res://test_icon.svg"},
+                scene_file=scene_file,
+            ),
+            "RESOURCE_TYPE_MISMATCH",
+        )
+        await _expect_godot_error(
+            app.service.gpu_particles_2d_set(
+                fire_path,
+                {"sub_emitter_path": fire_path},
+                scene_file=scene_file,
+            ),
+            "INVALID_SUB_EMITTER",
+        )
+        fire_update = await app.service.gpu_particles_2d_set(
+            fire_path,
+            {
+                "emitting": True,
+                "amount": 96,
+                "amount_ratio": 0.75,
+                "sub_emitter_path": sparks_path,
+                "texture_path": "res://test_icon.svg",
+                "process_material_path": "res://test_particles.tres",
+                "lifetime": 2.5,
+                "interp_to_end": 0.25,
+                "one_shot": True,
+                "preprocess": 1.0,
+                "speed_scale": 1.5,
+                "explosiveness": 0.4,
+                "randomness": 0.2,
+                "use_fixed_seed": True,
+                "seed": 4242,
+                "fixed_fps": 30,
+                "interpolate": False,
+                "fractional_delta": False,
+                "collision_base_size": 2.0,
+                "visibility_rect": {
+                    "position": {"x": -128.0, "y": -64.0},
+                    "size": {"x": 256.0, "y": 128.0},
+                },
+                "local_coords": True,
+                "draw_order": "reverse_lifetime",
+                "trail_enabled": True,
+                "trail_lifetime": 0.5,
+                "trail_sections": 8,
+                "trail_section_subdivisions": 4,
+            },
+            scene_file=scene_file,
+        )
+        fire_configuration = fire_update["configuration"]
+        if (
+            not fire_update.get("undoable")
+            or fire_configuration["amount"] != 96
+            or not _is_close(fire_configuration["amount_ratio"], 0.75)
+            or fire_configuration["sub_emitter_path"] != sparks_path
+            or fire_configuration["texture_path"] != "res://test_icon.svg"
+            or fire_configuration["texture_type"] == ""
+            or fire_configuration["process_material_path"] != "res://test_particles.tres"
+            or fire_configuration["process_material_type"] != "ParticleProcessMaterial"
+            or not _is_close(fire_configuration["lifetime"], 2.5)
+            or not _is_close(fire_configuration["interp_to_end"], 0.25)
+            or fire_configuration["one_shot"] is not True
+            or not _is_close(fire_configuration["preprocess"], 1.0)
+            or not _is_close(fire_configuration["speed_scale"], 1.5)
+            or not _is_close(fire_configuration["explosiveness"], 0.4)
+            or not _is_close(fire_configuration["randomness"], 0.2)
+            or fire_configuration["use_fixed_seed"] is not True
+            or fire_configuration["seed"] != 4242
+            or fire_configuration["fixed_fps"] != 30
+            or fire_configuration["interpolate"] is not False
+            or fire_configuration["fractional_delta"] is not False
+            or not _is_close(fire_configuration["collision_base_size"], 2.0)
+            or fire_configuration["visibility_rect"]
+            != {"position": {"x": -128.0, "y": -64.0}, "size": {"x": 256.0, "y": 128.0}}
+            or fire_configuration["local_coords"] is not True
+            or fire_configuration["draw_order"] != "reverse_lifetime"
+            or fire_configuration["trail_enabled"] is not True
+            or not _is_close(fire_configuration["trail_lifetime"], 0.5)
+            or fire_configuration["trail_sections"] != 8
+            or fire_configuration["trail_section_subdivisions"] != 4
+        ):
+            raise RuntimeError("GPUParticles2D configuration was not applied")
+        undo_fire_update = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_fire_update.get("changed"):
+            raise RuntimeError("GPUParticles2D configuration was not undoable")
+        restored_fire = await app.service.gpu_particles_2d_get(fire_path, scene_file=scene_file)
+        if (
+            restored_fire["configuration"]["texture_path"] != ""
+            or restored_fire["configuration"]["process_material_path"] != ""
+            or restored_fire["configuration"]["sub_emitter_path"] != ""
+        ):
+            raise RuntimeError("Undo did not restore GPUParticles2D resource bindings")
+        redo_fire_update = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_fire_update.get("changed"):
+            raise RuntimeError("GPUParticles2D configuration was not redoable")
+        cleared_fire = await app.service.gpu_particles_2d_set(
+            fire_path,
+            {
+                "texture_path": "",
+                "process_material_path": "",
+                "sub_emitter_path": "",
+            },
+            scene_file=scene_file,
+        )
+        if (
+            cleared_fire["configuration"]["texture_path"] != ""
+            or cleared_fire["configuration"]["process_material_path"] != ""
+            or cleared_fire["configuration"]["sub_emitter_path"] != ""
+        ):
+            raise RuntimeError("GPUParticles2D resource bindings were not cleared")
+        undo_fire_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_fire_clear.get("changed"):
+            raise RuntimeError("GPUParticles2D resource clear was not undoable")
+        restored_fire_bindings = await app.service.gpu_particles_2d_get(
+            fire_path, scene_file=scene_file
+        )
+        if (
+            restored_fire_bindings["configuration"]["texture_path"] != "res://test_icon.svg"
+            or restored_fire_bindings["configuration"]["process_material_path"]
+            != "res://test_particles.tres"
+            or restored_fire_bindings["configuration"]["sub_emitter_path"] != sparks_path
+        ):
+            raise RuntimeError("Undo did not restore GPUParticles2D resource bindings")
+
         viewport = await app.service.node_create(
             type_name="SubViewport",
             name="AgentViewport",
@@ -2535,7 +2690,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 39 or _has_node(final_hierarchy, marker_path):
+        if final_hierarchy.get("total") != 41 or _has_node(final_hierarchy, marker_path):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
@@ -2557,6 +2712,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentChildBone" not in saved_scene
             or "AgentSound" not in saved_scene
             or "test_audio.tres" not in saved_scene
+            or "AgentSparks" not in saved_scene
+            or "AgentFire" not in saved_scene
+            or "test_icon.svg" not in saved_scene
+            or "test_particles.tres" not in saved_scene
             or "AgentViewport" not in saved_scene
             or "AgentCamera" not in saved_scene
             or "AgentParallax" not in saved_scene

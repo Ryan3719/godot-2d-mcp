@@ -40,6 +40,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "skeleton_2d_get",
         "bone_2d_get",
         "audio_stream_player_2d_get",
+        "gpu_particles_2d_get",
         "light_2d_get",
         "light_occluder_2d_get",
         "tile_map_layer_get",
@@ -101,6 +102,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "skeleton_2d_reset_to_rest",
         "skeleton_2d_make_rest_from_current",
         "audio_stream_player_2d_set",
+        "gpu_particles_2d_set",
         "light_2d_set",
         "light_occluder_2d_set",
         "tile_set_create",
@@ -150,6 +152,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["skeleton_2d_get"].readOnlyHint is True
     assert annotations["bone_2d_get"].readOnlyHint is True
     assert annotations["audio_stream_player_2d_get"].readOnlyHint is True
+    assert annotations["gpu_particles_2d_get"].readOnlyHint is True
     assert annotations["light_2d_get"].readOnlyHint is True
     assert annotations["light_occluder_2d_get"].readOnlyHint is True
     assert annotations["tile_map_layer_get"].readOnlyHint is True
@@ -210,6 +213,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["skeleton_2d_reset_to_rest"].readOnlyHint is False
     assert annotations["skeleton_2d_make_rest_from_current"].destructiveHint is True
     assert annotations["audio_stream_player_2d_set"].readOnlyHint is False
+    assert annotations["gpu_particles_2d_set"].readOnlyHint is False
     assert annotations["light_2d_set"].readOnlyHint is False
     assert annotations["light_occluder_2d_set"].readOnlyHint is False
     assert annotations["tile_set_create"].readOnlyHint is False
