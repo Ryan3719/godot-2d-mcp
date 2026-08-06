@@ -7,6 +7,7 @@ import asyncio
 import base64
 import os
 import shutil
+import signal
 import socket
 import struct
 import tempfile
@@ -52,6 +53,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         env=environment,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
+        start_new_session=os.name != "nt",
     )
 
     output = b""
@@ -3910,9 +3912,12 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         failure = error
         raise
     finally:
-        if process.returncode is None:
-            process.terminate()
-        output, _ = await process.communicate()
+        _signal_process_group(process, signal.SIGTERM)
+        try:
+            output, _ = await asyncio.wait_for(process.communicate(), timeout=5.0)
+        except TimeoutError:
+            _signal_process_group(process, signal.SIGKILL)
+            output, _ = await process.communicate()
         await app.bridge.stop()
         if failure is not None and output:
             print("Godot output after smoke failure:\n" + output.decode(errors="replace"))
@@ -3921,6 +3926,20 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
     fatal_markers = ("SCRIPT ERROR", "Parse Error", "ERROR: Failed to load script")
     if any(marker in editor_output for marker in fatal_markers):
         raise RuntimeError(f"Godot reported script errors:\n{editor_output}")
+
+
+def _signal_process_group(process: asyncio.subprocess.Process, signal_number: int) -> None:
+    if os.name == "nt":
+        if process.returncode is None:
+            if signal_number == signal.SIGTERM:
+                process.terminate()
+            else:
+                process.kill()
+        return
+    try:
+        os.killpg(process.pid, signal_number)
+    except ProcessLookupError:
+        pass
 
 
 async def _wait_for_editor_ready(app: object, timeout_seconds: float = 30.0) -> dict:
