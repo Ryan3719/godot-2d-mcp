@@ -1,0 +1,6 @@
+[gd_resource type="AudioStreamGenerator" format=3]
+
+[resource]
+resource_name = "McpTestAudio"
+mix_rate = 44100.0
+buffer_length = 0.1

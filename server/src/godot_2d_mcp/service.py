@@ -809,6 +809,19 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def audio_stream_player_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "audio_stream_player_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def light_2d_get(
         self,
         path: str,
@@ -1580,6 +1593,21 @@ class GodotService:
         return await self.bridge.call(
             "skeleton_2d_make_rest_from_current",
             _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def audio_stream_player_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_audio_stream_player_2d_properties(properties)
+        return await self.bridge.call(
+            "audio_stream_player_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
             session_id=session_id,
         )
 
@@ -2785,6 +2813,58 @@ def _validate_bone_2d_creation(
 
 def _validate_bone_2d_transform(value: Any) -> None:
     _validate_viewport_transform2d(value)
+
+
+def _validate_audio_stream_player_2d_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "stream_path",
+        "volume_db",
+        "pitch_scale",
+        "autoplay",
+        "max_distance",
+        "attenuation",
+        "panning_strength",
+        "max_polyphony",
+        "bus",
+        "area_layers",
+        "playback_type",
+    }
+    if not isinstance(properties, dict) or not properties:
+        raise ValueError("properties must be a non-empty object")
+    if len(properties) > len(allowed):
+        raise ValueError("properties contains too many AudioStreamPlayer2D properties")
+    if set(properties) - allowed:
+        raise ValueError("properties contains an unsupported AudioStreamPlayer2D property")
+    if "stream_path" in properties:
+        _validate_optional_project_resource_path(properties["stream_path"], "stream_path")
+    if "autoplay" in properties:
+        _validate_boolean(properties["autoplay"], "autoplay")
+    if "bus" in properties and (
+        not isinstance(properties["bus"], str)
+        or not properties["bus"].strip()
+        or len(properties["bus"]) > 256
+    ):
+        raise ValueError("bus must be a non-empty name up to 256 characters")
+    if "playback_type" in properties and (
+        not isinstance(properties["playback_type"], str)
+        or properties["playback_type"].strip().lower() not in {"default", "stream", "sample"}
+    ):
+        raise ValueError("playback_type must be one of: default, sample, stream")
+    for name, minimum, maximum in (
+        ("volume_db", -80.0, 120.0),
+        ("pitch_scale", 0.01, 16.0),
+        ("max_distance", 1.0, 1_000_000.0),
+        ("attenuation", 0.0, 128.0),
+        ("panning_strength", 0.0, 16.0),
+    ):
+        if name in properties:
+            _validate_viewport_number(properties[name], name, minimum=minimum, maximum=maximum)
+    if "max_polyphony" in properties:
+        value = properties["max_polyphony"]
+        if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 256:
+            raise ValueError("max_polyphony must be an integer between 1 and 256")
+    if "area_layers" in properties:
+        _validate_collision_layer_numbers(properties["area_layers"], "area_layers")
 
 
 def _validate_viewport_vector2(value: Any, label: str) -> None:
