@@ -133,6 +133,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "canvas_item_shader_create",
         "canvas_item_shader_bind",
         "canvas_item_shader_set",
+        "canvas_item_shader_uniforms_set",
+        "canvas_item_shader_uniforms_clear",
         "canvas_item_shader_clear",
         "light_2d_set",
         "light_occluder_2d_set",
@@ -275,6 +277,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["canvas_item_shader_create"].destructiveHint is True
     assert annotations["canvas_item_shader_bind"].readOnlyHint is False
     assert annotations["canvas_item_shader_set"].readOnlyHint is False
+    assert annotations["canvas_item_shader_uniforms_set"].readOnlyHint is False
+    assert annotations["canvas_item_shader_uniforms_clear"].destructiveHint is True
     assert annotations["canvas_item_shader_clear"].destructiveHint is True
     assert annotations["light_2d_set"].readOnlyHint is False
     assert annotations["light_occluder_2d_set"].readOnlyHint is False

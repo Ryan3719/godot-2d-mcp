@@ -1946,6 +1946,36 @@ def create_application(
             scene_file=scene_file,
         )
 
+    @mcp.tool(annotations=WRITE)
+    async def canvas_item_shader_uniforms_set(
+        path: str,
+        values: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Copy a 2D ShaderMaterial and atomically set declared shader uniform overrides."""
+        return await service.canvas_item_shader_uniforms_set(
+            path=path,
+            values=values,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def canvas_item_shader_uniforms_clear(
+        path: str,
+        names: list[str],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Copy a 2D ShaderMaterial and clear declared uniform overrides to shader defaults."""
+        return await service.canvas_item_shader_uniforms_clear(
+            path=path,
+            names=names,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
     @mcp.tool(annotations=DESTRUCTIVE_WRITE)
     async def canvas_item_shader_clear(
         path: str,

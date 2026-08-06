@@ -2548,11 +2548,41 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or bound_canvas_shader["shader"]["mode"] != "canvas_item"
         ):
             raise RuntimeError("External CanvasItem ShaderMaterial was not bound")
+        external_uniform_update = await app.service.canvas_item_shader_uniforms_set(
+            canvas_item_path,
+            {"external_amount": 0.75},
+            scene_file=scene_file,
+        )
+        external_uniforms = {
+            uniform["name"]: uniform for uniform in external_uniform_update["uniforms"]
+        }
+        if (
+            not external_uniform_update.get("undoable")
+            or external_uniform_update.get("copied_external_material") is not True
+            or external_uniform_update["material"]["origin"] != "embedded"
+            or external_uniforms["external_amount"]["value"] != 0.75
+        ):
+            raise RuntimeError("External CanvasItem ShaderMaterial uniform was not copy-on-write updated")
+        undo_external_uniform_update = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_external_uniform_update.get("changed"):
+            raise RuntimeError("External CanvasItem ShaderMaterial uniform update was not undoable")
+        restored_external_canvas_shader_after_uniform_update = await app.service.canvas_item_shader_get(
+            canvas_item_path,
+            scene_file=scene_file,
+        )
+        if (
+            restored_external_canvas_shader_after_uniform_update["material"]["resource_path"]
+            != "res://test_canvas_item_shader_material.tres"
+        ):
+            raise RuntimeError("Undo did not restore external CanvasItem ShaderMaterial after uniform update")
         updated_shader_source = (
             "shader_type canvas_item;\n\n"
             "uniform float amount = 0.5;\n\n"
+            "uniform vec2 uv_offset = vec2(0.0);\n"
+            "uniform vec4 tint : source_color = vec4(1.0);\n"
+            "uniform sampler2D overlay_texture : source_color;\n\n"
             "void fragment() {\n"
-            "\tCOLOR = vec4(amount, 0.0, 1.0 - amount, 1.0);\n"
+            "\tCOLOR = texture(overlay_texture, UV + uv_offset) * tint * amount;\n"
             "}\n"
         )
         canvas_shader_update = await app.service.canvas_item_shader_set(
@@ -2568,6 +2598,11 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or canvas_shader_update["shader"]["source"] != updated_shader_source
         ):
             raise RuntimeError("CanvasItem ShaderMaterial source was not copy-on-write updated")
+        shader_uniforms = {uniform["name"]: uniform for uniform in canvas_shader_update["uniforms"]}
+        if set(shader_uniforms) != {"amount", "uv_offset", "tint", "overlay_texture"}:
+            raise RuntimeError("CanvasItem ShaderMaterial did not expose declared uniforms")
+        if not all(uniform["supported"] for uniform in shader_uniforms.values()):
+            raise RuntimeError("CanvasItem ShaderMaterial did not support a standard 2D uniform type")
         undo_canvas_shader_update = await app.service.scene_undo(scene_file=scene_file)
         if not undo_canvas_shader_update.get("changed"):
             raise RuntimeError("CanvasItem ShaderMaterial update was not undoable")
@@ -2580,6 +2615,85 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         redo_canvas_shader_update = await app.service.scene_redo(scene_file=scene_file)
         if not redo_canvas_shader_update.get("changed"):
             raise RuntimeError("CanvasItem ShaderMaterial update was not redoable")
+        await _expect_godot_error(
+            app.service.canvas_item_shader_uniforms_set(
+                canvas_item_path,
+                {"unknown_uniform": 1.0},
+                scene_file=scene_file,
+            ),
+            "CANVAS_ITEM_SHADER_UNIFORM_NOT_FOUND",
+        )
+        canvas_shader_uniform_update = await app.service.canvas_item_shader_uniforms_set(
+            canvas_item_path,
+            {
+                "amount": 0.75,
+                "uv_offset": {"x": 0.125, "y": -0.25},
+                "tint": {"r": 1.0, "g": 0.5, "b": 0.25, "a": 0.8},
+                "overlay_texture": "res://test_icon.svg",
+            },
+            scene_file=scene_file,
+        )
+        updated_uniforms = {
+            uniform["name"]: uniform for uniform in canvas_shader_uniform_update["uniforms"]
+        }
+        if (
+            not canvas_shader_uniform_update.get("undoable")
+            or canvas_shader_uniform_update.get("copied_external_material") is not False
+            or canvas_shader_uniform_update.get("updated_uniforms")
+            != ["amount", "overlay_texture", "tint", "uv_offset"]
+            or updated_uniforms["amount"]["value"] != 0.75
+            or updated_uniforms["uv_offset"]["value"] != {"x": 0.125, "y": -0.25}
+            or not _color_matches(
+                updated_uniforms["tint"]["value"],
+                {"r": 1.0, "g": 0.5, "b": 0.25, "a": 0.8},
+            )
+            or updated_uniforms["overlay_texture"]["value"].get("resource_path") != "res://test_icon.svg"
+        ):
+            raise RuntimeError(
+                "CanvasItem ShaderMaterial uniforms were not copy-on-write updated: "
+                f"{canvas_shader_uniform_update}"
+            )
+        undo_canvas_shader_uniform_update = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_canvas_shader_uniform_update.get("changed"):
+            raise RuntimeError("CanvasItem ShaderMaterial uniform update was not undoable")
+        restored_default_uniforms = await app.service.canvas_item_shader_get(
+            canvas_item_path,
+            scene_file=scene_file,
+        )
+        restored_default_uniforms_by_name = {
+            uniform["name"]: uniform for uniform in restored_default_uniforms["uniforms"]
+        }
+        if restored_default_uniforms_by_name["amount"]["has_override"]:
+            raise RuntimeError("Undo did not restore the default shader uniform values")
+        redo_canvas_shader_uniform_update = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_canvas_shader_uniform_update.get("changed"):
+            raise RuntimeError("CanvasItem ShaderMaterial uniform update was not redoable")
+        cleared_canvas_shader_uniforms = await app.service.canvas_item_shader_uniforms_clear(
+            canvas_item_path,
+            ["amount", "tint"],
+            scene_file=scene_file,
+        )
+        cleared_uniforms_by_name = {
+            uniform["name"]: uniform for uniform in cleared_canvas_shader_uniforms["uniforms"]
+        }
+        if (
+            cleared_canvas_shader_uniforms.get("cleared_uniforms") != ["amount", "tint"]
+            or cleared_uniforms_by_name["amount"]["has_override"]
+            or cleared_uniforms_by_name["tint"]["has_override"]
+        ):
+            raise RuntimeError("CanvasItem ShaderMaterial uniform overrides were not cleared")
+        undo_canvas_shader_uniform_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_canvas_shader_uniform_clear.get("changed"):
+            raise RuntimeError("CanvasItem ShaderMaterial uniform clear was not undoable")
+        restored_canvas_shader_uniforms = await app.service.canvas_item_shader_get(
+            canvas_item_path,
+            scene_file=scene_file,
+        )
+        restored_canvas_shader_uniforms_by_name = {
+            uniform["name"]: uniform for uniform in restored_canvas_shader_uniforms["uniforms"]
+        }
+        if restored_canvas_shader_uniforms_by_name["amount"]["value"] != 0.75:
+            raise RuntimeError("Undo did not restore the CanvasItem ShaderMaterial uniform override")
         cleared_canvas_shader = await app.service.canvas_item_shader_clear(
             canvas_item_path,
             scene_file=scene_file,

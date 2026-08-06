@@ -4,9 +4,11 @@ extends RefCounted
 const Errors := preload("res://addons/godot_2d_mcp/utils/errors.gd")
 const MutationGuard := preload("res://addons/godot_2d_mcp/utils/mutation_guard.gd")
 const ScenePath := preload("res://addons/godot_2d_mcp/utils/scene_path.gd")
+const VariantCodec := preload("res://addons/godot_2d_mcp/utils/variant_codec.gd")
 
 const DEFAULT_SOURCE := "shader_type canvas_item;\n"
 const MAX_SOURCE_LENGTH := 65536
+const MAX_UNIFORM_UPDATES := 32
 const SUPPORTED_SHADER_TYPE := "canvas_item"
 
 var _undo_redo: EditorUndoRedoManager
@@ -127,6 +129,89 @@ func set_canvas_item_shader(params: Dictionary) -> Dictionary:
 	return result
 
 
+func set_canvas_item_shader_uniforms(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_canvas_item(params)
+	if resolved.has("_error"):
+		return resolved
+	var canvas_item: CanvasItem = resolved["canvas_item"]
+	var material_result := _require_canvas_item_shader_material(canvas_item)
+	if material_result.has("_error"):
+		return material_result
+	var current: ShaderMaterial = material_result["material"]
+	var updates_result := _parse_uniform_updates(params.get("values", null), material_result["uniforms"])
+	if updates_result.has("_error"):
+		return updates_result
+	var changes := {}
+	for uniform_name_value in updates_result["updates"]:
+		var uniform_name := str(uniform_name_value)
+		var old_value = current.get_shader_parameter(uniform_name)
+		var new_value = updates_result["updates"][uniform_name_value]
+		if old_value != new_value:
+			changes[uniform_name] = new_value
+	if changes.is_empty():
+		return _unchanged_response(_response(canvas_item, resolved["scene_root"]))
+	var duplicate_result := _duplicate_material_preserving_shader(current)
+	if duplicate_result.has("_error"):
+		return duplicate_result
+	var replacement: ShaderMaterial = duplicate_result["material"]
+	for uniform_name_value in changes:
+		var uniform_name := str(uniform_name_value)
+		replacement.set_shader_parameter(uniform_name, changes[uniform_name_value])
+	_commit_material_replacement(
+		canvas_item,
+		resolved["scene_root"],
+		replacement,
+		"Update CanvasItem shader uniforms on %s" % canvas_item.name
+	)
+	var result := _response(canvas_item, resolved["scene_root"])
+	result["changed"] = true
+	result["updated_uniforms"] = _sorted_keys(changes)
+	result["copied_external_material"] = not current.resource_path.is_empty()
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func clear_canvas_item_shader_uniforms(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_canvas_item(params)
+	if resolved.has("_error"):
+		return resolved
+	var canvas_item: CanvasItem = resolved["canvas_item"]
+	var material_result := _require_canvas_item_shader_material(canvas_item)
+	if material_result.has("_error"):
+		return material_result
+	var current: ShaderMaterial = material_result["material"]
+	var names_result := _parse_uniform_names(params.get("names", null), material_result["uniforms"])
+	if names_result.has("_error"):
+		return names_result
+	var changed_names: Array[String] = []
+	for name_value in names_result["names"]:
+		var uniform_name := str(name_value)
+		if current.get_shader_parameter(uniform_name) != null:
+			changed_names.append(uniform_name)
+	if changed_names.is_empty():
+		return _unchanged_response(_response(canvas_item, resolved["scene_root"]))
+	var duplicate_result := _duplicate_material_preserving_shader(current)
+	if duplicate_result.has("_error"):
+		return duplicate_result
+	var replacement: ShaderMaterial = duplicate_result["material"]
+	for uniform_name in changed_names:
+		replacement.set_shader_parameter(uniform_name, null)
+	_commit_material_replacement(
+		canvas_item,
+		resolved["scene_root"],
+		replacement,
+		"Clear CanvasItem shader uniforms on %s" % canvas_item.name
+	)
+	var result := _response(canvas_item, resolved["scene_root"])
+	result["changed"] = true
+	result["cleared_uniforms"] = changed_names
+	result["copied_external_material"] = not current.resource_path.is_empty()
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
 func clear_canvas_item_shader(params: Dictionary) -> Dictionary:
 	var resolved := _resolve_canvas_item(params)
 	if resolved.has("_error"):
@@ -226,6 +311,108 @@ func _make_canvas_item_shader(source: String) -> Dictionary:
 	return {"shader": shader}
 
 
+func _require_canvas_item_shader_material(canvas_item: CanvasItem) -> Dictionary:
+	var material := canvas_item.material as ShaderMaterial
+	if material == null:
+		return Errors.make(
+			"CANVAS_ITEM_SHADER_MATERIAL_REQUIRED",
+			"CanvasItem '%s' has no assigned ShaderMaterial" % canvas_item.name,
+			false,
+			"Call canvas_item_shader_create or canvas_item_shader_bind first."
+		)
+	var shader: Shader = material.shader
+	if shader == null or shader.get_mode() != Shader.MODE_CANVAS_ITEM:
+		return Errors.make(
+			"CANVAS_ITEM_SHADER_REQUIRED",
+			"CanvasItem '%s' does not have a canvas_item shader" % canvas_item.name,
+			false,
+			"Use canvas_item_shader_set with a shader_type canvas_item source first."
+		)
+	return {"material": material, "uniforms": _uniform_info_by_name(shader)}
+
+
+func _parse_uniform_updates(raw_values: Variant, uniform_infos: Dictionary) -> Dictionary:
+	if not raw_values is Dictionary or raw_values.is_empty() or raw_values.size() > MAX_UNIFORM_UPDATES:
+		return Errors.make(
+			"INVALID_CANVAS_ITEM_SHADER_UNIFORMS",
+			"values must be a non-empty object containing at most %d uniforms" % MAX_UNIFORM_UPDATES
+		)
+	var updates := {}
+	for raw_name in raw_values:
+		if not raw_name is String:
+			return Errors.make("INVALID_CANVAS_ITEM_SHADER_UNIFORM", "uniform names must be strings")
+		var uniform_name: String = raw_name
+		if not uniform_infos.has(uniform_name):
+			return Errors.make(
+				"CANVAS_ITEM_SHADER_UNIFORM_NOT_FOUND",
+				"Shader does not declare uniform: %s" % uniform_name,
+				false,
+				"Call canvas_item_shader_get to inspect declared uniforms."
+			)
+		var value_result := _decode_uniform_value(raw_values[raw_name], uniform_infos[uniform_name])
+		if value_result.has("_error"):
+			return value_result
+		updates[uniform_name] = value_result["value"]
+	return {"updates": updates}
+
+
+func _parse_uniform_names(raw_names: Variant, uniform_infos: Dictionary) -> Dictionary:
+	if not raw_names is Array or raw_names.is_empty() or raw_names.size() > MAX_UNIFORM_UPDATES:
+		return Errors.make(
+			"INVALID_CANVAS_ITEM_SHADER_UNIFORMS",
+			"names must be a non-empty array containing at most %d uniforms" % MAX_UNIFORM_UPDATES
+		)
+	var names: Array[String] = []
+	for raw_name in raw_names:
+		if not raw_name is String or names.has(raw_name):
+			return Errors.make("INVALID_CANVAS_ITEM_SHADER_UNIFORM", "names must contain unique uniform names")
+		var uniform_name: String = raw_name
+		if not uniform_infos.has(uniform_name):
+			return Errors.make(
+				"CANVAS_ITEM_SHADER_UNIFORM_NOT_FOUND",
+				"Shader does not declare uniform: %s" % uniform_name,
+				false,
+				"Call canvas_item_shader_get to inspect declared uniforms."
+			)
+		names.append(uniform_name)
+	return {"names": names}
+
+
+func _decode_uniform_value(raw_value: Variant, property_info: Dictionary) -> Dictionary:
+	if raw_value == null:
+		return Errors.make(
+			"INVALID_CANVAS_ITEM_SHADER_UNIFORM_VALUE",
+			"Use canvas_item_shader_uniforms_clear to remove a material override."
+		)
+	if not _is_supported_uniform_type(property_info):
+		return Errors.make(
+			"UNSUPPORTED_CANVAS_ITEM_SHADER_UNIFORM_TYPE",
+			"Uniform type %s is not supported by this MCP release" % type_string(int(property_info.get("type", TYPE_NIL))),
+			false,
+			"Inspect canvas_item_shader_get and use a supported uniform type."
+		)
+	if int(property_info.get("type", TYPE_NIL)) == TYPE_OBJECT:
+		return _load_uniform_texture(raw_value)
+	var decoded := VariantCodec.decode(raw_value, property_info, null)
+	if decoded.has("_error"):
+		return decoded
+	return {"value": decoded["value"]}
+
+
+func _load_uniform_texture(raw_value: Variant) -> Dictionary:
+	if not raw_value is String:
+		return Errors.make("INVALID_CANVAS_ITEM_SHADER_UNIFORM_TEXTURE", "Texture2D uniforms must be res:// paths")
+	var resource_path: String = raw_value.strip_edges()
+	if resource_path.is_empty() or not resource_path.begins_with("res://") or "/../" in resource_path or resource_path.ends_with("/.."):
+		return Errors.make("INVALID_CANVAS_ITEM_SHADER_UNIFORM_TEXTURE", "Texture2D uniform paths must stay inside res://")
+	if not ResourceLoader.exists(resource_path):
+		return Errors.make("RESOURCE_NOT_FOUND", "Texture2D uniform path does not exist: %s" % resource_path)
+	var resource := ResourceLoader.load(resource_path)
+	if not resource is Texture2D:
+		return Errors.make("RESOURCE_TYPE_MISMATCH", "Texture2D uniform path does not load a Texture2D resource")
+	return {"value": resource as Texture2D}
+
+
 func _load_canvas_item_shader_material(raw_value: Variant) -> Dictionary:
 	if not raw_value is String:
 		return Errors.make("INVALID_CANVAS_ITEM_SHADER_PATH", "resource_path must be a res:// path")
@@ -258,6 +445,13 @@ func _duplicate_material(current: ShaderMaterial, shader: Shader) -> Dictionary:
 	return {"material": material}
 
 
+func _duplicate_material_preserving_shader(current: ShaderMaterial) -> Dictionary:
+	var duplicated := current.duplicate(false)
+	if not duplicated is ShaderMaterial:
+		return Errors.make("CANVAS_ITEM_SHADER_MATERIAL_DUPLICATE_FAILED", "Unable to duplicate the current ShaderMaterial safely")
+	return {"material": duplicated as ShaderMaterial}
+
+
 func _commit_material_replacement(canvas_item: CanvasItem, scene_root: Node, replacement: Material, action_name: String) -> void:
 	var old_material: Material = canvas_item.material
 	_undo_redo.create_action("Godot 2D MCP: %s" % action_name, UndoRedo.MERGE_DISABLE, scene_root, true)
@@ -279,6 +473,7 @@ func _response(canvas_item: CanvasItem, scene_root: Node) -> Dictionary:
 		"type": canvas_item.get_class(),
 		"material": _material_info(material),
 		"shader": _shader_info(shader),
+		"uniforms": [] if shader_material == null or shader == null else _serialize_uniforms(shader_material, shader),
 		"supported_shader_type": SUPPORTED_SHADER_TYPE,
 		"source_limit": MAX_SOURCE_LENGTH,
 		"embedded_source_supports_includes": false,
@@ -306,6 +501,55 @@ func _shader_info(shader: Shader) -> Dictionary:
 		"source": source,
 		"source_length": source.length(),
 	}
+
+
+func _uniform_info_by_name(shader: Shader) -> Dictionary:
+	var result := {}
+	for raw_info in shader.get_shader_uniform_list():
+		if not raw_info is Dictionary:
+			continue
+		var property_info: Dictionary = raw_info
+		var uniform_name := str(property_info.get("name", ""))
+		if not uniform_name.is_empty():
+			result[uniform_name] = property_info
+	return result
+
+
+func _serialize_uniforms(material: ShaderMaterial, shader: Shader) -> Array:
+	var uniform_infos := _uniform_info_by_name(shader)
+	var names := _sorted_keys(uniform_infos)
+	var result: Array = []
+	for uniform_name_value in names:
+		var uniform_name := str(uniform_name_value)
+		var property_info: Dictionary = uniform_infos[uniform_name]
+		var current_value = material.get_shader_parameter(uniform_name)
+		result.append({
+			"name": uniform_name,
+			"type": type_string(int(property_info.get("type", TYPE_NIL))),
+			"hint": int(property_info.get("hint", PROPERTY_HINT_NONE)),
+			"hint_string": str(property_info.get("hint_string", "")),
+			"value": VariantCodec.serialize(current_value),
+			"has_override": current_value != null,
+			"supported": _is_supported_uniform_type(property_info),
+		})
+	return result
+
+
+func _is_supported_uniform_type(property_info: Dictionary) -> bool:
+	var property_type := int(property_info.get("type", TYPE_NIL))
+	return property_type in [
+		TYPE_BOOL, TYPE_INT, TYPE_FLOAT, TYPE_VECTOR2, TYPE_VECTOR2I, TYPE_RECT2, TYPE_RECT2I,
+		TYPE_TRANSFORM2D, TYPE_COLOR, TYPE_ARRAY, TYPE_DICTIONARY, TYPE_PACKED_BYTE_ARRAY,
+		TYPE_PACKED_INT32_ARRAY, TYPE_PACKED_INT64_ARRAY, TYPE_PACKED_FLOAT32_ARRAY,
+		TYPE_PACKED_FLOAT64_ARRAY, TYPE_PACKED_STRING_ARRAY, TYPE_PACKED_VECTOR2_ARRAY,
+		TYPE_PACKED_COLOR_ARRAY, TYPE_OBJECT,
+	]
+
+
+func _sorted_keys(values: Dictionary) -> Array:
+	var names: Array = values.keys()
+	names.sort()
+	return names
 
 
 func _shader_mode_name(mode: Shader.Mode) -> String:
