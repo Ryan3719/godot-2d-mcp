@@ -111,6 +111,15 @@ async def test_runtime_feedback_tools_forward_validated_payloads() -> None:
     await service.runtime_screenshot_get("screenshot-123", session_id="project@a1b2")
     await service.runtime_input_send(events, session_id="project@a1b2")
     await service.runtime_input_result_get("input-123", session_id="project@a1b2")
+    await service.runtime_audio_stream_player_2d_control(
+        "/RuntimeSmoke/RuntimeSound",
+        "seek",
+        position_seconds=1.25,
+        session_id="project@a1b2",
+    )
+    await service.runtime_audio_stream_player_2d_control_result_get(
+        "audio-123", session_id="project@a1b2"
+    )
 
     assert bridge.calls == [
         ("runtime_get_state", {}, "project@a1b2"),
@@ -123,6 +132,20 @@ async def test_runtime_feedback_tools_forward_validated_payloads() -> None:
         ("runtime_screenshot_get", {"request_id": "screenshot-123"}, "project@a1b2"),
         ("runtime_input_send", {"events": events}, "project@a1b2"),
         ("runtime_input_result_get", {"request_id": "input-123"}, "project@a1b2"),
+        (
+            "runtime_audio_stream_player_2d_control",
+            {
+                "path": "/RuntimeSmoke/RuntimeSound",
+                "action": "seek",
+                "position_seconds": 1.25,
+            },
+            "project@a1b2",
+        ),
+        (
+            "runtime_audio_stream_player_2d_control_result_get",
+            {"request_id": "audio-123"},
+            "project@a1b2",
+        ),
     ]
 
 
@@ -148,6 +171,20 @@ async def test_runtime_feedback_tools_reject_invalid_payloads() -> None:
         await service.runtime_input_send(
             [{"type": "mouse_button", "button": 1, "pressed": True, "position": {"x": 1}}]
         )
+    with pytest.raises(ValueError, match="action"):
+        await service.runtime_audio_stream_player_2d_control("/Main/Sound", "resume")
+    with pytest.raises(ValueError, match="requires position_seconds"):
+        await service.runtime_audio_stream_player_2d_control("/Main/Sound", "seek")
+    with pytest.raises(ValueError, match="only accepted"):
+        await service.runtime_audio_stream_player_2d_control(
+            "/Main/Sound", "stop", position_seconds=1.0
+        )
+    with pytest.raises(ValueError, match="between 0 and 3600"):
+        await service.runtime_audio_stream_player_2d_control(
+            "/Main/Sound", "play", position_seconds=3601.0
+        )
+    with pytest.raises(ValueError, match="request_id"):
+        await service.runtime_audio_stream_player_2d_control_result_get("")
 
 
 @pytest.mark.asyncio

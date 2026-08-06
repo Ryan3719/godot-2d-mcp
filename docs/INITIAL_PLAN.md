@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：阶段 0 已完成；阶段 1 已交付项目内 2D/UI 场景创建与安全打开、自定义非工具脚本节点创建/绑定/解绑、完整 2D PackedScene 实例根的插入/删除/复制/重新挂载/撤销重做、首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式、嵌入式 Theme 资源能力、通用公开 Resource 属性的安全项目路径绑定，以及 TypedArray/TypedDictionary 的严格编解码；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力；阶段 4 已交付 TileMapLayer、内嵌 TileSet Atlas、TileSet 语义能力与 Atlas TileData 碰撞/导航/遮挡几何；阶段 5 已交付 PointLight2D、DirectionalLight2D、LightOccluder2D、CanvasItemMaterial、带运行时 uniform 发现与 copy-on-write 配置的 2D ShaderMaterial、Camera2D、Parallax2D、CanvasLayer、Path2D、Curve2D、Skeleton2D、Bone2D、AudioStreamPlayer2D、GPUParticles2D、ParticleProcessMaterial 及其 CurveTexture/GradientTexture1D 和包含 Curve/Gradient 资源的 CPUParticles2D 安全语义编辑；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图和游戏输入模拟（v0.37.0）
+状态：阶段 0 已完成；阶段 1 已交付项目内 2D/UI 场景创建与安全打开、自定义非工具脚本节点创建/绑定/解绑、完整 2D PackedScene 实例根的插入/删除/复制/重新挂载/撤销重做、首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式、嵌入式 Theme 资源能力、通用公开 Resource 属性的安全项目路径绑定，以及 TypedArray/TypedDictionary 的严格编解码；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力；阶段 4 已交付 TileMapLayer、内嵌 TileSet Atlas、TileSet 语义能力与 Atlas TileData 碰撞/导航/遮挡几何；阶段 5 已交付 PointLight2D、DirectionalLight2D、LightOccluder2D、CanvasItemMaterial、带运行时 uniform 发现与 copy-on-write 配置的 2D ShaderMaterial、Camera2D、Parallax2D、CanvasLayer、Path2D、Curve2D、Skeleton2D、Bone2D、AudioStreamPlayer2D、GPUParticles2D、ParticleProcessMaterial 及其 CurveTexture/GradientTexture1D 和包含 Curve/Gradient 资源的 CPUParticles2D 安全语义编辑；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图、游戏输入模拟，以及 `AudioStreamPlayer2D` 运行时状态/播放/停止/定位控制（v0.38.0）
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -293,7 +293,7 @@ godot-2d-mcp/
 ### 阶段 6：运行反馈
 
 - 运行/停止、编辑器和游戏日志、截图、输入模拟和测试运行。
-- 已交付：`editor_run` 支持安全启动当前、主场景或现有 `res://` 自定义 `PackedScene`；`editor_stop` 可幂等停止运行中的场景。`runtime_get_state`、`runtime_logs_get`、`runtime_screenshot_request/get` 与 `runtime_input_send/result_get` 通过插件托管的 autoload 和 `EditorDebuggerPlugin` 连接真实游戏进程，支持带序号的日志、受 1024 像素/1 MB 上限约束的根视口 PNG/JPEG 截图、以及 action/键盘/鼠标事件注入回执。Agent 必须轮询状态确认启动、停止和异步反馈完成。
+- 已交付：`editor_run` 支持安全启动当前、主场景或现有 `res://` 自定义 `PackedScene`；`editor_stop` 可幂等停止运行中的场景。`runtime_get_state`、`runtime_logs_get`、`runtime_screenshot_request/get` 与 `runtime_input_send/result_get` 通过插件托管的 autoload 和 `EditorDebuggerPlugin` 连接真实游戏进程，支持带序号的日志、受 1024 像素/1 MB 上限约束的根视口 PNG/JPEG 截图、以及 action/键盘/鼠标事件注入回执。`runtime_audio_stream_player_2d_control/result_get` 采用相同的请求 ID 轮询模型，限制为活动场景树内的 `AudioStreamPlayer2D` 及 `get`、`play`、`stop`、`seek` 四个动作，结果带回播放状态和 stream 元数据。Agent 必须轮询状态确认启动、停止和异步反馈完成。
 - 待交付：游戏测试编排、性能采样和客户端侧截图内容断言助手；编辑器输出与游戏输出需要保持为独立来源，不能将编辑器界面截图冒充为游戏画面。
 
 ### 阶段 7：完整性审计
