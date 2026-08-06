@@ -5,7 +5,11 @@ const Errors := preload("res://addons/godot_2d_mcp/utils/errors.gd")
 
 
 static func plan(
-	scene_root: Node, moved_node: Node, new_parent: Node, new_name: String
+	scene_root: Node,
+	moved_node: Node,
+	new_parent: Node,
+	new_name: String,
+	include_instanced_animation_players: bool = true
 ) -> Dictionary:
 	var property_records: Array[Dictionary] = []
 	var track_records: Array[Dictionary] = []
@@ -44,7 +48,7 @@ static func plan(
 				)
 
 	var track_result := _plan_animation_tracks(
-		nodes, scene_root, moved_node, new_parent, new_name
+		nodes, scene_root, moved_node, new_parent, new_name, include_instanced_animation_players
 	)
 	if track_result.has("_error"):
 		return track_result
@@ -107,12 +111,19 @@ static func validate_removal(scene_root: Node, removed_node: Node) -> Dictionary
 
 
 static func _plan_animation_tracks(
-	nodes: Array[Node], scene_root: Node, moved_node: Node, new_parent: Node, new_name: String
+	nodes: Array[Node],
+	scene_root: Node,
+	moved_node: Node,
+	new_parent: Node,
+	new_name: String,
+	include_instanced_animation_players: bool
 ) -> Dictionary:
 	var records: Array[Dictionary] = []
 	var seen_tracks: Dictionary = {}
 	for player_node in nodes:
 		if not player_node is AnimationPlayer:
+			continue
+		if not include_instanced_animation_players and not _is_locally_owned(player_node, scene_root):
 			continue
 		var player: AnimationPlayer = player_node
 		var animation_root := _animation_root(player)
