@@ -1252,6 +1252,101 @@ async def test_viewport_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_path_2d_tools_forward_curve_edits() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    path = "/Main/PatrolPath"
+    scene_file = "res://main.tscn"
+    points = [
+        {
+            "position": {"x": 0.0, "y": 0.0},
+            "out": {"x": 32.0, "y": 0.0},
+        },
+        {
+            "position": {"x": 128.0, "y": 64.0},
+            "in": {"x": -32.0, "y": 0.0},
+        },
+    ]
+    inserted_point = {"position": {"x": 64.0, "y": 16.0}}
+    updated_point = {
+        "position": {"x": 128.0, "y": 80.0},
+        "in": {"x": -24.0, "y": -8.0},
+        "out": {"x": 16.0, "y": 12.0},
+    }
+
+    await service.path_2d_get(
+        path, offset=2, limit=20, session_id="project@a1b2", scene_file=scene_file
+    )
+    await service.path_2d_curve_set(path, points, bake_interval=2.5, scene_file=scene_file)
+    await service.path_2d_curve_point_insert(
+        path, inserted_point, index=1, scene_file=scene_file
+    )
+    await service.path_2d_curve_point_set(path, 2, updated_point, scene_file=scene_file)
+    await service.path_2d_curve_point_remove(path, 0, scene_file=scene_file)
+    await service.path_2d_curve_clear(path, scene_file=scene_file)
+
+    assert bridge.calls == [
+        (
+            "path_2d_get",
+            {"path": path, "offset": 2, "limit": 20, "scene_file": scene_file},
+            "project@a1b2",
+        ),
+        (
+            "path_2d_curve_set",
+            {
+                "path": path,
+                "points": points,
+                "bake_interval": 2.5,
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "path_2d_curve_point_insert",
+            {"path": path, "point": inserted_point, "index": 1, "scene_file": scene_file},
+            None,
+        ),
+        (
+            "path_2d_curve_point_set",
+            {"path": path, "index": 2, "point": updated_point, "scene_file": scene_file},
+            None,
+        ),
+        (
+            "path_2d_curve_point_remove",
+            {"path": path, "index": 0, "scene_file": scene_file},
+            None,
+        ),
+        ("path_2d_curve_clear", {"path": path, "scene_file": scene_file}, None),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_path_2d_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="limit"):
+        await service.path_2d_get("/Main/PatrolPath", limit=513)
+    with pytest.raises(ValueError, match="points"):
+        await service.path_2d_curve_set(
+            "/Main/PatrolPath", [{"position": {"x": 0.0, "y": 0.0}}] * 513
+        )
+    with pytest.raises(ValueError, match="position"):
+        await service.path_2d_curve_point_insert(
+            "/Main/PatrolPath", {"in": {"x": 0.0, "y": 0.0}}
+        )
+    with pytest.raises(ValueError, match="point.out"):
+        await service.path_2d_curve_point_set(
+            "/Main/PatrolPath",
+            0,
+            {"position": {"x": 0.0, "y": 0.0}, "out": {"x": float("inf"), "y": 0.0}},
+        )
+    with pytest.raises(ValueError, match="bake_interval"):
+        await service.path_2d_curve_set("/Main/PatrolPath", [], bake_interval=0.0)
+    with pytest.raises(ValueError, match="index"):
+        await service.path_2d_curve_point_remove("/Main/PatrolPath", True)
+
+
+@pytest.mark.asyncio
 async def test_lighting_tools_forward_atomic_semantic_payloads() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

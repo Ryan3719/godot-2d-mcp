@@ -382,6 +382,23 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def path_2d_get(
+        path: str,
+        offset: int = 0,
+        limit: int = 100,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read a paginated Path2D Curve2D, including Bezier point handles and bake settings."""
+        return await service.path_2d_get(
+            path=path,
+            offset=offset,
+            limit=limit,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def light_2d_get(
         path: str,
         session_id: str | None = None,
@@ -1242,6 +1259,85 @@ def create_application(
         return await service.canvas_layer_set(
             path=path,
             properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def path_2d_curve_set(
+        path: str,
+        points: list[dict[str, Any]],
+        bake_interval: float = 5.0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Replace a Path2D curve with an independent embedded Curve2D resource."""
+        return await service.path_2d_curve_set(
+            path=path,
+            points=points,
+            bake_interval=bake_interval,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def path_2d_curve_point_insert(
+        path: str,
+        point: dict[str, Any],
+        index: int | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Insert a Bezier point into a Path2D curve without mutating a shared resource."""
+        return await service.path_2d_curve_point_insert(
+            path=path,
+            point=point,
+            index=index,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def path_2d_curve_point_set(
+        path: str,
+        index: int,
+        point: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Replace one Path2D Curve2D point and both of its Bezier handles atomically."""
+        return await service.path_2d_curve_point_set(
+            path=path,
+            index=index,
+            point=point,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def path_2d_curve_point_remove(
+        path: str,
+        index: int,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Remove one Path2D curve point while retaining editor undo support."""
+        return await service.path_2d_curve_point_remove(
+            path=path,
+            index=index,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def path_2d_curve_clear(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Detach the Curve2D resource from a Path2D while retaining editor undo support."""
+        return await service.path_2d_curve_clear(
+            path=path,
             session_id=session_id,
             scene_file=scene_file,
         )

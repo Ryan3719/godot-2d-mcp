@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：阶段 0 已完成；阶段 1 已交付首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式与嵌入式 Theme 资源能力；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力；阶段 4 已交付 TileMapLayer、内嵌 TileSet Atlas、TileSet 语义能力与 Atlas TileData 碰撞/导航/遮挡几何；阶段 5 已交付 PointLight2D、DirectionalLight2D、LightOccluder2D、Camera2D、Parallax2D 和 CanvasLayer 的安全语义编辑（v0.18.0）
+状态：阶段 0 已完成；阶段 1 已交付首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式与嵌入式 Theme 资源能力；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力；阶段 4 已交付 TileMapLayer、内嵌 TileSet Atlas、TileSet 语义能力与 Atlas TileData 碰撞/导航/遮挡几何；阶段 5 已交付 PointLight2D、DirectionalLight2D、LightOccluder2D、Camera2D、Parallax2D、CanvasLayer、Path2D 和 Curve2D 的安全语义编辑（v0.19.0）
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -276,6 +276,7 @@ godot-2d-mcp/
 ### 阶段 5：高级 2D
 
 - 粒子、光照、遮挡、Shader、骨骼、路径、相机和音频。
+- 已交付：光照、遮挡、相机、视口组合，以及 Path2D/Curve2D 的独立内嵌资源替换、Bézier 点编辑和撤销重做。
 
 ### 阶段 6：运行反馈
 

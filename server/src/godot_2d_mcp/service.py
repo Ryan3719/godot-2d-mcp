@@ -767,6 +767,22 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def path_2d_get(
+        self,
+        path: str,
+        offset: int = 0,
+        limit: int = 100,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_path_curve_page(offset, limit)
+        return await self.bridge.call(
+            "path_2d_get",
+            _scene_params(scene_file, path=path, offset=offset, limit=limit),
+            session_id=session_id,
+        )
+
     async def light_2d_get(
         self,
         path: str,
@@ -1382,6 +1398,90 @@ class GodotService:
         return await self.bridge.call(
             "canvas_layer_set",
             _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def path_2d_curve_set(
+        self,
+        path: str,
+        points: list[dict[str, Any]],
+        bake_interval: float = 5.0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_path_curve_points(points)
+        _validate_path_curve_bake_interval(bake_interval)
+        return await self.bridge.call(
+            "path_2d_curve_set",
+            _scene_params(
+                scene_file,
+                path=path,
+                points=points,
+                bake_interval=bake_interval,
+            ),
+            session_id=session_id,
+        )
+
+    async def path_2d_curve_point_insert(
+        self,
+        path: str,
+        point: dict[str, Any],
+        index: int | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_path_curve_point(point)
+        _validate_path_curve_index(index, allow_none=True, allow_endpoint=True)
+        return await self.bridge.call(
+            "path_2d_curve_point_insert",
+            _scene_params(scene_file, path=path, point=point, index=index),
+            session_id=session_id,
+        )
+
+    async def path_2d_curve_point_set(
+        self,
+        path: str,
+        index: int,
+        point: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_path_curve_index(index)
+        _validate_path_curve_point(point)
+        return await self.bridge.call(
+            "path_2d_curve_point_set",
+            _scene_params(scene_file, path=path, index=index, point=point),
+            session_id=session_id,
+        )
+
+    async def path_2d_curve_point_remove(
+        self,
+        path: str,
+        index: int,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_path_curve_index(index)
+        return await self.bridge.call(
+            "path_2d_curve_point_remove",
+            _scene_params(scene_file, path=path, index=index),
+            session_id=session_id,
+        )
+
+    async def path_2d_curve_clear(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "path_2d_curve_clear",
+            _scene_params(scene_file, path=path),
             session_id=session_id,
         )
 
@@ -2494,6 +2594,60 @@ def _validate_viewport_configuration_properties(properties: dict[str, Any]) -> N
         raise ValueError("scale components must be finite and non-zero")
     if "transform" in properties and {"offset", "rotation", "scale"} & properties.keys():
         raise ValueError("transform cannot be combined with offset, rotation, or scale")
+
+
+def _validate_path_curve_page(offset: int, limit: int) -> None:
+    if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset <= 1_000_000:
+        raise ValueError("offset must be an integer between 0 and 1000000")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 512:
+        raise ValueError("limit must be an integer between 1 and 512")
+
+
+def _validate_path_curve_points(points: list[dict[str, Any]]) -> None:
+    if not isinstance(points, list) or len(points) > 512:
+        raise ValueError("points must contain at most 512 curve points")
+    for point in points:
+        _validate_path_curve_point(point)
+
+
+def _validate_path_curve_point(point: dict[str, Any]) -> None:
+    if (
+        not isinstance(point, dict)
+        or "position" not in point
+        or set(point) - {"position", "in", "out"}
+    ):
+        raise ValueError("point must contain position and optional in/out Vector2 values")
+    for name in ("position", "in", "out"):
+        if name in point:
+            _validate_path_curve_vector2(point[name], f"point.{name}")
+
+
+def _validate_path_curve_vector2(value: Any, label: str) -> None:
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"x", "y"}
+        or not _is_finite_number(value["x"])
+        or not _is_finite_number(value["y"])
+    ):
+        raise ValueError(f"{label} must contain finite x and y values")
+
+
+def _validate_path_curve_bake_interval(value: float) -> None:
+    if not _is_finite_number(value) or not 0.01 <= float(value) <= 512.0:
+        raise ValueError("bake_interval must be a finite number between 0.01 and 512")
+
+
+def _validate_path_curve_index(
+    value: int | None,
+    *,
+    allow_none: bool = False,
+    allow_endpoint: bool = False,
+) -> None:
+    if value is None and allow_none:
+        return
+    upper = 512 if allow_endpoint else 511
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= upper:
+        raise ValueError(f"index must be an integer between 0 and {upper}")
 
 
 def _validate_viewport_vector2(value: Any, label: str) -> None:
