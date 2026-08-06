@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import base64
 import os
 import shutil
+import signal
 import socket
+import struct
 import tempfile
+import zlib
 from collections.abc import Awaitable
 from pathlib import Path
 
@@ -49,6 +53,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         env=environment,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
+        start_new_session=os.name != "nt",
     )
 
     output = b""
@@ -3862,6 +3867,41 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if idle_stop_result.get("was_playing") is not False:
             raise RuntimeError("editor_stop was not idempotent after the scene stopped")
 
+        runtime_scene_file = "res://runtime_smoke.tscn"
+        runtime_run = await app.service.editor_run(mode="custom", scene_file=runtime_scene_file)
+        if runtime_run.get("requested_scene") != runtime_scene_file:
+            raise RuntimeError("runtime feedback smoke did not start its custom scene")
+        await _wait_for_play_state(app, "playing")
+        runtime_state = await _wait_for_runtime_connected(app)
+        if runtime_state.get("autoload", {}).get("available") is not True:
+            raise RuntimeError("Runtime bridge did not report its managed autoload")
+        screenshot_request = await app.service.runtime_screenshot_request(
+            format="png", max_width=128, max_height=128
+        )
+        screenshot = await _wait_for_runtime_screenshot(app, screenshot_request["request_id"])
+        screenshot_result = screenshot.get("result", {})
+        if screenshot_result.get("ok") is not True:
+            raise RuntimeError(f"Runtime screenshot failed: {screenshot_result}")
+        screenshot_bytes = base64.b64decode(screenshot_result["data_base64"], validate=True)
+        if screenshot_bytes[:8] != b"\x89PNG\r\n\x1a\n":
+            raise RuntimeError("Runtime screenshot was not PNG data")
+        if (screenshot_result.get("width"), screenshot_result.get("height")) != (128, 72):
+            raise RuntimeError(f"Runtime screenshot had unexpected dimensions: {screenshot_result}")
+        red, green, blue = _png_top_left_rgb(screenshot_bytes)
+        if red < 128 or green > 128 or blue > 128:
+            raise RuntimeError("Runtime screenshot did not contain the rendered smoke-scene background")
+        input_request = await app.service.runtime_input_send(
+            [{"type": "action", "action": "godot_2d_mcp_smoke", "pressed": True}]
+        )
+        input_result = await _wait_for_runtime_input_result(app, input_request["request_id"])
+        if input_result.get("result", {}).get("applied") != 1:
+            raise RuntimeError(f"Runtime input was not applied: {input_result}")
+        await _wait_for_runtime_log(app, "GODOT_2D_MCP_RUNTIME_INPUT_RECEIVED")
+        runtime_stop = await app.service.editor_stop()
+        if runtime_stop.get("was_playing") is not True:
+            raise RuntimeError("Runtime feedback smoke could not stop its custom scene")
+        await _wait_for_play_state(app, "stopped")
+
         print(
             "Godot smoke passed: "
             f"session={sessions[0]['session_id']} "
@@ -3872,9 +3912,12 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         failure = error
         raise
     finally:
-        if process.returncode is None:
-            process.terminate()
-        output, _ = await process.communicate()
+        _signal_process_group(process, signal.SIGTERM)
+        try:
+            output, _ = await asyncio.wait_for(process.communicate(), timeout=5.0)
+        except TimeoutError:
+            _signal_process_group(process, signal.SIGKILL)
+            output, _ = await process.communicate()
         await app.bridge.stop()
         if failure is not None and output:
             print("Godot output after smoke failure:\n" + output.decode(errors="replace"))
@@ -3883,6 +3926,20 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
     fatal_markers = ("SCRIPT ERROR", "Parse Error", "ERROR: Failed to load script")
     if any(marker in editor_output for marker in fatal_markers):
         raise RuntimeError(f"Godot reported script errors:\n{editor_output}")
+
+
+def _signal_process_group(process: asyncio.subprocess.Process, signal_number: int) -> None:
+    if os.name == "nt":
+        if process.returncode is None:
+            if signal_number == signal.SIGTERM:
+                process.terminate()
+            else:
+                process.kill()
+        return
+    try:
+        os.killpg(process.pid, signal_number)
+    except ProcessLookupError:
+        pass
 
 
 async def _wait_for_editor_ready(app: object, timeout_seconds: float = 30.0) -> dict:
@@ -3914,6 +3971,92 @@ async def _wait_for_play_state(
         "Editor did not reach play state "
         f"'{expected_state}' within {timeout_seconds:.0f} seconds; last state: {state}"
     )
+
+
+async def _wait_for_runtime_connected(app: object, timeout_seconds: float = 10.0) -> dict:
+    attempts = int(timeout_seconds / 0.1)
+    state: dict = {}
+    for _ in range(attempts):
+        state = await app.service.runtime_get_state()
+        if state.get("connected") is True:
+            return state
+        await asyncio.sleep(0.1)
+    raise RuntimeError(
+        "Runtime bridge did not connect within "
+        f"{timeout_seconds:.0f} seconds; last state: {state}"
+    )
+
+
+async def _wait_for_runtime_screenshot(
+    app: object, request_id: str, timeout_seconds: float = 10.0
+) -> dict:
+    attempts = int(timeout_seconds / 0.1)
+    result: dict = {}
+    for _ in range(attempts):
+        result = await app.service.runtime_screenshot_get(request_id)
+        if result.get("status") != "pending":
+            return result
+        await asyncio.sleep(0.1)
+    raise RuntimeError(
+        "Runtime screenshot did not complete within "
+        f"{timeout_seconds:.0f} seconds; last result: {result}"
+    )
+
+
+async def _wait_for_runtime_input_result(
+    app: object, request_id: str, timeout_seconds: float = 10.0
+) -> dict:
+    attempts = int(timeout_seconds / 0.1)
+    result: dict = {}
+    for _ in range(attempts):
+        result = await app.service.runtime_input_result_get(request_id)
+        if result.get("status") != "pending":
+            return result
+        await asyncio.sleep(0.1)
+    raise RuntimeError(
+        "Runtime input did not complete within "
+        f"{timeout_seconds:.0f} seconds; last result: {result}"
+    )
+
+
+async def _wait_for_runtime_log(
+    app: object, message: str, timeout_seconds: float = 10.0
+) -> dict:
+    attempts = int(timeout_seconds / 0.1)
+    logs: dict = {}
+    for _ in range(attempts):
+        logs = await app.service.runtime_logs_get(limit=200)
+        if any(message in str(entry.get("message", "")) for entry in logs.get("entries", [])):
+            return logs
+        await asyncio.sleep(0.1)
+    raise RuntimeError(
+        "Runtime log did not contain "
+        f"'{message}' within {timeout_seconds:.0f} seconds; last logs: {logs}"
+    )
+
+
+def _png_top_left_rgb(data: bytes) -> tuple[int, int, int]:
+    position = 8
+    width = height = bit_depth = color_type = 0
+    compressed = bytearray()
+    while position < len(data):
+        length = struct.unpack(">I", data[position : position + 4])[0]
+        chunk_type = data[position + 4 : position + 8]
+        chunk_data = data[position + 8 : position + 8 + length]
+        position += 12 + length
+        if chunk_type == b"IHDR":
+            width, height, bit_depth, color_type, _, _, _ = struct.unpack(">IIBBBBB", chunk_data)
+        elif chunk_type == b"IDAT":
+            compressed.extend(chunk_data)
+        elif chunk_type == b"IEND":
+            break
+    if width < 1 or height < 1 or bit_depth != 8 or color_type not in {2, 6}:
+        raise RuntimeError("Runtime screenshot PNG had an unsupported format")
+    raw = zlib.decompress(compressed)
+    channels = 4 if color_type == 6 else 3
+    if len(raw) < channels + 1:
+        raise RuntimeError("Runtime screenshot PNG did not contain its first pixel")
+    return raw[1], raw[2], raw[3]
 
 
 def _property_value(result: dict, name: str) -> object:

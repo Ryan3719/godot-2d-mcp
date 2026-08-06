@@ -1,8 +1,10 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.29.0"
+const PLUGIN_VERSION := "0.31.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
+const RUNTIME_AUTOLOAD_NAME := "Godot2DMcpRuntime"
+const RUNTIME_AUTOLOAD_PATH := "res://addons/godot_2d_mcp/runtime/runtime_bridge.gd"
 
 const ConnectionScript := preload("res://addons/godot_2d_mcp/transport/connection.gd")
 const DispatcherScript := preload("res://addons/godot_2d_mcp/dispatcher.gd")
@@ -29,16 +31,26 @@ const CanvasItemMaterialHandlerScript := preload("res://addons/godot_2d_mcp/hand
 const CanvasItemShaderHandlerScript := preload("res://addons/godot_2d_mcp/handlers/canvas_item_shader_handler.gd")
 const CpuParticlesHandlerScript := preload("res://addons/godot_2d_mcp/handlers/cpu_particles_handler.gd")
 const CpuParticleResourcesHandlerScript := preload("res://addons/godot_2d_mcp/handlers/cpu_particle_resources_handler.gd")
+const RuntimeHandlerScript := preload("res://addons/godot_2d_mcp/handlers/runtime_handler.gd")
+const RuntimeDebuggerBridgeScript := preload("res://addons/godot_2d_mcp/runtime/runtime_debugger_bridge.gd")
 
 var _connection: Node
 var _dispatcher: RefCounted
 var _dock: Control
 var _handlers: Array[RefCounted] = []
+var _runtime_debugger: EditorDebuggerPlugin
+var _runtime_autoload_owned := false
+var _runtime_autoload_status: Dictionary = {}
 
 
 func _enter_tree() -> void:
 	var ws_port := _ensure_ws_port_setting()
 	_dispatcher = DispatcherScript.new()
+	_runtime_autoload_status = _ensure_runtime_autoload()
+	_runtime_autoload_owned = bool(_runtime_autoload_status.get("owned", false))
+	_runtime_debugger = RuntimeDebuggerBridgeScript.new()
+	_runtime_debugger.configure_autoload(_runtime_autoload_status)
+	add_debugger_plugin(_runtime_debugger)
 	_register_handlers()
 
 	_connection = ConnectionScript.new()
@@ -66,6 +78,13 @@ func _exit_tree() -> void:
 		_dispatcher.clear()
 		_dispatcher = null
 	_handlers.clear()
+	if _runtime_debugger != null:
+		remove_debugger_plugin(_runtime_debugger)
+		_runtime_debugger = null
+	if _runtime_autoload_owned:
+		remove_autoload_singleton(RUNTIME_AUTOLOAD_NAME)
+	_runtime_autoload_owned = false
+	_runtime_autoload_status.clear()
 
 
 func _register_handlers() -> void:
@@ -91,19 +110,25 @@ func _register_handlers() -> void:
 	var canvas_item_shader_handler: RefCounted = CanvasItemShaderHandlerScript.new(get_undo_redo())
 	var cpu_particles_handler: RefCounted = CpuParticlesHandlerScript.new(get_undo_redo())
 	var cpu_particle_resources_handler: RefCounted = CpuParticleResourcesHandlerScript.new(get_undo_redo())
+	var runtime_handler: RefCounted = RuntimeHandlerScript.new(_runtime_debugger)
 	_handlers.assign([
 		editor_handler, scene_handler, node_handler, class_handler, signal_handler, animation_handler,
 		ui_handler, theme_handler, physics_handler, tile_map_handler, lighting_handler, viewport_handler,
 		path_handler, skeleton_handler, audio_handler, gpu_particles_handler, particle_process_material_handler,
 		particle_process_material_resources_handler,
 		canvas_item_material_handler,
-		canvas_item_shader_handler,
-		cpu_particles_handler, cpu_particle_resources_handler
+		canvas_item_shader_handler, cpu_particles_handler, cpu_particle_resources_handler, runtime_handler
 	])
 
 	_dispatcher.register("editor_get_state", editor_handler.get_state)
 	_dispatcher.register("editor_run", editor_handler.run)
 	_dispatcher.register("editor_stop", editor_handler.stop)
+	_dispatcher.register("runtime_get_state", runtime_handler.get_runtime_state)
+	_dispatcher.register("runtime_logs_get", runtime_handler.get_runtime_logs)
+	_dispatcher.register("runtime_screenshot_request", runtime_handler.request_runtime_screenshot)
+	_dispatcher.register("runtime_screenshot_get", runtime_handler.get_runtime_screenshot)
+	_dispatcher.register("runtime_input_send", runtime_handler.send_runtime_input)
+	_dispatcher.register("runtime_input_result_get", runtime_handler.get_runtime_input_result)
 	_dispatcher.register("scene_get_hierarchy", scene_handler.get_hierarchy)
 	_dispatcher.register("scene_save", scene_handler.save_scene)
 	_dispatcher.register("scene_undo", scene_handler.undo_scene)
@@ -268,3 +293,20 @@ func _ensure_ws_port_setting() -> int:
 		}
 	)
 	return int(settings.get_setting(WS_PORT_SETTING))
+
+
+func _ensure_runtime_autoload() -> Dictionary:
+	var setting_name := "autoload/%s" % RUNTIME_AUTOLOAD_NAME
+	if ProjectSettings.has_setting(setting_name):
+		var configured_path := str(ProjectSettings.get_setting(setting_name, "")).trim_prefix("*")
+		if configured_path == RUNTIME_AUTOLOAD_PATH:
+			return {"available": true, "owned": false, "path": RUNTIME_AUTOLOAD_PATH}
+		return {
+			"available": false,
+			"owned": false,
+			"reason": "autoload_name_conflict",
+			"hint": "Rename the existing %s autoload before enabling Godot 2D MCP runtime feedback."
+				% RUNTIME_AUTOLOAD_NAME,
+		}
+	add_autoload_singleton(RUNTIME_AUTOLOAD_NAME, RUNTIME_AUTOLOAD_PATH)
+	return {"available": true, "owned": true, "path": RUNTIME_AUTOLOAD_PATH}

@@ -1,6 +1,6 @@
 [project]
 name = "godot-2d-mcp"
-version = "0.30.0"
+version = "0.31.0"
 description = "MCP server for comprehensive Godot 2D editor automation"
 readme = "README.md"
 requires-python = ">=3.11"

@@ -80,6 +80,77 @@ async def test_editor_run_rejects_invalid_modes_and_scene_paths() -> None:
 
 
 @pytest.mark.asyncio
+async def test_runtime_feedback_tools_forward_validated_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    events = [
+        {"type": "action", "action": "ui_accept", "pressed": True},
+        {"type": "key", "keycode": 65, "pressed": False, "shift": True},
+        {
+            "type": "mouse_button",
+            "button": 1,
+            "pressed": True,
+            "position": {"x": 24, "y": 48},
+        },
+        {
+            "type": "mouse_motion",
+            "position": {"x": 30, "y": 50},
+            "relative": {"x": 6, "y": 2},
+        },
+    ]
+
+    await service.runtime_get_state(session_id="project@a1b2")
+    await service.runtime_logs_get(after_sequence=4, limit=20, session_id="project@a1b2")
+    await service.runtime_screenshot_request(
+        format="jpeg",
+        max_width=320,
+        max_height=180,
+        quality=0.75,
+        session_id="project@a1b2",
+    )
+    await service.runtime_screenshot_get("screenshot-123", session_id="project@a1b2")
+    await service.runtime_input_send(events, session_id="project@a1b2")
+    await service.runtime_input_result_get("input-123", session_id="project@a1b2")
+
+    assert bridge.calls == [
+        ("runtime_get_state", {}, "project@a1b2"),
+        ("runtime_logs_get", {"after_sequence": 4, "limit": 20}, "project@a1b2"),
+        (
+            "runtime_screenshot_request",
+            {"format": "jpeg", "max_width": 320, "max_height": 180, "quality": 0.75},
+            "project@a1b2",
+        ),
+        ("runtime_screenshot_get", {"request_id": "screenshot-123"}, "project@a1b2"),
+        ("runtime_input_send", {"events": events}, "project@a1b2"),
+        ("runtime_input_result_get", {"request_id": "input-123"}, "project@a1b2"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_runtime_feedback_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="format"):
+        await service.runtime_screenshot_request(format="webp")
+    with pytest.raises(ValueError, match="max_width"):
+        await service.runtime_screenshot_request(max_width=0)
+    with pytest.raises(ValueError, match="quality"):
+        await service.runtime_screenshot_request(quality=1.1)
+    with pytest.raises(ValueError, match="request_id"):
+        await service.runtime_screenshot_get("")
+    with pytest.raises(ValueError, match="between 1 and 64"):
+        await service.runtime_input_send([])
+    with pytest.raises(ValueError, match="exactly one"):
+        await service.runtime_input_send(
+            [{"type": "key", "keycode": 65, "unicode": 65, "pressed": True}]
+        )
+    with pytest.raises(ValueError, match="position"):
+        await service.runtime_input_send(
+            [{"type": "mouse_button", "button": 1, "pressed": True, "position": {"x": 1}}]
+        )
+
+
+@pytest.mark.asyncio
 async def test_hierarchy_rejects_unbounded_page() -> None:
     service = GodotService(SessionRegistry(), FakeBridge())
 
