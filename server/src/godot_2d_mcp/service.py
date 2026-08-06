@@ -2102,6 +2102,36 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def canvas_item_shader_uniforms_set(
+        self,
+        path: str,
+        values: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_canvas_item_shader_uniform_values(values)
+        return await self.bridge.call(
+            "canvas_item_shader_uniforms_set",
+            _scene_params(scene_file, path=path, values=values),
+            session_id=session_id,
+        )
+
+    async def canvas_item_shader_uniforms_clear(
+        self,
+        path: str,
+        names: list[str],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_canvas_item_shader_uniform_names(names)
+        return await self.bridge.call(
+            "canvas_item_shader_uniforms_clear",
+            _scene_params(scene_file, path=path, names=names),
+            session_id=session_id,
+        )
+
     async def canvas_item_shader_clear(
         self,
         path: str,
@@ -3920,6 +3950,35 @@ def _validate_canvas_item_material_properties(properties: dict[str, Any]) -> Non
 def _validate_canvas_item_shader_source(source: str) -> None:
     if not isinstance(source, str) or not source.strip() or len(source) > 65_536:
         raise ValueError("source must contain between 1 and 65536 characters")
+
+
+def _validate_canvas_item_shader_uniform_values(values: dict[str, Any]) -> None:
+    if not isinstance(values, dict) or not values or len(values) > 32:
+        raise ValueError("values must contain between 1 and 32 shader uniforms")
+    for name, value in values.items():
+        _validate_canvas_item_shader_uniform_name(name)
+        if value is None or not _is_json_bind_value(value):
+            raise ValueError("uniform values must be non-null bounded JSON-compatible values")
+
+
+def _validate_canvas_item_shader_uniform_names(names: list[str]) -> None:
+    if not isinstance(names, list) or not names or len(names) > 32:
+        raise ValueError("names must contain between 1 and 32 shader uniforms")
+    for name in names:
+        _validate_canvas_item_shader_uniform_name(name)
+    if len(set(names)) != len(names):
+        raise ValueError("names cannot contain duplicate shader uniforms")
+
+
+def _validate_canvas_item_shader_uniform_name(name: str) -> None:
+    if (
+        not isinstance(name, str)
+        or not 1 <= len(name) <= 128
+        or not name.isascii()
+        or not (name[0].isalpha() or name[0] == "_")
+        or not all(character.isalnum() or character == "_" for character in name)
+    ):
+        raise ValueError("shader uniform names must be ASCII identifiers up to 128 characters")
 
 
 def _validate_particle_process_material_2d_properties(properties: dict[str, Any]) -> None:

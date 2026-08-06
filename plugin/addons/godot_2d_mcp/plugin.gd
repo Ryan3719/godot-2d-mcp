@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.28.0"
+const PLUGIN_VERSION := "0.29.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 
 const ConnectionScript := preload("res://addons/godot_2d_mcp/transport/connection.gd")
@@ -215,6 +215,8 @@ func _register_handlers() -> void:
 	_dispatcher.register("canvas_item_shader_create", canvas_item_shader_handler.create_canvas_item_shader)
 	_dispatcher.register("canvas_item_shader_bind", canvas_item_shader_handler.bind_canvas_item_shader)
 	_dispatcher.register("canvas_item_shader_set", canvas_item_shader_handler.set_canvas_item_shader)
+	_dispatcher.register("canvas_item_shader_uniforms_set", canvas_item_shader_handler.set_canvas_item_shader_uniforms)
+	_dispatcher.register("canvas_item_shader_uniforms_clear", canvas_item_shader_handler.clear_canvas_item_shader_uniforms)
 	_dispatcher.register("canvas_item_shader_clear", canvas_item_shader_handler.clear_canvas_item_shader)
 	_dispatcher.register("cpu_particles_2d_set", cpu_particles_handler.set_cpu_particles_2d)
 	_dispatcher.register("cpu_particles_2d_curve_bind", cpu_particle_resources_handler.bind_cpu_particles_2d_curve)

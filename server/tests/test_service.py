@@ -2203,6 +2203,14 @@ async def test_canvas_item_shader_tools_forward_copy_on_write_payloads() -> None
         path, "res://canvas_item_shader_material.tres", scene_file=scene_file
     )
     await service.canvas_item_shader_set(path, source, scene_file=scene_file)
+    await service.canvas_item_shader_uniforms_set(
+        path,
+        {"amount": 0.75, "tint": {"r": 1.0, "g": 0.5, "b": 0.0, "a": 1.0}},
+        scene_file=scene_file,
+    )
+    await service.canvas_item_shader_uniforms_clear(
+        path, ["amount", "tint"], scene_file=scene_file
+    )
     await service.canvas_item_shader_clear(path, scene_file=scene_file)
 
     assert bridge.calls == [
@@ -2236,6 +2244,23 @@ async def test_canvas_item_shader_tools_forward_copy_on_write_payloads() -> None
             None,
         ),
         (
+            "canvas_item_shader_uniforms_set",
+            {
+                "path": path,
+                "values": {
+                    "amount": 0.75,
+                    "tint": {"r": 1.0, "g": 0.5, "b": 0.0, "a": 1.0},
+                },
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "canvas_item_shader_uniforms_clear",
+            {"path": path, "names": ["amount", "tint"], "scene_file": scene_file},
+            None,
+        ),
+        (
             "canvas_item_shader_clear",
             {"path": path, "scene_file": scene_file},
             None,
@@ -2256,6 +2281,14 @@ async def test_canvas_item_shader_tools_reject_invalid_payloads() -> None:
         await service.canvas_item_shader_set(path, "x" * 65_537)
     with pytest.raises(ValueError, match="resource_path"):
         await service.canvas_item_shader_bind(path, "canvas_item_shader_material.tres")
+    with pytest.raises(ValueError, match="values"):
+        await service.canvas_item_shader_uniforms_set(path, {})
+    with pytest.raises(ValueError, match="non-null"):
+        await service.canvas_item_shader_uniforms_set(path, {"amount": None})
+    with pytest.raises(ValueError, match="identifiers"):
+        await service.canvas_item_shader_uniforms_set(path, {"bad-name": 1.0})
+    with pytest.raises(ValueError, match="duplicate"):
+        await service.canvas_item_shader_uniforms_clear(path, ["amount", "amount"])
 
 
 @pytest.mark.asyncio
