@@ -835,6 +835,19 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def cpu_particles_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "cpu_particles_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def particle_process_material_2d_get(
         self,
         path: str,
@@ -1648,6 +1661,21 @@ class GodotService:
         _validate_gpu_particles_2d_properties(properties)
         return await self.bridge.call(
             "gpu_particles_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def cpu_particles_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_cpu_particles_2d_properties(properties)
+        return await self.bridge.call(
+            "cpu_particles_2d_set",
             _scene_params(scene_file, path=path, properties=properties),
             session_id=session_id,
         )
@@ -3031,6 +3059,185 @@ def _validate_gpu_particles_2d_properties(properties: dict[str, Any]) -> None:
             raise ValueError("visibility_rect must contain position and size Vector2 values")
         _validate_viewport_vector2(value["position"], "visibility_rect.position")
         _validate_viewport_vector2(value["size"], "visibility_rect.size")
+
+
+def _validate_cpu_particles_2d_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "emitting",
+        "amount",
+        "texture_path",
+        "lifetime",
+        "one_shot",
+        "preprocess",
+        "speed_scale",
+        "explosiveness",
+        "randomness",
+        "use_fixed_seed",
+        "seed",
+        "lifetime_randomness",
+        "fixed_fps",
+        "fractional_delta",
+        "local_coords",
+        "draw_order",
+        "emission_shape",
+        "emission_sphere_radius",
+        "emission_rect_extents",
+        "emission_points",
+        "emission_normals",
+        "emission_colors",
+        "emission_ring_inner_radius",
+        "emission_ring_radius",
+        "align_y_to_velocity",
+        "direction",
+        "spread",
+        "gravity",
+        "initial_velocity_min",
+        "initial_velocity_max",
+        "angular_velocity_min",
+        "angular_velocity_max",
+        "orbit_velocity_min",
+        "orbit_velocity_max",
+        "linear_accel_min",
+        "linear_accel_max",
+        "radial_accel_min",
+        "radial_accel_max",
+        "tangential_accel_min",
+        "tangential_accel_max",
+        "damping_min",
+        "damping_max",
+        "angle_min",
+        "angle_max",
+        "scale_amount_min",
+        "scale_amount_max",
+        "hue_variation_min",
+        "hue_variation_max",
+        "anim_speed_min",
+        "anim_speed_max",
+        "anim_offset_min",
+        "anim_offset_max",
+        "split_scale",
+        "color",
+    }
+    if not isinstance(properties, dict) or not properties:
+        raise ValueError("properties must be a non-empty object")
+    if len(properties) > 64:
+        raise ValueError("properties can contain at most 64 CPUParticles2D entries")
+    if set(properties) - allowed:
+        raise ValueError("properties contains an unsupported CPUParticles2D property")
+    for name in (
+        "emitting",
+        "one_shot",
+        "use_fixed_seed",
+        "fractional_delta",
+        "local_coords",
+        "align_y_to_velocity",
+        "split_scale",
+    ):
+        if name in properties:
+            _validate_boolean(properties[name], name)
+    if "texture_path" in properties:
+        _validate_optional_project_resource_path(properties["texture_path"], "texture_path")
+    for name, values in {
+        "draw_order": {"index", "lifetime"},
+        "emission_shape": {
+            "point",
+            "sphere",
+            "sphere_surface",
+            "rectangle",
+            "points",
+            "directed_points",
+            "ring",
+        },
+    }.items():
+        if name in properties and (
+            not isinstance(properties[name], str)
+            or properties[name].strip().lower() not in values
+        ):
+            raise ValueError(f"{name} must be one of: {', '.join(sorted(values))}")
+    for name, minimum, maximum in (
+        ("amount", 1, 1_000_000),
+        ("seed", 0, 4_294_967_295),
+        ("fixed_fps", 0, 1000),
+    ):
+        if name in properties and (
+            isinstance(properties[name], bool)
+            or not isinstance(properties[name], int)
+            or not minimum <= properties[name] <= maximum
+        ):
+            raise ValueError(f"{name} must be an integer between {minimum} and {maximum}")
+    for name, minimum, maximum in (
+        ("lifetime", 0.01, 600.0),
+        ("preprocess", 0.0, 600.0),
+        ("speed_scale", 0.0, 64.0),
+        ("explosiveness", 0.0, 1.0),
+        ("randomness", 0.0, 1.0),
+        ("lifetime_randomness", 0.0, 1.0),
+        ("emission_sphere_radius", 0.01, 1_000_000.0),
+        ("emission_ring_inner_radius", 0.0, 1_000_000.0),
+        ("emission_ring_radius", 0.0, 1_000_000.0),
+        ("spread", 0.0, 180.0),
+        ("initial_velocity_min", -1_000_000.0, 1_000_000.0),
+        ("initial_velocity_max", -1_000_000.0, 1_000_000.0),
+        ("angular_velocity_min", -1_000_000.0, 1_000_000.0),
+        ("angular_velocity_max", -1_000_000.0, 1_000_000.0),
+        ("orbit_velocity_min", -1_000_000.0, 1_000_000.0),
+        ("orbit_velocity_max", -1_000_000.0, 1_000_000.0),
+        ("linear_accel_min", -1_000_000.0, 1_000_000.0),
+        ("linear_accel_max", -1_000_000.0, 1_000_000.0),
+        ("radial_accel_min", -1_000_000.0, 1_000_000.0),
+        ("radial_accel_max", -1_000_000.0, 1_000_000.0),
+        ("tangential_accel_min", -1_000_000.0, 1_000_000.0),
+        ("tangential_accel_max", -1_000_000.0, 1_000_000.0),
+        ("damping_min", 0.0, 1_000_000.0),
+        ("damping_max", 0.0, 1_000_000.0),
+        ("angle_min", -1_000_000.0, 1_000_000.0),
+        ("angle_max", -1_000_000.0, 1_000_000.0),
+        ("scale_amount_min", 0.0, 1_000_000.0),
+        ("scale_amount_max", 0.0, 1_000_000.0),
+        ("hue_variation_min", -1.0, 1.0),
+        ("hue_variation_max", -1.0, 1.0),
+        ("anim_speed_min", -1_000_000.0, 1_000_000.0),
+        ("anim_speed_max", -1_000_000.0, 1_000_000.0),
+        ("anim_offset_min", 0.0, 1.0),
+        ("anim_offset_max", 0.0, 1.0),
+    ):
+        if name in properties:
+            _validate_viewport_number(properties[name], name, minimum=minimum, maximum=maximum)
+    for name in ("emission_rect_extents", "direction", "gravity"):
+        if name in properties:
+            _validate_viewport_vector2(properties[name], name)
+    if "emission_rect_extents" in properties and (
+        properties["emission_rect_extents"]["x"] < 0
+        or properties["emission_rect_extents"]["y"] < 0
+    ):
+        raise ValueError("emission_rect_extents must have non-negative x and y")
+    for name in ("emission_points", "emission_normals"):
+        if name in properties:
+            _validate_cpu_particles_vector2_array(properties[name], name)
+    if "emission_colors" in properties:
+        _validate_cpu_particles_color_array(properties["emission_colors"])
+    if "color" in properties:
+        _validate_light_color(properties["color"], "color")
+    if (
+        "emission_ring_inner_radius" in properties
+        and "emission_ring_radius" in properties
+        and properties["emission_ring_inner_radius"] > properties["emission_ring_radius"]
+    ):
+        raise ValueError("emission_ring_inner_radius cannot exceed emission_ring_radius")
+
+
+def _validate_cpu_particles_vector2_array(value: Any, label: str) -> None:
+    if not isinstance(value, list) or len(value) > 512:
+        raise ValueError(f"{label} must contain at most 512 Vector2 values")
+    for index, point in enumerate(value):
+        _validate_viewport_vector2(point, f"{label}[{index}]")
+
+
+def _validate_cpu_particles_color_array(value: Any) -> None:
+    if not isinstance(value, list) or len(value) > 512:
+        raise ValueError("emission_colors must contain at most 512 Color values")
+    for index, color in enumerate(value):
+        _validate_light_color(color, f"emission_colors[{index}]")
 
 
 def _validate_particle_process_material_2d_properties(properties: dict[str, Any]) -> None:
