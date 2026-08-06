@@ -25,6 +25,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "runtime_input_send",
         "runtime_input_result_get",
         "scene_get_hierarchy",
+        "scene_create",
+        "scene_open",
         "class_search",
         "node_get_properties",
         "node_get_signals",
@@ -320,6 +322,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["tile_set_atlas_tile_occlusion_set"].readOnlyHint is False
     assert annotations["tile_map_layer_cells_set"].readOnlyHint is False
     assert annotations["tile_map_layer_cells_clear"].destructiveHint is True
+    assert annotations["scene_create"].destructiveHint is True
+    assert annotations["scene_open"].readOnlyHint is False
     assert annotations["scene_save"].idempotentHint is True
 
 

@@ -79,6 +79,62 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("2D class search returned too few Button types")
 
         scene_file = state.get("current_scene", "")
+        created_scene_file = "res://generated/agent_created_ui.tscn"
+        await _expect_godot_error(
+            app.service.scene_create(
+                scene_path="res://generated/rejected_3d.tscn",
+                root_type="Node3D",
+            ),
+            "UNSUPPORTED_2D_TYPE",
+        )
+        created_scene = await app.service.scene_create(
+            scene_path=created_scene_file,
+            root_type="Control",
+            root_name="AgentCreatedUI",
+        )
+        if (
+            not created_scene.get("created")
+            or created_scene.get("scene_file") != created_scene_file
+            or created_scene.get("root_type") != "Control"
+        ):
+            raise RuntimeError("scene_create returned an unexpected scene root")
+        await _expect_godot_error(
+            app.service.scene_create(scene_path=created_scene_file),
+            "SCENE_PATH_EXISTS",
+        )
+        created_hierarchy = await app.service.scene_get_hierarchy(limit=20)
+        if (
+            created_hierarchy.get("scene_file") != created_scene_file
+            or created_hierarchy.get("total") != 1
+            or created_hierarchy["nodes"][0].get("name") != "AgentCreatedUI"
+        ):
+            raise RuntimeError("scene_create did not open the generated 2D scene")
+        created_button = await app.service.node_create(
+            type_name="Button",
+            name="AgentCreatedButton",
+            parent_path="/AgentCreatedUI",
+            scene_file=created_scene_file,
+        )
+        if created_button.get("type") != "Button":
+            raise RuntimeError("Newly created scene did not accept 2D child nodes")
+        created_save = await app.service.scene_save(scene_file=created_scene_file)
+        if not created_save.get("saved"):
+            raise RuntimeError("Newly created scene could not be saved")
+        generated_scene = (project_path / "generated" / "agent_created_ui.tscn").read_text(
+            encoding="utf-8"
+        )
+        if "AgentCreatedUI" not in generated_scene or "AgentCreatedButton" not in generated_scene:
+            raise RuntimeError("Newly created scene was not persisted")
+        await _expect_godot_error(
+            app.service.scene_open("res://packed_scene_3d.tscn"),
+            "UNSUPPORTED_2D_TYPE",
+        )
+        reopened_scene = await app.service.scene_open(scene_file)
+        if not reopened_scene.get("opened") or reopened_scene.get("scene_file") != scene_file:
+            raise RuntimeError("scene_open did not return to the original scene")
+        reopened_hierarchy = await app.service.scene_get_hierarchy(limit=20)
+        if reopened_hierarchy.get("scene_file") != scene_file or reopened_hierarchy.get("total") != 5:
+            raise RuntimeError("scene_open did not restore the original scene")
         initial_revision = state["meta"]["scene_revision"]
         await _expect_godot_error(
             app.service.node_create(type_name="Node3D", scene_file=scene_file),
