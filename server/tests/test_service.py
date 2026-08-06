@@ -1711,6 +1711,182 @@ async def test_cpu_particles_2d_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_cpu_particles_2d_resource_tools_forward_safe_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    path = "/Main/Fire"
+    scene_file = "res://main.tscn"
+    curve_properties = {
+        "min_domain": 0.0,
+        "max_domain": 1.0,
+        "min_value": -2.0,
+        "max_value": 2.0,
+        "bake_resolution": 64,
+        "points": [
+            {
+                "position": {"x": 0.0, "y": -1.0},
+                "left_tangent": 0.0,
+                "right_tangent": 1.0,
+                "left_mode": "free",
+                "right_mode": "linear",
+            },
+            {"position": {"x": 1.0, "y": 1.0}},
+        ],
+    }
+    gradient_properties = {
+        "points": [
+            {"offset": 0.0, "color": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}},
+            {"offset": 1.0, "color": "0000ffff"},
+        ],
+        "interpolation_mode": "cubic",
+        "interpolation_color_space": "oklab",
+    }
+
+    await service.cpu_particles_2d_curve_get(
+        path, "initial_velocity", session_id="project@a1b2", scene_file=scene_file
+    )
+    await service.cpu_particles_2d_curve_bind(
+        path, "initial_velocity", "res://curve.tres", scene_file=scene_file
+    )
+    await service.cpu_particles_2d_curve_set(
+        path, "initial_velocity", curve_properties, scene_file=scene_file
+    )
+    await service.cpu_particles_2d_curve_clear(path, "initial_velocity", scene_file=scene_file)
+    await service.cpu_particles_2d_gradient_get(
+        path, "color", session_id="project@a1b2", scene_file=scene_file
+    )
+    await service.cpu_particles_2d_gradient_bind(
+        path, "color", "res://gradient.tres", scene_file=scene_file
+    )
+    await service.cpu_particles_2d_gradient_set(
+        path, "color", gradient_properties, scene_file=scene_file
+    )
+    await service.cpu_particles_2d_gradient_clear(path, "color", scene_file=scene_file)
+
+    assert bridge.calls == [
+        (
+            "cpu_particles_2d_curve_get",
+            {"path": path, "curve": "initial_velocity", "scene_file": scene_file},
+            "project@a1b2",
+        ),
+        (
+            "cpu_particles_2d_curve_bind",
+            {
+                "path": path,
+                "curve": "initial_velocity",
+                "resource_path": "res://curve.tres",
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "cpu_particles_2d_curve_set",
+            {
+                "path": path,
+                "curve": "initial_velocity",
+                "properties": curve_properties,
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "cpu_particles_2d_curve_clear",
+            {"path": path, "curve": "initial_velocity", "scene_file": scene_file},
+            None,
+        ),
+        (
+            "cpu_particles_2d_gradient_get",
+            {"path": path, "gradient": "color", "scene_file": scene_file},
+            "project@a1b2",
+        ),
+        (
+            "cpu_particles_2d_gradient_bind",
+            {
+                "path": path,
+                "gradient": "color",
+                "resource_path": "res://gradient.tres",
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "cpu_particles_2d_gradient_set",
+            {
+                "path": path,
+                "gradient": "color",
+                "properties": gradient_properties,
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "cpu_particles_2d_gradient_clear",
+            {"path": path, "gradient": "color", "scene_file": scene_file},
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_cpu_particles_2d_resource_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+    path = "/Main/Fire"
+
+    with pytest.raises(ValueError, match="curve"):
+        await service.cpu_particles_2d_curve_get(path, "velocity")
+    with pytest.raises(ValueError, match="resource_path"):
+        await service.cpu_particles_2d_curve_bind(path, "angle", "../curve.tres")
+    with pytest.raises(ValueError, match="min_domain"):
+        await service.cpu_particles_2d_curve_set(
+            path,
+            "angle",
+            {"min_domain": 1.0, "max_domain": 0.0},
+        )
+    with pytest.raises(ValueError, match="strictly increasing"):
+        await service.cpu_particles_2d_curve_set(
+            path,
+            "angle",
+            {
+                "points": [
+                    {"position": {"x": 0.5, "y": 0.0}},
+                    {"position": {"x": 0.25, "y": 0.0}},
+                ]
+            },
+        )
+    with pytest.raises(ValueError, match="left_mode"):
+        await service.cpu_particles_2d_curve_set(
+            path,
+            "angle",
+            {"points": [{"position": {"x": 0.0, "y": 0.0}, "left_mode": "cubic"}]},
+        )
+    with pytest.raises(ValueError, match="gradient"):
+        await service.cpu_particles_2d_gradient_get(path, "ramp")
+    with pytest.raises(ValueError, match="between 2 and 512"):
+        await service.cpu_particles_2d_gradient_set(
+            path,
+            "color",
+            {"points": [{"offset": 0.0, "color": "ffffff"}]},
+        )
+    with pytest.raises(ValueError, match="strictly increasing"):
+        await service.cpu_particles_2d_gradient_set(
+            path,
+            "color",
+            {
+                "points": [
+                    {"offset": 0.5, "color": "ffffff"},
+                    {"offset": 0.5, "color": "000000"},
+                ]
+            },
+        )
+    with pytest.raises(ValueError, match="interpolation_color_space"):
+        await service.cpu_particles_2d_gradient_set(
+            path,
+            "color",
+            {"interpolation_color_space": "display_p3"},
+        )
+
+
+@pytest.mark.asyncio
 async def test_particle_process_material_2d_tools_forward_copy_on_write_payloads() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

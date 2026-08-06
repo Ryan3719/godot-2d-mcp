@@ -464,6 +464,36 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def cpu_particles_2d_curve_get(
+        path: str,
+        curve: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Inspect one CPUParticles2D Curve resource, including all points and tangent modes."""
+        return await service.cpu_particles_2d_curve_get(
+            path=path,
+            curve=curve,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def cpu_particles_2d_gradient_get(
+        path: str,
+        gradient: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Inspect one CPUParticles2D Gradient resource, including color stops and interpolation."""
+        return await service.cpu_particles_2d_gradient_get(
+            path=path,
+            gradient=gradient,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def particle_process_material_2d_get(
         path: str,
         session_id: str | None = None,
@@ -1525,6 +1555,104 @@ def create_application(
         return await service.cpu_particles_2d_set(
             path=path,
             properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def cpu_particles_2d_curve_bind(
+        path: str,
+        curve: str,
+        resource_path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Bind an existing project Curve resource to one CPUParticles2D curve slot."""
+        return await service.cpu_particles_2d_curve_bind(
+            path=path,
+            curve=curve,
+            resource_path=resource_path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def cpu_particles_2d_curve_set(
+        path: str,
+        curve: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Copy, update, and rebind one CPUParticles2D Curve resource atomically."""
+        return await service.cpu_particles_2d_curve_set(
+            path=path,
+            curve=curve,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def cpu_particles_2d_curve_clear(
+        path: str,
+        curve: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Detach one CPUParticles2D Curve resource while retaining editor undo support."""
+        return await service.cpu_particles_2d_curve_clear(
+            path=path,
+            curve=curve,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def cpu_particles_2d_gradient_bind(
+        path: str,
+        gradient: str,
+        resource_path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Bind an existing project Gradient resource to one CPUParticles2D gradient slot."""
+        return await service.cpu_particles_2d_gradient_bind(
+            path=path,
+            gradient=gradient,
+            resource_path=resource_path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def cpu_particles_2d_gradient_set(
+        path: str,
+        gradient: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Copy, update, and rebind one CPUParticles2D Gradient resource atomically."""
+        return await service.cpu_particles_2d_gradient_set(
+            path=path,
+            gradient=gradient,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def cpu_particles_2d_gradient_clear(
+        path: str,
+        gradient: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Detach one CPUParticles2D Gradient resource while retaining editor undo support."""
+        return await service.cpu_particles_2d_gradient_clear(
+            path=path,
+            gradient=gradient,
             session_id=session_id,
             scene_file=scene_file,
         )

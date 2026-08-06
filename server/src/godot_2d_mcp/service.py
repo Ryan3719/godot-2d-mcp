@@ -848,6 +848,36 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def cpu_particles_2d_curve_get(
+        self,
+        path: str,
+        curve: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_cpu_particles_curve_name(curve)
+        return await self.bridge.call(
+            "cpu_particles_2d_curve_get",
+            _scene_params(scene_file, path=path, curve=curve),
+            session_id=session_id,
+        )
+
+    async def cpu_particles_2d_gradient_get(
+        self,
+        path: str,
+        gradient: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_cpu_particles_gradient_name(gradient)
+        return await self.bridge.call(
+            "cpu_particles_2d_gradient_get",
+            _scene_params(scene_file, path=path, gradient=gradient),
+            session_id=session_id,
+        )
+
     async def particle_process_material_2d_get(
         self,
         path: str,
@@ -1677,6 +1707,104 @@ class GodotService:
         return await self.bridge.call(
             "cpu_particles_2d_set",
             _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def cpu_particles_2d_curve_bind(
+        self,
+        path: str,
+        curve: str,
+        resource_path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_cpu_particles_curve_name(curve)
+        _validate_project_resource_path(resource_path, "resource_path")
+        return await self.bridge.call(
+            "cpu_particles_2d_curve_bind",
+            _scene_params(scene_file, path=path, curve=curve, resource_path=resource_path),
+            session_id=session_id,
+        )
+
+    async def cpu_particles_2d_curve_set(
+        self,
+        path: str,
+        curve: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_cpu_particles_curve_name(curve)
+        _validate_cpu_particles_curve_properties(properties)
+        return await self.bridge.call(
+            "cpu_particles_2d_curve_set",
+            _scene_params(scene_file, path=path, curve=curve, properties=properties),
+            session_id=session_id,
+        )
+
+    async def cpu_particles_2d_curve_clear(
+        self,
+        path: str,
+        curve: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_cpu_particles_curve_name(curve)
+        return await self.bridge.call(
+            "cpu_particles_2d_curve_clear",
+            _scene_params(scene_file, path=path, curve=curve),
+            session_id=session_id,
+        )
+
+    async def cpu_particles_2d_gradient_bind(
+        self,
+        path: str,
+        gradient: str,
+        resource_path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_cpu_particles_gradient_name(gradient)
+        _validate_project_resource_path(resource_path, "resource_path")
+        return await self.bridge.call(
+            "cpu_particles_2d_gradient_bind",
+            _scene_params(scene_file, path=path, gradient=gradient, resource_path=resource_path),
+            session_id=session_id,
+        )
+
+    async def cpu_particles_2d_gradient_set(
+        self,
+        path: str,
+        gradient: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_cpu_particles_gradient_name(gradient)
+        _validate_cpu_particles_gradient_properties(properties)
+        return await self.bridge.call(
+            "cpu_particles_2d_gradient_set",
+            _scene_params(scene_file, path=path, gradient=gradient, properties=properties),
+            session_id=session_id,
+        )
+
+    async def cpu_particles_2d_gradient_clear(
+        self,
+        path: str,
+        gradient: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_cpu_particles_gradient_name(gradient)
+        return await self.bridge.call(
+            "cpu_particles_2d_gradient_clear",
+            _scene_params(scene_file, path=path, gradient=gradient),
             session_id=session_id,
         )
 
@@ -3238,6 +3366,137 @@ def _validate_cpu_particles_color_array(value: Any) -> None:
         raise ValueError("emission_colors must contain at most 512 Color values")
     for index, color in enumerate(value):
         _validate_light_color(color, f"emission_colors[{index}]")
+
+
+def _validate_cpu_particles_curve_name(value: str) -> None:
+    allowed = {
+        "initial_velocity",
+        "angular_velocity",
+        "orbit_velocity",
+        "linear_accel",
+        "radial_accel",
+        "tangential_accel",
+        "damping",
+        "angle",
+        "scale_amount",
+        "scale_x",
+        "scale_y",
+        "hue_variation",
+        "anim_speed",
+        "anim_offset",
+    }
+    if not isinstance(value, str) or value.strip().lower() not in allowed:
+        raise ValueError(f"curve must be one of: {', '.join(sorted(allowed))}")
+
+
+def _validate_cpu_particles_gradient_name(value: str) -> None:
+    if not isinstance(value, str) or value.strip().lower() not in {"color", "initial_color"}:
+        raise ValueError("gradient must be one of: color, initial_color")
+
+
+def _validate_cpu_particles_curve_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "min_domain",
+        "max_domain",
+        "min_value",
+        "max_value",
+        "bake_resolution",
+        "points",
+    }
+    if not isinstance(properties, dict) or not properties:
+        raise ValueError("properties must be a non-empty object")
+    if set(properties) - allowed:
+        raise ValueError("properties contains an unsupported Curve field")
+    for name in {"min_domain", "max_domain", "min_value", "max_value"} & properties.keys():
+        _validate_viewport_number(properties[name], name, minimum=-1_000_000.0, maximum=1_000_000.0)
+    if "min_domain" in properties and "max_domain" in properties and (
+        properties["min_domain"] >= properties["max_domain"]
+    ):
+        raise ValueError("min_domain must be less than max_domain")
+    if "min_value" in properties and "max_value" in properties and (
+        properties["min_value"] >= properties["max_value"]
+    ):
+        raise ValueError("min_value must be less than max_value")
+    if "bake_resolution" in properties and (
+        isinstance(properties["bake_resolution"], bool)
+        or not isinstance(properties["bake_resolution"], int)
+        or not 1 <= properties["bake_resolution"] <= 1000
+    ):
+        raise ValueError("bake_resolution must be an integer between 1 and 1000")
+    if "points" in properties:
+        _validate_cpu_particles_curve_points(properties["points"])
+
+
+def _validate_cpu_particles_curve_points(points: Any) -> None:
+    if not isinstance(points, list) or len(points) > 512:
+        raise ValueError("points must contain at most 512 Curve points")
+    previous_x: float | None = None
+    allowed = {"position", "left_tangent", "right_tangent", "left_mode", "right_mode"}
+    for index, point in enumerate(points):
+        if not isinstance(point, dict) or "position" not in point or set(point) - allowed:
+            raise ValueError(
+                "each Curve point must contain position and optional tangent/mode fields"
+            )
+        _validate_viewport_vector2(point["position"], f"points[{index}].position")
+        position = point["position"]
+        if abs(float(position["x"])) > 1_000_000 or abs(float(position["y"])) > 1_000_000:
+            raise ValueError(f"points[{index}].position components must be within +/-1000000")
+        if previous_x is not None and position["x"] <= previous_x:
+            raise ValueError("Curve points must use strictly increasing position.x values")
+        previous_x = float(position["x"])
+        for name in {"left_tangent", "right_tangent"} & point.keys():
+            _validate_viewport_number(
+                point[name],
+                f"points[{index}].{name}",
+                minimum=-1_000_000.0,
+                maximum=1_000_000.0,
+            )
+        for name in {"left_mode", "right_mode"} & point.keys():
+            if (
+                not isinstance(point[name], str)
+                or point[name].strip().lower() not in {"free", "linear"}
+            ):
+                raise ValueError(f"points[{index}].{name} must be free or linear")
+
+
+def _validate_cpu_particles_gradient_properties(properties: dict[str, Any]) -> None:
+    allowed = {"points", "interpolation_mode", "interpolation_color_space"}
+    if not isinstance(properties, dict) or not properties:
+        raise ValueError("properties must be a non-empty object")
+    if set(properties) - allowed:
+        raise ValueError("properties contains an unsupported Gradient field")
+    if "points" in properties:
+        _validate_cpu_particles_gradient_points(properties["points"])
+    if "interpolation_mode" in properties and (
+        not isinstance(properties["interpolation_mode"], str)
+        or properties["interpolation_mode"].strip().lower() not in {"linear", "constant", "cubic"}
+    ):
+        raise ValueError("interpolation_mode must be linear, constant, or cubic")
+    if "interpolation_color_space" in properties and (
+        not isinstance(properties["interpolation_color_space"], str)
+        or properties["interpolation_color_space"].strip().lower()
+        not in {"srgb", "linear_srgb", "oklab"}
+    ):
+        raise ValueError("interpolation_color_space must be srgb, linear_srgb, or oklab")
+
+
+def _validate_cpu_particles_gradient_points(points: Any) -> None:
+    if not isinstance(points, list) or not 2 <= len(points) <= 512:
+        raise ValueError("points must contain between 2 and 512 Gradient points")
+    previous_offset: float | None = None
+    for index, point in enumerate(points):
+        if not isinstance(point, dict) or set(point) != {"offset", "color"}:
+            raise ValueError("each Gradient point must contain exactly offset and color")
+        _validate_viewport_number(
+            point["offset"],
+            f"points[{index}].offset",
+            minimum=0.0,
+            maximum=1.0,
+        )
+        if previous_offset is not None and point["offset"] <= previous_offset:
+            raise ValueError("Gradient points must use strictly increasing offsets")
+        previous_offset = float(point["offset"])
+        _validate_light_color(point["color"], f"points[{index}].color")
 
 
 def _validate_particle_process_material_2d_properties(properties: dict[str, Any]) -> None:

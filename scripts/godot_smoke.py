@@ -2243,6 +2243,212 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if restored_cpu_texture["configuration"]["texture_path"] != "res://test_icon.svg":
             raise RuntimeError("Undo did not restore the CPUParticles2D texture binding")
 
+        initial_cpu_curve = await app.service.cpu_particles_2d_curve_get(
+            cpu_particles_path,
+            "initial_velocity",
+            scene_file=scene_file,
+        )
+        if initial_cpu_curve["resource"]["assigned"] or initial_cpu_curve["configuration"] is not None:
+            raise RuntimeError("New CPUParticles2D unexpectedly had an initial velocity Curve")
+        await _expect_godot_error(
+            app.service.cpu_particles_2d_curve_bind(
+                cpu_particles_path,
+                "initial_velocity",
+                "res://test_cpu_gradient.tres",
+                scene_file=scene_file,
+            ),
+            "RESOURCE_TYPE_MISMATCH",
+        )
+        bound_cpu_curve = await app.service.cpu_particles_2d_curve_bind(
+            cpu_particles_path,
+            "initial_velocity",
+            "res://test_cpu_curve.tres",
+            scene_file=scene_file,
+        )
+        if (
+            not bound_cpu_curve.get("bound_external_resource")
+            or bound_cpu_curve["resource"]["origin"] != "external"
+            or bound_cpu_curve["resource"]["resource_path"] != "res://test_cpu_curve.tres"
+        ):
+            raise RuntimeError(
+                "CPUParticles2D Curve was not bound as an external resource"
+            )
+        cpu_curve_update = await app.service.cpu_particles_2d_curve_set(
+            cpu_particles_path,
+            "initial_velocity",
+            {
+                "min_domain": 0.0,
+                "max_domain": 1.0,
+                "min_value": -2.0,
+                "max_value": 2.0,
+                "bake_resolution": 64,
+                "points": [
+                    {
+                        "position": {"x": 0.0, "y": -1.0},
+                        "left_tangent": 0.0,
+                        "right_tangent": 2.0,
+                        "left_mode": "free",
+                        "right_mode": "linear",
+                    },
+                    {
+                        "position": {"x": 1.0, "y": 1.0},
+                        "left_tangent": 2.0,
+                        "right_tangent": 0.0,
+                        "left_mode": "linear",
+                        "right_mode": "free",
+                    },
+                ],
+            },
+            scene_file=scene_file,
+        )
+        cpu_curve_configuration = cpu_curve_update["configuration"]
+        if (
+            not cpu_curve_update.get("undoable")
+            or cpu_curve_update.get("copied_external_resource") is not True
+            or cpu_curve_update["resource"]["origin"] != "embedded"
+            or cpu_curve_update["resource"]["resource_path"] != ""
+            or not _is_close(cpu_curve_configuration["min_value"], -2.0)
+            or not _is_close(cpu_curve_configuration["max_value"], 2.0)
+            or cpu_curve_configuration["bake_resolution"] != 64
+            or cpu_curve_configuration["points"]
+            != [
+                {
+                    "position": {"x": 0.0, "y": -1.0},
+                    "left_tangent": 0.0,
+                    "right_tangent": 2.0,
+                    "left_mode": "free",
+                    "right_mode": "linear",
+                },
+                {
+                    "position": {"x": 1.0, "y": 1.0},
+                    "left_tangent": 2.0,
+                    "right_tangent": 0.0,
+                    "left_mode": "linear",
+                    "right_mode": "free",
+                },
+            ]
+        ):
+            raise RuntimeError(
+                "CPUParticles2D Curve configuration was not applied"
+            )
+        undo_cpu_curve_update = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_cpu_curve_update.get("changed"):
+            raise RuntimeError("CPUParticles2D Curve update was not undoable")
+        restored_cpu_curve = await app.service.cpu_particles_2d_curve_get(
+            cpu_particles_path,
+            "initial_velocity",
+            scene_file=scene_file,
+        )
+        if restored_cpu_curve["resource"]["resource_path"] != "res://test_cpu_curve.tres":
+            raise RuntimeError("Undo did not restore the external CPUParticles2D Curve")
+        redo_cpu_curve_update = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_cpu_curve_update.get("changed"):
+            raise RuntimeError("CPUParticles2D Curve update was not redoable")
+        cleared_cpu_curve = await app.service.cpu_particles_2d_curve_clear(
+            cpu_particles_path,
+            "initial_velocity",
+            scene_file=scene_file,
+        )
+        if cleared_cpu_curve["resource"]["assigned"]:
+            raise RuntimeError("CPUParticles2D Curve was not cleared")
+        undo_cpu_curve_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_cpu_curve_clear.get("changed"):
+            raise RuntimeError("CPUParticles2D Curve clear was not undoable")
+        restored_embedded_curve = await app.service.cpu_particles_2d_curve_get(
+            cpu_particles_path,
+            "initial_velocity",
+            scene_file=scene_file,
+        )
+        if restored_embedded_curve["resource"]["origin"] != "embedded":
+            raise RuntimeError("Undo did not restore the embedded CPUParticles2D Curve")
+
+        initial_cpu_gradient = await app.service.cpu_particles_2d_gradient_get(
+            cpu_particles_path,
+            "color",
+            scene_file=scene_file,
+        )
+        if initial_cpu_gradient["resource"]["assigned"] or initial_cpu_gradient["configuration"] is not None:
+            raise RuntimeError("New CPUParticles2D unexpectedly had a color Gradient")
+        await _expect_godot_error(
+            app.service.cpu_particles_2d_gradient_bind(
+                cpu_particles_path,
+                "color",
+                "res://test_cpu_curve.tres",
+                scene_file=scene_file,
+            ),
+            "RESOURCE_TYPE_MISMATCH",
+        )
+        bound_cpu_gradient = await app.service.cpu_particles_2d_gradient_bind(
+            cpu_particles_path,
+            "color",
+            "res://test_cpu_gradient.tres",
+            scene_file=scene_file,
+        )
+        if (
+            not bound_cpu_gradient.get("bound_external_resource")
+            or bound_cpu_gradient["resource"]["origin"] != "external"
+            or bound_cpu_gradient["resource"]["resource_path"] != "res://test_cpu_gradient.tres"
+        ):
+            raise RuntimeError("CPUParticles2D Gradient was not bound as an external resource")
+        cpu_gradient_update = await app.service.cpu_particles_2d_gradient_set(
+            cpu_particles_path,
+            "color",
+            {
+                "points": [
+                    {"offset": 0.0, "color": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}},
+                    {"offset": 0.5, "color": {"r": 0.0, "g": 1.0, "b": 0.0, "a": 0.8}},
+                    {"offset": 1.0, "color": {"r": 0.0, "g": 0.0, "b": 1.0, "a": 0.5}},
+                ],
+                "interpolation_mode": "cubic",
+                "interpolation_color_space": "oklab",
+            },
+            scene_file=scene_file,
+        )
+        cpu_gradient_configuration = cpu_gradient_update["configuration"]
+        if (
+            not cpu_gradient_update.get("undoable")
+            or cpu_gradient_update.get("copied_external_resource") is not True
+            or cpu_gradient_update["resource"]["origin"] != "embedded"
+            or cpu_gradient_configuration["interpolation_mode"] != "cubic"
+            or cpu_gradient_configuration["interpolation_color_space"] != "oklab"
+            or len(cpu_gradient_configuration["points"]) != 3
+            or not _color_matches(
+                cpu_gradient_configuration["points"][1]["color"],
+                {"r": 0.0, "g": 1.0, "b": 0.0, "a": 0.8},
+            )
+        ):
+            raise RuntimeError("CPUParticles2D Gradient configuration was not applied")
+        undo_cpu_gradient_update = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_cpu_gradient_update.get("changed"):
+            raise RuntimeError("CPUParticles2D Gradient update was not undoable")
+        restored_cpu_gradient = await app.service.cpu_particles_2d_gradient_get(
+            cpu_particles_path,
+            "color",
+            scene_file=scene_file,
+        )
+        if restored_cpu_gradient["resource"]["resource_path"] != "res://test_cpu_gradient.tres":
+            raise RuntimeError("Undo did not restore the external CPUParticles2D Gradient")
+        redo_cpu_gradient_update = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_cpu_gradient_update.get("changed"):
+            raise RuntimeError("CPUParticles2D Gradient update was not redoable")
+        cleared_cpu_gradient = await app.service.cpu_particles_2d_gradient_clear(
+            cpu_particles_path,
+            "color",
+            scene_file=scene_file,
+        )
+        if cleared_cpu_gradient["resource"]["assigned"]:
+            raise RuntimeError("CPUParticles2D Gradient was not cleared")
+        undo_cpu_gradient_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_cpu_gradient_clear.get("changed"):
+            raise RuntimeError("CPUParticles2D Gradient clear was not undoable")
+        restored_embedded_gradient = await app.service.cpu_particles_2d_gradient_get(
+            cpu_particles_path,
+            "color",
+            scene_file=scene_file,
+        )
+        if restored_embedded_gradient["resource"]["origin"] != "embedded":
+            raise RuntimeError("Undo did not restore the embedded CPUParticles2D Gradient")
+
         viewport = await app.service.node_create(
             type_name="SubViewport",
             name="AgentViewport",
@@ -3002,6 +3208,8 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentSparks" not in saved_scene
             or "AgentFire" not in saved_scene
             or "AgentCpuParticles" not in saved_scene
+            or "Curve" not in saved_scene
+            or "Gradient" not in saved_scene
             or "test_icon.svg" not in saved_scene
             or "ParticleProcessMaterial" not in saved_scene
             or "AgentViewport" not in saved_scene
