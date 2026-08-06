@@ -835,6 +835,19 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def particle_process_material_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "particle_process_material_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def light_2d_get(
         self,
         path: str,
@@ -1635,6 +1648,36 @@ class GodotService:
         _validate_gpu_particles_2d_properties(properties)
         return await self.bridge.call(
             "gpu_particles_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def particle_process_material_2d_create(
+        self,
+        path: str,
+        replace_existing: bool = False,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_boolean(replace_existing, "replace_existing")
+        return await self.bridge.call(
+            "particle_process_material_2d_create",
+            _scene_params(scene_file, path=path, replace_existing=replace_existing),
+            session_id=session_id,
+        )
+
+    async def particle_process_material_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_particle_process_material_2d_properties(properties)
+        return await self.bridge.call(
+            "particle_process_material_2d_set",
             _scene_params(scene_file, path=path, properties=properties),
             session_id=session_id,
         )
@@ -2988,6 +3031,178 @@ def _validate_gpu_particles_2d_properties(properties: dict[str, Any]) -> None:
             raise ValueError("visibility_rect must contain position and size Vector2 values")
         _validate_viewport_vector2(value["position"], "visibility_rect.position")
         _validate_viewport_vector2(value["size"], "visibility_rect.size")
+
+
+def _validate_particle_process_material_2d_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "lifetime_randomness",
+        "align_y_to_velocity",
+        "disable_z",
+        "damping_as_friction",
+        "inherit_emitter_scale",
+        "emission_shape",
+        "emission_shape_offset",
+        "emission_shape_scale",
+        "emission_sphere_radius",
+        "emission_box_extents",
+        "emission_point_count",
+        "emission_ring_height",
+        "emission_ring_radius",
+        "emission_ring_inner_radius",
+        "emission_ring_cone_angle",
+        "direction",
+        "spread",
+        "flatness",
+        "inherit_velocity_ratio",
+        "velocity_pivot",
+        "initial_velocity_min",
+        "initial_velocity_max",
+        "angular_velocity_min",
+        "angular_velocity_max",
+        "orbit_velocity_min",
+        "orbit_velocity_max",
+        "radial_velocity_min",
+        "radial_velocity_max",
+        "directional_velocity_min",
+        "directional_velocity_max",
+        "gravity",
+        "linear_accel_min",
+        "linear_accel_max",
+        "radial_accel_min",
+        "radial_accel_max",
+        "tangential_accel_min",
+        "tangential_accel_max",
+        "damping_min",
+        "damping_max",
+        "attractor_interaction_enabled",
+        "scale_min",
+        "scale_max",
+        "color",
+        "turbulence_enabled",
+        "turbulence_noise_strength",
+        "turbulence_noise_scale",
+        "turbulence_noise_speed",
+        "turbulence_noise_speed_random",
+        "collision_mode",
+        "collision_friction",
+        "collision_bounce",
+        "collision_use_scale",
+        "sub_emitter_mode",
+        "sub_emitter_frequency",
+        "sub_emitter_amount_at_end",
+        "sub_emitter_amount_at_collision",
+        "sub_emitter_amount_at_start",
+        "sub_emitter_keep_velocity",
+    }
+    if not isinstance(properties, dict) or not properties:
+        raise ValueError("properties must be a non-empty object")
+    if len(properties) > 64:
+        raise ValueError("properties can contain at most 64 ParticleProcessMaterial entries")
+    if set(properties) - allowed:
+        raise ValueError("properties contains an unsupported ParticleProcessMaterial property")
+    for name in (
+        "align_y_to_velocity",
+        "disable_z",
+        "damping_as_friction",
+        "inherit_emitter_scale",
+        "attractor_interaction_enabled",
+        "turbulence_enabled",
+        "collision_use_scale",
+        "sub_emitter_keep_velocity",
+    ):
+        if name in properties:
+            _validate_boolean(properties[name], name)
+    for name in (
+        "emission_shape_offset",
+        "emission_shape_scale",
+        "emission_box_extents",
+        "direction",
+        "velocity_pivot",
+        "gravity",
+        "turbulence_noise_speed",
+    ):
+        if name in properties:
+            _validate_viewport_vector2(properties[name], name)
+    if "emission_box_extents" in properties and (
+        properties["emission_box_extents"]["x"] < 0
+        or properties["emission_box_extents"]["y"] < 0
+    ):
+        raise ValueError("emission_box_extents must have non-negative x and y")
+    if "color" in properties:
+        _validate_light_color(properties["color"], "color")
+    for name, values in {
+        "emission_shape": {
+            "point",
+            "sphere",
+            "sphere_surface",
+            "box",
+            "points",
+            "directed_points",
+            "ring",
+        },
+        "collision_mode": {"disabled", "rigid", "hide_on_contact"},
+        "sub_emitter_mode": {"disabled", "constant", "at_end", "at_collision", "at_start"},
+    }.items():
+        if name in properties and (
+            not isinstance(properties[name], str)
+            or properties[name].strip().lower() not in values
+        ):
+            raise ValueError(f"{name} must be one of: {', '.join(sorted(values))}")
+    for name, minimum, maximum in (
+        ("emission_point_count", 0, 1_000_000),
+        ("sub_emitter_amount_at_end", 1, 32),
+        ("sub_emitter_amount_at_collision", 1, 32),
+        ("sub_emitter_amount_at_start", 1, 32),
+    ):
+        if name in properties and (
+            isinstance(properties[name], bool)
+            or not isinstance(properties[name], int)
+            or not minimum <= properties[name] <= maximum
+        ):
+            raise ValueError(f"{name} must be an integer between {minimum} and {maximum}")
+    for name, minimum, maximum in (
+        ("lifetime_randomness", 0.0, 1.0),
+        ("emission_sphere_radius", 0.01, 1_000_000.0),
+        ("emission_ring_height", 0.0, 1_000_000.0),
+        ("emission_ring_radius", 0.0, 1_000_000.0),
+        ("emission_ring_inner_radius", 0.0, 1_000_000.0),
+        ("emission_ring_cone_angle", 0.0, 90.0),
+        ("spread", 0.0, 180.0),
+        ("flatness", 0.0, 1.0),
+        ("inherit_velocity_ratio", -1000.0, 1000.0),
+        ("turbulence_noise_strength", 0.0, 20.0),
+        ("turbulence_noise_scale", 0.0, 1_000_000.0),
+        ("turbulence_noise_speed_random", 0.0, 4.0),
+        ("collision_friction", 0.0, 1.0),
+        ("collision_bounce", 0.0, 1.0),
+        ("sub_emitter_frequency", 0.01, 100.0),
+    ):
+        if name in properties:
+            _validate_viewport_number(properties[name], name, minimum=minimum, maximum=maximum)
+    parameter_prefixes = {
+        "initial_velocity",
+        "angular_velocity",
+        "orbit_velocity",
+        "radial_velocity",
+        "directional_velocity",
+        "linear_accel",
+        "radial_accel",
+        "tangential_accel",
+        "damping",
+        "scale",
+    }
+    for name, value in properties.items():
+        if any(name in {f"{prefix}_min", f"{prefix}_max"} for prefix in parameter_prefixes):
+            _validate_viewport_number(value, name, minimum=-1_000_000.0, maximum=1_000_000.0)
+    for name in ("damping_min", "damping_max", "scale_min", "scale_max"):
+        if name in properties and properties[name] < 0:
+            raise ValueError(f"{name} must be greater than or equal to zero")
+    if (
+        "emission_ring_inner_radius" in properties
+        and "emission_ring_radius" in properties
+        and properties["emission_ring_inner_radius"] > properties["emission_ring_radius"]
+    ):
+        raise ValueError("emission_ring_inner_radius cannot exceed emission_ring_radius")
 
 
 def _validate_viewport_vector2(value: Any, label: str) -> None:
