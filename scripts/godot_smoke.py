@@ -1620,6 +1620,104 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if restored_patrol_curve["curve"] is None or restored_patrol_curve["total_points"] != 3:
             raise RuntimeError("Undo did not restore the Path2D Curve2D resource")
 
+        skeleton = await app.service.node_create(
+            type_name="Skeleton2D",
+            name="AgentSkeleton",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        skeleton_path = skeleton["path"]
+        empty_skeleton = await app.service.skeleton_2d_get(skeleton_path, scene_file=scene_file)
+        if empty_skeleton["bone_count"] != 0 or empty_skeleton["bones"]:
+            raise RuntimeError("New Skeleton2D did not report an empty bone hierarchy")
+        root_bone = await app.service.skeleton_2d_bone_create(
+            skeleton_path,
+            name="AgentRootBone",
+            scene_file=scene_file,
+        )
+        root_bone_path = root_bone["path"]
+        child_bone = await app.service.skeleton_2d_bone_create(
+            skeleton_path,
+            name="AgentChildBone",
+            parent_bone_path=root_bone_path,
+            rest={
+                "x": {"x": 1.0, "y": 0.0},
+                "y": {"x": 0.0, "y": 1.0},
+                "origin": {"x": 48.0, "y": 0.0},
+            },
+            scene_file=scene_file,
+        )
+        child_bone_path = child_bone["path"]
+        initial_skeleton = await app.service.skeleton_2d_get(skeleton_path, scene_file=scene_file)
+        if initial_skeleton["bone_count"] != 2 or {
+            bone["path"] for bone in initial_skeleton["bones"]
+        } != {root_bone_path, child_bone_path}:
+            raise RuntimeError("Skeleton2D did not discover its Bone2D hierarchy")
+        initial_root_bone = await app.service.bone_2d_get(root_bone_path, scene_file=scene_file)
+        if not initial_root_bone["valid_hierarchy"] or initial_root_bone["skeleton_path"] != skeleton_path:
+            raise RuntimeError("Bone2D hierarchy metadata was not resolved")
+        root_rest = {
+            "x": {"x": 1.0, "y": 0.0},
+            "y": {"x": 0.0, "y": 1.0},
+            "origin": {"x": 32.0, "y": 8.0},
+        }
+        root_bone_update = await app.service.bone_2d_set(
+            root_bone_path,
+            {
+                "rest": root_rest,
+                "auto_calculate_length_and_angle": False,
+                "length": 48.0,
+                "angle_degrees": 15.0,
+            },
+            scene_file=scene_file,
+        )
+        if (
+            root_bone_update["rest"] != root_rest
+            or root_bone_update["auto_calculate_length_and_angle"] is not False
+            or not _is_close(root_bone_update["length"], 48.0)
+            or not _is_close(root_bone_update["angle_degrees"], 15.0)
+        ):
+            raise RuntimeError("Bone2D semantic configuration was not applied")
+        reset_skeleton = await app.service.skeleton_2d_reset_to_rest(
+            skeleton_path, scene_file=scene_file
+        )
+        if not reset_skeleton.get("changed"):
+            raise RuntimeError("Skeleton2D reset-to-rest was not applied")
+        reset_root_bone = await app.service.bone_2d_get(root_bone_path, scene_file=scene_file)
+        if reset_root_bone["transform"] != root_rest:
+            raise RuntimeError("Skeleton2D reset-to-rest did not restore the Bone2D transform")
+        undo_skeleton_reset = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_skeleton_reset.get("changed"):
+            raise RuntimeError("Skeleton2D reset-to-rest was not undoable")
+        restored_root_transform = await app.service.bone_2d_get(root_bone_path, scene_file=scene_file)
+        if restored_root_transform["transform"] == root_rest:
+            raise RuntimeError("Undo did not restore the Bone2D transform before reset-to-rest")
+        redo_skeleton_reset = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_skeleton_reset.get("changed"):
+            raise RuntimeError("Skeleton2D reset-to-rest was not redoable")
+        await app.service.node_set_properties(
+            root_bone_path,
+            {"position": {"x": 64.0, "y": 16.0}},
+            scene_file=scene_file,
+        )
+        made_rest = await app.service.skeleton_2d_make_rest_from_current(
+            skeleton_path, scene_file=scene_file
+        )
+        if not made_rest.get("changed"):
+            raise RuntimeError("Skeleton2D make-rest-from-current was not applied")
+        current_rest_root_bone = await app.service.bone_2d_get(root_bone_path, scene_file=scene_file)
+        if current_rest_root_bone["rest"]["origin"] != {"x": 64.0, "y": 16.0}:
+            raise RuntimeError("Skeleton2D did not copy the current Bone2D transform to rest")
+        undo_make_rest = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_make_rest.get("changed"):
+            raise RuntimeError("Skeleton2D make-rest-from-current was not undoable")
+        restored_rest_root_bone = await app.service.bone_2d_get(root_bone_path, scene_file=scene_file)
+        if restored_rest_root_bone["rest"] != root_rest:
+            raise RuntimeError("Undo did not restore the previous Skeleton2D rest pose")
+        redo_make_rest = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_make_rest.get("changed"):
+            raise RuntimeError("Skeleton2D make-rest-from-current was not redoable")
+
         viewport = await app.service.node_create(
             type_name="SubViewport",
             name="AgentViewport",
@@ -2354,7 +2452,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 35 or _has_node(final_hierarchy, marker_path):
+        if final_hierarchy.get("total") != 38 or _has_node(final_hierarchy, marker_path):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
@@ -2371,6 +2469,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentShapeCast" not in saved_scene
             or "AgentNavigationLink" not in saved_scene
             or "AgentPatrolPath" not in saved_scene
+            or "AgentSkeleton" not in saved_scene
+            or "AgentRootBone" not in saved_scene
+            or "AgentChildBone" not in saved_scene
             or "AgentViewport" not in saved_scene
             or "AgentCamera" not in saved_scene
             or "AgentParallax" not in saved_scene
