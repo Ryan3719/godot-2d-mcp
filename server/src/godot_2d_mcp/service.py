@@ -61,6 +61,75 @@ class GodotService:
     async def editor_stop(self, session_id: str | None = None) -> dict[str, Any]:
         return await self.bridge.call("editor_stop", session_id=session_id)
 
+    async def runtime_get_state(self, session_id: str | None = None) -> dict[str, Any]:
+        return await self.bridge.call("runtime_get_state", session_id=session_id)
+
+    async def runtime_logs_get(
+        self,
+        after_sequence: int = 0,
+        limit: int = 100,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        if isinstance(after_sequence, bool) or after_sequence < 0:
+            raise ValueError("after_sequence must be a non-negative integer")
+        if isinstance(limit, bool) or not 1 <= limit <= 200:
+            raise ValueError("limit must be an integer between 1 and 200")
+        return await self.bridge.call(
+            "runtime_logs_get",
+            {"after_sequence": after_sequence, "limit": limit},
+            session_id=session_id,
+        )
+
+    async def runtime_screenshot_request(
+        self,
+        format: str = "png",
+        max_width: int = 640,
+        max_height: int = 640,
+        quality: float = 0.85,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        normalized_format = format.strip().lower() if isinstance(format, str) else ""
+        if normalized_format not in {"png", "jpeg"}:
+            raise ValueError("format must be png or jpeg")
+        _validate_runtime_screenshot_dimension(max_width, "max_width")
+        _validate_runtime_screenshot_dimension(max_height, "max_height")
+        if not _is_finite_number(quality) or not 0.1 <= float(quality) <= 1.0:
+            raise ValueError("quality must be a finite number between 0.1 and 1.0")
+        return await self.bridge.call(
+            "runtime_screenshot_request",
+            {
+                "format": normalized_format,
+                "max_width": max_width,
+                "max_height": max_height,
+                "quality": float(quality),
+            },
+            session_id=session_id,
+        )
+
+    async def runtime_screenshot_get(
+        self, request_id: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        _validate_runtime_request_id(request_id)
+        return await self.bridge.call(
+            "runtime_screenshot_get", {"request_id": request_id}, session_id=session_id
+        )
+
+    async def runtime_input_send(
+        self, events: list[dict[str, Any]], session_id: str | None = None
+    ) -> dict[str, Any]:
+        _validate_runtime_input_events(events)
+        return await self.bridge.call(
+            "runtime_input_send", {"events": events}, session_id=session_id
+        )
+
+    async def runtime_input_result_get(
+        self, request_id: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        _validate_runtime_request_id(request_id)
+        return await self.bridge.call(
+            "runtime_input_result_get", {"request_id": request_id}, session_id=session_id
+        )
+
     async def scene_get_hierarchy(
         self,
         session_id: str | None = None,
@@ -2704,6 +2773,83 @@ class GodotService:
 def _validate_node_path(path: str) -> None:
     if not path or len(path) > 4096:
         raise ValueError("path must contain between 1 and 4096 characters")
+
+
+def _validate_runtime_screenshot_dimension(value: int, label: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 1024:
+        raise ValueError(f"{label} must be an integer between 1 and 1024")
+
+
+def _validate_runtime_request_id(value: str) -> None:
+    if not isinstance(value, str) or not 1 <= len(value) <= 128:
+        raise ValueError("request_id must contain between 1 and 128 characters")
+
+
+def _validate_runtime_input_events(events: list[dict[str, Any]]) -> None:
+    if not isinstance(events, list) or not 1 <= len(events) <= 64:
+        raise ValueError("events must contain between 1 and 64 items")
+    for event in events:
+        if not isinstance(event, dict):
+            raise ValueError("each input event must be an object")
+        event_type = event.get("type")
+        if event_type == "action":
+            _validate_runtime_action_event(event)
+        elif event_type == "key":
+            _validate_runtime_key_event(event)
+        elif event_type == "mouse_button":
+            _validate_runtime_mouse_button_event(event)
+        elif event_type == "mouse_motion":
+            _validate_runtime_mouse_motion_event(event)
+        else:
+            raise ValueError("input event type must be action, key, mouse_button, or mouse_motion")
+
+
+def _validate_runtime_action_event(event: dict[str, Any]) -> None:
+    action = event.get("action")
+    if not isinstance(action, str) or not 1 <= len(action) <= 256:
+        raise ValueError("action input events require action with 1 to 256 characters")
+    _validate_boolean(event.get("pressed"), "pressed")
+
+
+def _validate_runtime_key_event(event: dict[str, Any]) -> None:
+    _validate_boolean(event.get("pressed"), "pressed")
+    key_fields = ("keycode", "physical_keycode", "unicode")
+    supplied = [field for field in key_fields if field in event]
+    if len(supplied) != 1:
+        raise ValueError(
+            "key input events require exactly one keycode, physical_keycode, or unicode"
+        )
+    value = event[supplied[0]]
+    if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= 0x7FFFFFFF:
+        raise ValueError(f"{supplied[0]} must be an integer between 0 and 2147483647")
+    for modifier in ("echo", "shift", "alt", "ctrl", "meta"):
+        if modifier in event:
+            _validate_boolean(event[modifier], modifier)
+
+
+def _validate_runtime_mouse_button_event(event: dict[str, Any]) -> None:
+    button = event.get("button")
+    if isinstance(button, bool) or not isinstance(button, int) or not 1 <= button <= 8:
+        raise ValueError("mouse_button input events require button between 1 and 8")
+    _validate_boolean(event.get("pressed"), "pressed")
+    _validate_runtime_position(event.get("position"), "position")
+    if "double_click" in event:
+        _validate_boolean(event["double_click"], "double_click")
+
+
+def _validate_runtime_mouse_motion_event(event: dict[str, Any]) -> None:
+    _validate_runtime_position(event.get("position"), "position")
+    _validate_runtime_position(event.get("relative"), "relative")
+
+
+def _validate_runtime_position(value: Any, label: str) -> None:
+    if not isinstance(value, dict) or set(value) != {"x", "y"}:
+        raise ValueError(f"{label} must be an object with x and y")
+    if any(
+        not _is_finite_number(value[axis]) or abs(float(value[axis])) > 100_000
+        for axis in ("x", "y")
+    ):
+        raise ValueError(f"{label} coordinates must be finite numbers from -100000 to 100000")
 
 
 def _validate_node_name(name: str) -> None:

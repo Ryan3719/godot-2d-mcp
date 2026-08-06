@@ -8,7 +8,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from fastmcp import FastMCP
-from mcp.types import ToolAnnotations
+from fastmcp.tools.base import ToolResult
+from mcp.types import ImageContent, ToolAnnotations
 
 from godot_2d_mcp.bridge import GodotWebSocketBridge
 from godot_2d_mcp.service import GodotService
@@ -116,6 +117,90 @@ def create_application(
     async def editor_stop(session_id: str | None = None) -> dict[str, Any]:
         """Request that the currently running Godot scene stops; safe when no scene is running."""
         return await service.editor_stop(session_id=session_id)
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def runtime_get_state(session_id: str | None = None) -> dict[str, Any]:
+        """Read runtime-bridge availability, game-debugger connection, and pending feedback jobs."""
+        return await service.runtime_get_state(session_id=session_id)
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def runtime_logs_get(
+        after_sequence: int = 0,
+        limit: int = 100,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Read paginated logs emitted by the running game process, not the editor UI."""
+        return await service.runtime_logs_get(
+            after_sequence=after_sequence, limit=limit, session_id=session_id
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def runtime_screenshot_request(
+        format: str = "png",
+        max_width: int = 640,
+        max_height: int = 640,
+        quality: float = 0.85,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Request a bounded screenshot from the running game's root viewport."""
+        return await service.runtime_screenshot_request(
+            format=format,
+            max_width=max_width,
+            max_height=max_height,
+            quality=quality,
+            session_id=session_id,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def runtime_screenshot_get(
+        request_id: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        """Poll a requested runtime screenshot and receive bounded base64 image data when ready."""
+        return await service.runtime_screenshot_get(request_id=request_id, session_id=session_id)
+
+    @mcp.tool(annotations=READ_ONLY, output_schema=None)
+    async def runtime_screenshot_view(
+        request_id: str, session_id: str | None = None
+    ) -> ToolResult:
+        """Return a completed runtime screenshot as a standard MCP image block."""
+        screenshot = await service.runtime_screenshot_get(
+            request_id=request_id, session_id=session_id
+        )
+        result = screenshot.get("result", {})
+        if screenshot.get("status") != "ready" or result.get("ok") is not True:
+            return ToolResult(structured_content=screenshot)
+        metadata = {
+            "request_id": request_id,
+            "status": "ready",
+            "width": result["width"],
+            "height": result["height"],
+            "byte_size": result["byte_size"],
+            "mime_type": result["mime_type"],
+        }
+        return ToolResult(
+            content=[
+                ImageContent(
+                    type="image",
+                    data=result["data_base64"],
+                    mimeType=result["mime_type"],
+                )
+            ],
+            structured_content=metadata,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def runtime_input_send(
+        events: list[dict[str, Any]], session_id: str | None = None
+    ) -> dict[str, Any]:
+        """Inject bounded action, keyboard, or mouse events into the game input pipeline."""
+        return await service.runtime_input_send(events=events, session_id=session_id)
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def runtime_input_result_get(
+        request_id: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        """Poll whether a runtime input request reached and was accepted by the game."""
+        return await service.runtime_input_result_get(request_id=request_id, session_id=session_id)
 
     @mcp.tool(annotations=READ_ONLY)
     async def scene_get_hierarchy(

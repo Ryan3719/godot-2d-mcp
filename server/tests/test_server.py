@@ -17,6 +17,13 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "editor_get_state",
         "editor_run",
         "editor_stop",
+        "runtime_get_state",
+        "runtime_logs_get",
+        "runtime_screenshot_request",
+        "runtime_screenshot_get",
+        "runtime_screenshot_view",
+        "runtime_input_send",
+        "runtime_input_result_get",
         "scene_get_hierarchy",
         "class_search",
         "node_get_properties",
@@ -166,6 +173,13 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     annotations = {tool.name: tool.annotations for tool in tools}
     assert annotations["editor_run"].readOnlyHint is False
     assert annotations["editor_stop"].idempotentHint is True
+    assert annotations["runtime_get_state"].readOnlyHint is True
+    assert annotations["runtime_logs_get"].readOnlyHint is True
+    assert annotations["runtime_screenshot_request"].readOnlyHint is False
+    assert annotations["runtime_screenshot_get"].readOnlyHint is True
+    assert annotations["runtime_screenshot_view"].readOnlyHint is True
+    assert annotations["runtime_input_send"].readOnlyHint is False
+    assert annotations["runtime_input_result_get"].readOnlyHint is True
     assert annotations["node_get_properties"].readOnlyHint is True
     assert annotations["node_get_signals"].readOnlyHint is True
     assert annotations["animation_list"].readOnlyHint is True
@@ -305,3 +319,47 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["tile_map_layer_cells_set"].readOnlyHint is False
     assert annotations["tile_map_layer_cells_clear"].destructiveHint is True
     assert annotations["scene_save"].idempotentHint is True
+
+
+@pytest.mark.asyncio
+async def test_runtime_screenshot_view_returns_mcp_image_content() -> None:
+    app = create_application(ws_port=19999)
+
+    async def runtime_screenshot_get(
+        request_id: str, session_id: str | None = None
+    ) -> dict[str, object]:
+        assert request_id == "screenshot-123"
+        assert session_id == "project@a1b2"
+        return {
+            "status": "ready",
+            "result": {
+                "ok": True,
+                "width": 1,
+                "height": 1,
+                "byte_size": 1,
+                "mime_type": "image/png",
+                "data_base64": "AA==",
+            },
+        }
+
+    app.service.runtime_screenshot_get = runtime_screenshot_get  # type: ignore[method-assign]
+    tool = await app.mcp.get_tool("runtime_screenshot_view")
+
+    assert tool is not None
+    response = await tool.run(
+        {"request_id": "screenshot-123", "session_id": "project@a1b2"}
+    )
+
+    assert len(response.content) == 1
+    image = response.content[0]
+    assert image.type == "image"
+    assert image.mimeType == "image/png"
+    assert image.data == "AA=="
+    assert response.structured_content == {
+        "request_id": "screenshot-123",
+        "status": "ready",
+        "width": 1,
+        "height": 1,
+        "byte_size": 1,
+        "mime_type": "image/png",
+    }
