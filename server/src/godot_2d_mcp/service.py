@@ -783,6 +783,32 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def skeleton_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "skeleton_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def bone_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "bone_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def light_2d_get(
         self,
         path: str,
@@ -1481,6 +1507,78 @@ class GodotService:
         _validate_node_path(path)
         return await self.bridge.call(
             "path_2d_curve_clear",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def skeleton_2d_bone_create(
+        self,
+        path: str,
+        name: str = "",
+        parent_bone_path: str = "",
+        rest: dict[str, Any] | None = None,
+        length: float = 16.0,
+        angle_degrees: float = 0.0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        if len(name) > 256:
+            raise ValueError("name cannot exceed 256 characters")
+        if parent_bone_path:
+            _validate_node_path(parent_bone_path)
+        _validate_bone_2d_creation(rest, length, angle_degrees)
+        return await self.bridge.call(
+            "skeleton_2d_bone_create",
+            _scene_params(
+                scene_file,
+                path=path,
+                name=name,
+                parent_bone_path=parent_bone_path,
+                rest=rest,
+                length=length,
+                angle_degrees=angle_degrees,
+            ),
+            session_id=session_id,
+        )
+
+    async def bone_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_bone_2d_properties(properties)
+        return await self.bridge.call(
+            "bone_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def skeleton_2d_reset_to_rest(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "skeleton_2d_reset_to_rest",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def skeleton_2d_make_rest_from_current(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "skeleton_2d_make_rest_from_current",
             _scene_params(scene_file, path=path),
             session_id=session_id,
         )
@@ -2648,6 +2746,45 @@ def _validate_path_curve_index(
     upper = 512 if allow_endpoint else 511
     if isinstance(value, bool) or not isinstance(value, int) or not 0 <= value <= upper:
         raise ValueError(f"index must be an integer between 0 and {upper}")
+
+
+def _validate_bone_2d_properties(properties: dict[str, Any]) -> None:
+    allowed = {"rest", "auto_calculate_length_and_angle", "length", "angle_degrees"}
+    if not isinstance(properties, dict) or not properties:
+        raise ValueError("properties must be a non-empty object")
+    if set(properties) - allowed:
+        raise ValueError("properties contains an unsupported Bone2D property")
+    if "rest" in properties:
+        _validate_bone_2d_transform(properties["rest"])
+    if "auto_calculate_length_and_angle" in properties:
+        _validate_boolean(
+            properties["auto_calculate_length_and_angle"], "auto_calculate_length_and_angle"
+        )
+    for name, minimum, maximum in (
+        ("length", 1.0, 1024.0),
+        ("angle_degrees", -360.0, 360.0),
+    ):
+        if name in properties:
+            _validate_viewport_number(properties[name], name, minimum=minimum, maximum=maximum)
+    if properties.get("auto_calculate_length_and_angle") is True and (
+        "length" in properties or "angle_degrees" in properties
+    ):
+        raise ValueError(
+            "auto_calculate_length_and_angle cannot be combined with length or angle_degrees"
+        )
+
+
+def _validate_bone_2d_creation(
+    rest: dict[str, Any] | None, length: float, angle_degrees: float
+) -> None:
+    if rest is not None:
+        _validate_bone_2d_transform(rest)
+    _validate_viewport_number(length, "length", minimum=1.0, maximum=1024.0)
+    _validate_viewport_number(angle_degrees, "angle_degrees", minimum=-360.0, maximum=360.0)
+
+
+def _validate_bone_2d_transform(value: Any) -> None:
+    _validate_viewport_transform2d(value)
 
 
 def _validate_viewport_vector2(value: Any, label: str) -> None:

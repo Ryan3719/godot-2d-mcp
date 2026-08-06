@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.19.0"
+const PLUGIN_VERSION := "0.20.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 
 const ConnectionScript := preload("res://addons/godot_2d_mcp/transport/connection.gd")
@@ -20,6 +20,7 @@ const TileMapHandlerScript := preload("res://addons/godot_2d_mcp/handlers/tilema
 const LightingHandlerScript := preload("res://addons/godot_2d_mcp/handlers/lighting_handler.gd")
 const ViewportHandlerScript := preload("res://addons/godot_2d_mcp/handlers/viewport_handler.gd")
 const PathHandlerScript := preload("res://addons/godot_2d_mcp/handlers/path_handler.gd")
+const SkeletonHandlerScript := preload("res://addons/godot_2d_mcp/handlers/skeleton_handler.gd")
 
 var _connection: Node
 var _dispatcher: RefCounted
@@ -73,10 +74,11 @@ func _register_handlers() -> void:
 	var lighting_handler: RefCounted = LightingHandlerScript.new(get_undo_redo())
 	var viewport_handler: RefCounted = ViewportHandlerScript.new(get_undo_redo())
 	var path_handler: RefCounted = PathHandlerScript.new(get_undo_redo())
+	var skeleton_handler: RefCounted = SkeletonHandlerScript.new(get_undo_redo())
 	_handlers.assign([
 		editor_handler, scene_handler, node_handler, class_handler, signal_handler, animation_handler,
 		ui_handler, theme_handler, physics_handler, tile_map_handler, lighting_handler, viewport_handler,
-		path_handler
+		path_handler, skeleton_handler
 	])
 
 	_dispatcher.register("editor_get_state", editor_handler.get_state)
@@ -104,6 +106,8 @@ func _register_handlers() -> void:
 	_dispatcher.register("parallax_2d_get", viewport_handler.get_parallax_2d)
 	_dispatcher.register("canvas_layer_get", viewport_handler.get_canvas_layer)
 	_dispatcher.register("path_2d_get", path_handler.get_path_2d)
+	_dispatcher.register("skeleton_2d_get", skeleton_handler.get_skeleton_2d)
+	_dispatcher.register("bone_2d_get", skeleton_handler.get_bone_2d)
 	_dispatcher.register("light_2d_get", lighting_handler.get_light_2d)
 	_dispatcher.register("light_occluder_2d_get", lighting_handler.get_light_occluder_2d)
 	_dispatcher.register("tile_map_layer_get", tile_map_handler.get_tile_map_layer)
@@ -160,6 +164,10 @@ func _register_handlers() -> void:
 	_dispatcher.register("path_2d_curve_point_set", path_handler.set_path_curve_point)
 	_dispatcher.register("path_2d_curve_point_remove", path_handler.remove_path_curve_point)
 	_dispatcher.register("path_2d_curve_clear", path_handler.clear_path_curve)
+	_dispatcher.register("skeleton_2d_bone_create", skeleton_handler.create_skeleton_2d_bone)
+	_dispatcher.register("bone_2d_set", skeleton_handler.set_bone_2d)
+	_dispatcher.register("skeleton_2d_reset_to_rest", skeleton_handler.reset_skeleton_2d_to_rest)
+	_dispatcher.register("skeleton_2d_make_rest_from_current", skeleton_handler.make_skeleton_2d_rest_from_current)
 	_dispatcher.register("light_2d_set", lighting_handler.set_light_2d)
 	_dispatcher.register("light_occluder_2d_set", lighting_handler.set_light_occluder_2d)
 	_dispatcher.register("tile_set_create", tile_map_handler.create_tile_set)

@@ -399,6 +399,32 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def skeleton_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read a Skeleton2D's valid Bone2D hierarchy, rest poses, and display geometry."""
+        return await service.skeleton_2d_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def bone_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read one Bone2D's hierarchy status, rest pose, and length/angle configuration."""
+        return await service.bone_2d_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def light_2d_get(
         path: str,
         session_id: str | None = None,
@@ -1337,6 +1363,70 @@ def create_application(
     ) -> dict[str, Any]:
         """Detach the Curve2D resource from a Path2D while retaining editor undo support."""
         return await service.path_2d_curve_clear(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def skeleton_2d_bone_create(
+        path: str,
+        name: str = "",
+        parent_bone_path: str = "",
+        rest: dict[str, Any] | None = None,
+        length: float = 16.0,
+        angle_degrees: float = 0.0,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Create a local Bone2D under a Skeleton2D with a valid initial rest transform."""
+        return await service.skeleton_2d_bone_create(
+            path=path,
+            name=name,
+            parent_bone_path=parent_bone_path,
+            rest=rest,
+            length=length,
+            angle_degrees=angle_degrees,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def bone_2d_set(
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically configure one Bone2D's rest pose or manual display geometry."""
+        return await service.bone_2d_set(
+            path=path,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def skeleton_2d_reset_to_rest(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Set every Bone2D transform in a Skeleton2D to its existing rest pose."""
+        return await service.skeleton_2d_reset_to_rest(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def skeleton_2d_make_rest_from_current(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Overwrite every Skeleton2D Bone2D rest pose with its current local transform."""
+        return await service.skeleton_2d_make_rest_from_current(
             path=path,
             session_id=session_id,
             scene_file=scene_file,

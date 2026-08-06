@@ -1347,6 +1347,117 @@ async def test_path_2d_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_skeleton_2d_tools_forward_semantic_edits() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    skeleton_path = "/Main/Rig"
+    bone_path = "/Main/Rig/UpperArm"
+    scene_file = "res://main.tscn"
+    properties = {
+        "rest": {
+            "x": {"x": 1.0, "y": 0.0},
+            "y": {"x": 0.0, "y": 1.0},
+            "origin": {"x": 32.0, "y": 8.0},
+        },
+        "auto_calculate_length_and_angle": False,
+        "length": 48.0,
+        "angle_degrees": 15.0,
+    }
+    child_rest = {
+        "x": {"x": 1.0, "y": 0.0},
+        "y": {"x": 0.0, "y": 1.0},
+        "origin": {"x": 48.0, "y": 0.0},
+    }
+
+    await service.skeleton_2d_get(
+        skeleton_path, session_id="project@a1b2", scene_file=scene_file
+    )
+    await service.bone_2d_get(bone_path, scene_file=scene_file)
+    await service.skeleton_2d_bone_create(
+        skeleton_path,
+        name="Hand",
+        parent_bone_path=bone_path,
+        rest=child_rest,
+        length=24.0,
+        angle_degrees=-20.0,
+        scene_file=scene_file,
+    )
+    await service.bone_2d_set(bone_path, properties, scene_file=scene_file)
+    await service.skeleton_2d_reset_to_rest(skeleton_path, scene_file=scene_file)
+    await service.skeleton_2d_make_rest_from_current(skeleton_path, scene_file=scene_file)
+
+    assert bridge.calls == [
+        (
+            "skeleton_2d_get",
+            {"path": skeleton_path, "scene_file": scene_file},
+            "project@a1b2",
+        ),
+        ("bone_2d_get", {"path": bone_path, "scene_file": scene_file}, None),
+        (
+            "skeleton_2d_bone_create",
+            {
+                "path": skeleton_path,
+                "name": "Hand",
+                "parent_bone_path": bone_path,
+                "rest": child_rest,
+                "length": 24.0,
+                "angle_degrees": -20.0,
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "bone_2d_set",
+            {"path": bone_path, "properties": properties, "scene_file": scene_file},
+            None,
+        ),
+        (
+            "skeleton_2d_reset_to_rest",
+            {"path": skeleton_path, "scene_file": scene_file},
+            None,
+        ),
+        (
+            "skeleton_2d_make_rest_from_current",
+            {"path": skeleton_path, "scene_file": scene_file},
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_skeleton_2d_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+    path = "/Main/Rig/UpperArm"
+
+    with pytest.raises(ValueError, match="non-empty"):
+        await service.bone_2d_set(path, {})
+    with pytest.raises(ValueError, match="unsupported Bone2D"):
+        await service.bone_2d_set(path, {"position": {"x": 0.0, "y": 0.0}})
+    with pytest.raises(ValueError, match="non-zero determinant"):
+        await service.bone_2d_set(
+            path,
+            {
+                "rest": {
+                    "x": {"x": 0.0, "y": 0.0},
+                    "y": {"x": 0.0, "y": 0.0},
+                    "origin": {"x": 0.0, "y": 0.0},
+                }
+            },
+        )
+    with pytest.raises(ValueError, match="cannot be combined"):
+        await service.bone_2d_set(
+            path,
+            {"auto_calculate_length_and_angle": True, "length": 24.0},
+        )
+    with pytest.raises(ValueError, match="angle_degrees"):
+        await service.bone_2d_set(path, {"angle_degrees": 361.0})
+    with pytest.raises(ValueError, match="length"):
+        await service.bone_2d_set(path, {"length": 0.0})
+    with pytest.raises(ValueError, match="angle_degrees"):
+        await service.skeleton_2d_bone_create("/Main/Rig", angle_degrees=-361.0)
+
+
+@pytest.mark.asyncio
 async def test_lighting_tools_forward_atomic_semantic_payloads() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)
