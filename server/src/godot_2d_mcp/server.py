@@ -343,6 +343,45 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def camera_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read Camera2D framing, limits, smoothing, and viewport binding settings."""
+        return await service.camera_2d_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def parallax_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read Parallax2D scrolling, limits, and texture-repeat configuration."""
+        return await service.parallax_2d_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def canvas_layer_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read CanvasLayer drawing order, transform, visibility, and viewport settings."""
+        return await service.canvas_layer_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def light_2d_get(
         path: str,
         session_id: str | None = None,
@@ -1158,6 +1197,51 @@ def create_application(
         """Detach the NavigationPolygon resource from a NavigationRegion2D."""
         return await service.navigation_polygon_clear(
             path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def camera_2d_set(
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically configure a Camera2D using readable enums and typed 2D values."""
+        return await service.camera_2d_set(
+            path=path,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def parallax_2d_set(
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically configure a Parallax2D node using typed scrolling values."""
+        return await service.parallax_2d_set(
+            path=path,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def canvas_layer_set(
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically configure a CanvasLayer without ambiguous transform combinations."""
+        return await service.canvas_layer_set(
+            path=path,
+            properties=properties,
             session_id=session_id,
             scene_file=scene_file,
         )

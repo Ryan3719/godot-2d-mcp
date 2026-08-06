@@ -1512,6 +1512,160 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if not redo_navigation_link.get("changed"):
             raise RuntimeError("NavigationLink2D configuration was not redoable")
 
+        viewport = await app.service.node_create(
+            type_name="SubViewport",
+            name="AgentViewport",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        viewport_path = viewport["path"]
+        camera = await app.service.node_create(
+            type_name="Camera2D",
+            name="AgentCamera",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        camera_path = camera["path"]
+        initial_camera = await app.service.camera_2d_get(camera_path, scene_file=scene_file)
+        if initial_camera["configuration"]["custom_viewport_path"] != "":
+            raise RuntimeError("New Camera2D unexpectedly had a custom viewport")
+        camera_update = await app.service.camera_2d_set(
+            camera_path,
+            {
+                "anchor_mode": "drag_center",
+                "custom_viewport_path": viewport_path,
+                "drag_left_margin": 0.1,
+                "drag_right_margin": 0.3,
+                "drag_horizontal_enabled": True,
+                "limit_left": -960,
+                "limit_right": 960,
+                "position_smoothing_enabled": True,
+                "position_smoothing_speed": 8.0,
+                "process_callback": "physics",
+                "zoom": {"x": 1.5, "y": 1.5},
+            },
+            scene_file=scene_file,
+        )
+        camera_configuration = camera_update["configuration"]
+        if (
+            camera_configuration["custom_viewport_path"] != viewport_path
+            or not _is_close(camera_configuration["drag_left_margin"], 0.1)
+            or camera_configuration["limit_left"] != -960
+            or camera_configuration["process_callback"] != "physics"
+            or camera_configuration["zoom"] != {"x": 1.5, "y": 1.5}
+        ):
+            raise RuntimeError("Camera2D configuration was not applied")
+        await _expect_godot_error(
+            app.service.camera_2d_set(
+                camera_path,
+                {"limit_left": 100, "limit_right": -100},
+                scene_file=scene_file,
+            ),
+            "INVALID_VIEWPORT_CONFIGURATION",
+        )
+        await _expect_godot_error(
+            app.service.camera_2d_set(
+                camera_path,
+                {"custom_viewport_path": camera_path},
+                scene_file=scene_file,
+            ),
+            "VIEWPORT_NOT_FOUND",
+        )
+        undo_camera = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_camera.get("changed"):
+            raise RuntimeError("Camera2D configuration was not undoable")
+        restored_camera = await app.service.camera_2d_get(camera_path, scene_file=scene_file)
+        if restored_camera["configuration"]["custom_viewport_path"] != "":
+            raise RuntimeError("Undo did not restore Camera2D viewport binding")
+        redo_camera = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_camera.get("changed"):
+            raise RuntimeError("Camera2D configuration was not redoable")
+
+        parallax = await app.service.node_create(
+            type_name="Parallax2D",
+            name="AgentParallax",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        parallax_path = parallax["path"]
+        parallax_update = await app.service.parallax_2d_set(
+            parallax_path,
+            {
+                "autoscroll": {"x": 12.0, "y": 0.0},
+                "limit_begin": {"x": -1024.0, "y": -512.0},
+                "limit_end": {"x": 1024.0, "y": 512.0},
+                "repeat_size": {"x": 320.0, "y": 180.0},
+                "repeat_times": 3,
+                "scroll_offset": {"x": 8.0, "y": 4.0},
+                "scroll_scale": {"x": 0.5, "y": 0.5},
+            },
+            scene_file=scene_file,
+        )
+        parallax_configuration = parallax_update["configuration"]
+        if (
+            parallax_configuration["repeat_times"] != 3
+            or parallax_configuration["repeat_size"] != {"x": 320.0, "y": 180.0}
+            or parallax_configuration["scroll_scale"] != {"x": 0.5, "y": 0.5}
+        ):
+            raise RuntimeError("Parallax2D configuration was not applied")
+        await _expect_godot_error(
+            app.service.parallax_2d_set(
+                parallax_path,
+                {
+                    "limit_begin": {"x": 32.0, "y": 32.0},
+                    "limit_end": {"x": 32.0, "y": 64.0},
+                },
+                scene_file=scene_file,
+            ),
+            "INVALID_VIEWPORT_CONFIGURATION",
+        )
+        undo_parallax = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_parallax.get("changed"):
+            raise RuntimeError("Parallax2D configuration was not undoable")
+        redo_parallax = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_parallax.get("changed"):
+            raise RuntimeError("Parallax2D configuration was not redoable")
+
+        canvas_layer = await app.service.node_create(
+            type_name="CanvasLayer",
+            name="AgentCanvasLayer",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        canvas_layer_path = canvas_layer["path"]
+        canvas_layer_update = await app.service.canvas_layer_set(
+            canvas_layer_path,
+            {
+                "custom_viewport_path": viewport_path,
+                "follow_viewport_enabled": True,
+                "follow_viewport_scale": 0.75,
+                "layer": 10,
+                "offset": {"x": 16.0, "y": 24.0},
+                "scale": {"x": 1.0, "y": -1.0},
+                "visible": True,
+            },
+            scene_file=scene_file,
+        )
+        canvas_layer_configuration = canvas_layer_update["configuration"]
+        if (
+            canvas_layer_configuration["custom_viewport_path"] != viewport_path
+            or not _is_close(canvas_layer_configuration["follow_viewport_scale"], 0.75)
+            or canvas_layer_configuration["layer"] != 10
+            or canvas_layer_configuration["scale"] != {"x": 1.0, "y": -1.0}
+        ):
+            raise RuntimeError("CanvasLayer configuration was not applied")
+        undo_canvas_layer = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_canvas_layer.get("changed"):
+            raise RuntimeError("CanvasLayer configuration was not undoable")
+        restored_canvas_layer = await app.service.canvas_layer_get(
+            canvas_layer_path, scene_file=scene_file
+        )
+        if restored_canvas_layer["configuration"]["custom_viewport_path"] != "":
+            raise RuntimeError("Undo did not restore CanvasLayer viewport binding")
+        redo_canvas_layer = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_canvas_layer.get("changed"):
+            raise RuntimeError("CanvasLayer configuration was not redoable")
+
         point_light = await app.service.node_create(
             type_name="PointLight2D",
             name="AgentPointLight",
@@ -2092,7 +2246,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 30 or _has_node(final_hierarchy, marker_path):
+        if final_hierarchy.get("total") != 34 or _has_node(final_hierarchy, marker_path):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
@@ -2108,6 +2262,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentSpringJoint" not in saved_scene
             or "AgentShapeCast" not in saved_scene
             or "AgentNavigationLink" not in saved_scene
+            or "AgentViewport" not in saved_scene
+            or "AgentCamera" not in saved_scene
+            or "AgentParallax" not in saved_scene
+            or "AgentCanvasLayer" not in saved_scene
             or "AgentPointLight" not in saved_scene
             or "AgentDirectionalLight" not in saved_scene
             or "AgentLightOccluder" not in saved_scene
