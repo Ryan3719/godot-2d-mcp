@@ -1458,6 +1458,68 @@ async def test_skeleton_2d_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_audio_stream_player_2d_tools_forward_semantic_edits() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    path = "/Main/AmbientSound"
+    scene_file = "res://main.tscn"
+    properties = {
+        "stream_path": "res://audio/test.tres",
+        "volume_db": -6.0,
+        "pitch_scale": 1.25,
+        "autoplay": True,
+        "max_distance": 640.0,
+        "attenuation": 1.5,
+        "panning_strength": 0.75,
+        "max_polyphony": 4,
+        "bus": "Master",
+        "area_layers": [1, 3],
+        "playback_type": "stream",
+    }
+
+    await service.audio_stream_player_2d_get(
+        path, session_id="project@a1b2", scene_file=scene_file
+    )
+    await service.audio_stream_player_2d_set(path, properties, scene_file=scene_file)
+
+    assert bridge.calls == [
+        (
+            "audio_stream_player_2d_get",
+            {"path": path, "scene_file": scene_file},
+            "project@a1b2",
+        ),
+        (
+            "audio_stream_player_2d_set",
+            {"path": path, "properties": properties, "scene_file": scene_file},
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_audio_stream_player_2d_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+    path = "/Main/AmbientSound"
+
+    with pytest.raises(ValueError, match="non-empty"):
+        await service.audio_stream_player_2d_set(path, {})
+    with pytest.raises(ValueError, match="unsupported AudioStreamPlayer2D"):
+        await service.audio_stream_player_2d_set(path, {"playing": True})
+    with pytest.raises(ValueError, match="stream_path"):
+        await service.audio_stream_player_2d_set(path, {"stream_path": "../sound.ogg"})
+    with pytest.raises(ValueError, match="pitch_scale"):
+        await service.audio_stream_player_2d_set(path, {"pitch_scale": 0.0})
+    with pytest.raises(ValueError, match="max_polyphony"):
+        await service.audio_stream_player_2d_set(path, {"max_polyphony": True})
+    with pytest.raises(ValueError, match="area_layers"):
+        await service.audio_stream_player_2d_set(path, {"area_layers": [1, 1]})
+    with pytest.raises(ValueError, match="playback_type"):
+        await service.audio_stream_player_2d_set(path, {"playback_type": "runtime"})
+    with pytest.raises(ValueError, match="bus"):
+        await service.audio_stream_player_2d_set(path, {"bus": ""})
+
+
+@pytest.mark.asyncio
 async def test_lighting_tools_forward_atomic_semantic_payloads() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

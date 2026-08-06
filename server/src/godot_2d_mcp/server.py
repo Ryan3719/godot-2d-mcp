@@ -425,6 +425,19 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def audio_stream_player_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read persistent AudioStreamPlayer2D stream, bus, spatial, and playback settings."""
+        return await service.audio_stream_player_2d_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def light_2d_get(
         path: str,
         session_id: str | None = None,
@@ -1428,6 +1441,21 @@ def create_application(
         """Overwrite every Skeleton2D Bone2D rest pose with its current local transform."""
         return await service.skeleton_2d_make_rest_from_current(
             path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def audio_stream_player_2d_set(
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically configure a local AudioStreamPlayer2D without mutating its stream resource."""
+        return await service.audio_stream_player_2d_set(
+            path=path,
+            properties=properties,
             session_id=session_id,
             scene_file=scene_file,
         )

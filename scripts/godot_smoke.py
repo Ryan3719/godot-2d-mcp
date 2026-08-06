@@ -1718,6 +1718,89 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if not redo_make_rest.get("changed"):
             raise RuntimeError("Skeleton2D make-rest-from-current was not redoable")
 
+        audio_player = await app.service.node_create(
+            type_name="AudioStreamPlayer2D",
+            name="AgentSound",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        audio_player_path = audio_player["path"]
+        initial_audio_player = await app.service.audio_stream_player_2d_get(
+            audio_player_path, scene_file=scene_file
+        )
+        if (
+            initial_audio_player["configuration"]["stream_path"] != ""
+            or "Master" not in initial_audio_player["available_buses"]
+        ):
+            raise RuntimeError("New AudioStreamPlayer2D had unexpected stream or bus state")
+        await _expect_godot_error(
+            app.service.audio_stream_player_2d_set(
+                audio_player_path,
+                {"stream_path": "res://test_icon.svg"},
+                scene_file=scene_file,
+            ),
+            "RESOURCE_TYPE_MISMATCH",
+        )
+        audio_update = await app.service.audio_stream_player_2d_set(
+            audio_player_path,
+            {
+                "stream_path": "res://test_audio.tres",
+                "volume_db": -6.0,
+                "pitch_scale": 1.25,
+                "autoplay": True,
+                "max_distance": 640.0,
+                "attenuation": 1.5,
+                "panning_strength": 0.75,
+                "max_polyphony": 4,
+                "bus": "Master",
+                "area_layers": [1, 3],
+                "playback_type": "stream",
+            },
+            scene_file=scene_file,
+        )
+        audio_configuration = audio_update["configuration"]
+        if (
+            audio_configuration["stream_path"] != "res://test_audio.tres"
+            or audio_configuration["stream_type"] != "AudioStreamGenerator"
+            or not _is_close(audio_configuration["volume_db"], -6.0)
+            or not _is_close(audio_configuration["pitch_scale"], 1.25)
+            or audio_configuration["autoplay"] is not True
+            or not _is_close(audio_configuration["max_distance"], 640.0)
+            or not _is_close(audio_configuration["attenuation"], 1.5)
+            or not _is_close(audio_configuration["panning_strength"], 0.75)
+            or audio_configuration["max_polyphony"] != 4
+            or audio_configuration["bus"] != "Master"
+            or audio_configuration["area_layers"] != [1, 3]
+            or audio_configuration["playback_type"] != "stream"
+        ):
+            raise RuntimeError("AudioStreamPlayer2D configuration was not applied")
+        undo_audio_update = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_audio_update.get("changed"):
+            raise RuntimeError("AudioStreamPlayer2D configuration was not undoable")
+        restored_audio_player = await app.service.audio_stream_player_2d_get(
+            audio_player_path, scene_file=scene_file
+        )
+        if restored_audio_player["configuration"]["stream_path"] != "":
+            raise RuntimeError("Undo did not clear the AudioStreamPlayer2D stream binding")
+        redo_audio_update = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_audio_update.get("changed"):
+            raise RuntimeError("AudioStreamPlayer2D configuration was not redoable")
+        cleared_audio = await app.service.audio_stream_player_2d_set(
+            audio_player_path,
+            {"stream_path": ""},
+            scene_file=scene_file,
+        )
+        if cleared_audio["configuration"]["stream_path"] != "":
+            raise RuntimeError("AudioStreamPlayer2D stream was not cleared")
+        undo_audio_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_audio_clear.get("changed"):
+            raise RuntimeError("AudioStreamPlayer2D stream clear was not undoable")
+        restored_audio_stream = await app.service.audio_stream_player_2d_get(
+            audio_player_path, scene_file=scene_file
+        )
+        if restored_audio_stream["configuration"]["stream_path"] != "res://test_audio.tres":
+            raise RuntimeError("Undo did not restore the AudioStreamPlayer2D stream binding")
+
         viewport = await app.service.node_create(
             type_name="SubViewport",
             name="AgentViewport",
@@ -2452,7 +2535,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 38 or _has_node(final_hierarchy, marker_path):
+        if final_hierarchy.get("total") != 39 or _has_node(final_hierarchy, marker_path):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
@@ -2472,6 +2555,8 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentSkeleton" not in saved_scene
             or "AgentRootBone" not in saved_scene
             or "AgentChildBone" not in saved_scene
+            or "AgentSound" not in saved_scene
+            or "test_audio.tres" not in saved_scene
             or "AgentViewport" not in saved_scene
             or "AgentCamera" not in saved_scene
             or "AgentParallax" not in saved_scene
