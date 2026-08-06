@@ -331,6 +331,56 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         undo_packed_delete = await app.service.scene_undo(scene_file=scene_file)
         if not undo_packed_delete.get("changed"):
             raise RuntimeError("PackedScene instance deletion was not undoable")
+        packed_parent = await app.service.node_create(
+            type_name="Node2D",
+            name="PackedInstanceContainer",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        packed_parent_path = packed_parent["path"]
+        reparented_packed_instance = await app.service.node_reparent(
+            packed_instance_path,
+            packed_parent_path,
+            scene_file=scene_file,
+        )
+        packed_instance_path = reparented_packed_instance["path"]
+        if (
+            not reparented_packed_instance.get("packed_scene_instance")
+            or reparented_packed_instance.get("migrated_animation_tracks") != 0
+        ):
+            raise RuntimeError("PackedScene instance reparenting lost its instance boundary")
+        undo_packed_reparent = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_packed_reparent.get("changed"):
+            raise RuntimeError("PackedScene instance reparenting was not undoable")
+        redo_packed_reparent = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_packed_reparent.get("changed"):
+            raise RuntimeError("PackedScene instance reparenting was not redoable")
+        packed_instance_copy = await app.service.node_duplicate(
+            packed_instance_path,
+            name="AgentPackedVisualCopy",
+            scene_file=scene_file,
+        )
+        packed_instance_copy_path = packed_instance_copy["path"]
+        if (
+            not packed_instance_copy.get("packed_scene_instance")
+            or packed_instance_copy.get("scene_path") != "res://packed_scene_2d.tscn"
+            or packed_instance_copy.get("copied_node_count") != 2
+        ):
+            raise RuntimeError("PackedScene instance duplication did not preserve the source boundary")
+        await _expect_godot_error(
+            app.service.node_duplicate(
+                f"{packed_instance_path}/PackedSceneInternalSprite",
+                scene_file=scene_file,
+            ),
+            "PACKED_SCENE_BOUNDARY",
+        )
+        moved_packed_copy = await app.service.node_reparent(
+            packed_instance_copy_path,
+            "/Main",
+            scene_file=scene_file,
+        )
+        if not moved_packed_copy.get("packed_scene_instance"):
+            raise RuntimeError("Duplicated PackedScene instance could not be reparented")
 
         transform_parent = await app.service.node_create(
             type_name="Node2D",
@@ -4022,7 +4072,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 46 or _has_node(final_hierarchy, marker_path):
+        if final_hierarchy.get("total") != 49 or _has_node(final_hierarchy, marker_path):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
@@ -4048,6 +4098,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentFire" not in saved_scene
             or "AgentCanvasItem" not in saved_scene
             or "AgentPackedVisual" not in saved_scene
+            or "AgentPackedVisualCopy" not in saved_scene
             or "packed_scene_2d.tscn" not in saved_scene
             or "PackedSceneInternalSprite" in saved_scene
             or "test_node_2d.gd" not in saved_scene
