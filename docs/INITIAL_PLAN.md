@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：阶段 0 已完成；阶段 1 已交付首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式、嵌入式 Theme 资源能力和通用公开 Resource 属性的安全项目路径绑定；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力；阶段 4 已交付 TileMapLayer、内嵌 TileSet Atlas、TileSet 语义能力与 Atlas TileData 碰撞/导航/遮挡几何；阶段 5 已交付 PointLight2D、DirectionalLight2D、LightOccluder2D、CanvasItemMaterial、带运行时 uniform 发现与 copy-on-write 配置的 2D ShaderMaterial、Camera2D、Parallax2D、CanvasLayer、Path2D、Curve2D、Skeleton2D、Bone2D、AudioStreamPlayer2D、GPUParticles2D、ParticleProcessMaterial 及其 CurveTexture/GradientTexture1D 和包含 Curve/Gradient 资源的 CPUParticles2D 安全语义编辑；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图和游戏输入模拟（v0.32.0）
+状态：阶段 0 已完成；阶段 1 已交付首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式、嵌入式 Theme 资源能力、通用公开 Resource 属性的安全项目路径绑定和完整 2D PackedScene 实例根的安全插入/删除/撤销重做；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力；阶段 4 已交付 TileMapLayer、内嵌 TileSet Atlas、TileSet 语义能力与 Atlas TileData 碰撞/导航/遮挡几何；阶段 5 已交付 PointLight2D、DirectionalLight2D、LightOccluder2D、CanvasItemMaterial、带运行时 uniform 发现与 copy-on-write 配置的 2D ShaderMaterial、Camera2D、Parallax2D、CanvasLayer、Path2D、Curve2D、Skeleton2D、Bone2D、AudioStreamPlayer2D、GPUParticles2D、ParticleProcessMaterial 及其 CurveTexture/GradientTexture1D 和包含 Curve/Gradient 资源的 CPUParticles2D 安全语义编辑；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图和游戏输入模拟（v0.33.0）
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -103,7 +103,8 @@ Codex / Claude Code / MCP Client
 | `class_search` | 查询允许创建的 2D 类型及能力 |
 | `scene_get_hierarchy` | 分页读取当前场景树 |
 | `node_get_properties` | 获取节点属性、脚本、分组和信号 |
-| `node_create` | 创建内置节点、自定义脚本节点或 PackedScene 实例 |
+| `node_create` | 创建内置 ClassDB 节点 |
+| `node_instance_scene` | 实例化项目内完整 2D PackedScene 并保留实例边界 |
 | `node_update` | 批量修改属性、名称、父节点和顺序 |
 | `node_duplicate` | 复制节点或子树 |
 | `node_delete` | 删除非场景根节点 |
@@ -119,7 +120,7 @@ Codex / Claude Code / MCP Client
 ### 当前已交付
 
 - 会话选择、编辑器状态、2D 类型检索、场景树和节点属性读取。
-- 内置 `ClassDB` 2D/UI 节点创建、原子属性修改、删除、撤销/重做和显式保存；对 Godot 声明为 `Resource` 的公开属性，可通过严格类型检查的 `{ "resource_path": "res://..." }` 引用安全绑定项目资源，且不会修改外部资源。
+- 内置 `ClassDB` 2D/UI 节点创建、原子属性修改、删除、撤销/重做和显式保存；对 Godot 声明为 `Resource` 的公开属性，可通过严格类型检查的 `{ "resource_path": "res://..." }` 引用安全绑定项目资源，且不会修改外部资源；`node_instance_scene` 仅实例化完整受支持的 2D/UI PackedScene，保留内部 owner，支持撤销/重做与完整实例根删除。
 - `node_rename`、`node_duplicate`、`node_reparent` 和 `node_move`。
 - `node_get_signals`、`signal_connect` 和 `signal_disconnect`，支持连接已有节点方法、绑定 JSON 参数、deferred 与 one-shot 选项。
 - `animation_list`、`animation_get`、`animation_create`、`animation_delete`、属性轨道 upsert/delete 和关键帧 upsert/delete；支持场景内嵌动画库、撤销/重做与保存。
@@ -155,7 +156,7 @@ Codex / Claude Code / MCP Client
 - 重命名和重新挂载时迁移场景内直接 `NodePath` 属性及内嵌 `AnimationPlayer` 动画轨道。
 - 重新挂载默认保持 `Node2D`/`Control` 的全局视觉位置，并允许调用方关闭该行为。
 
-当前结构编辑拒绝跨 PackedScene 边界、包含不受支持 3D 节点的子树，以及需要修改外部动画资源的操作；删除会预检直接 `NodePath` 和动画轨道，避免留下悬空引用。动画工具仅写入场景内嵌 `AnimationLibrary`/`Animation`，并且只创建或修改本地 2D/UI 节点的属性值轨道；外部资源、导入轨道和方法/音频/嵌套动画轨道仍属于后续阶段。布局工具拒绝由 `Container` 管理的子节点；样式工具只创建独立的节点本地 `StyleBoxFlat` override，不会修改共享 Theme 或外部资源。Theme 工具可绑定外部 `res://` Theme，但它们在 MCP 内只读；可写范围限于场景内嵌 Theme，因此全部 Theme 变更都能随场景撤销和重做。字体可绑定项目 `Font` 或新建内嵌 `SystemFont`，图标仅绑定项目中已有的 `Texture2D`。碰撞形状工具创建或复制独立内嵌的 `Shape2D` 后替换节点分配，不修改共享或外部 Shape2D；碰撞层工具只改动本地 `CollisionObject2D` 的 layer/mask。Area/Body/Joint 工具仅允许已核验的公开物理配置，并在写入前校验枚举、层位、端点类型与关键数值约束；RayCast/ShapeCast 工具仅保存配置和独立内嵌 Shape2D，不在静态编辑器中伪造运行时命中结果；导航节点工具支持 Region、Agent、Obstacle、Link 的安全配置与层位；NavigationPolygon 工具仅以复制后替换的内嵌资源方式写入凸多边形索引和轮廓，避免原地修改共享或外部资源，轮廓构建可同步执行。PointLight2D 与 DirectionalLight2D 仅允许经过类型和范围校验的光照属性，PointLight 纹理仅可来自项目内现有的 `Texture2D`；LightOccluder2D 总是新建内嵌遮挡资源后替换，清除也在同一撤销事务内完成。Camera2D 与 CanvasLayer 的 `custom_viewport_path` 只接受当前场景内的 `Viewport`/`SubViewport`，空字符串恢复默认 viewport；为兼容 Godot setter 的非空要求，插件内部使用节点对象执行该恢复，但 MCP 协议始终返回空字符串。TileMap 工具创建内嵌 TileSet/Atlas Source/tiles；物理层、导航层、遮挡层、terrain 集和 terrain、自定义数据层、替代 atlas tile 与 per-tile terrain/custom data、TileData 碰撞多边形、导航多边形及 OccluderPolygon2D 均在复制 TileSet 后替换，cells 写入批次则在一个编辑器撤销事务内完成。碰撞多边形写入会拒绝退化或不可分解的几何；导航多边形写入要求凸、有序且无重复索引，并用 `clear: true` 显式解除该层资源；遮挡多边形支持 closed/open 和 cull mode，并拒绝退化的闭合几何。TileSet 层编辑/删除、terrain painting 与基于场景源几何的异步 Bake 仍属于后续 TileMap 批次。全部更新均在同一撤销事务中完成。信号工具仅操作场景内本地节点的持久化连接，并要求目标方法已存在，不会生成或修改脚本回调。这是为了避免 Agent 在无法证明安全的情况下静默破坏引用。自动脚本回调生成和完整 PackedScene 工作流仍属于后续阶段。
+当前结构编辑拒绝对 PackedScene 内部节点进行跨边界编辑，并拒绝包含不受支持 3D 节点的子树；`node_instance_scene` 允许安全插入或删除完整 2D 实例根，但实例内部编辑、实例复制/重新挂载和源场景创建/打开仍属于后续 PackedScene 批次。删除会预检直接 `NodePath` 和动画轨道，避免留下悬空引用。动画工具仅写入场景内嵌 `AnimationLibrary`/`Animation`，并且只创建或修改本地 2D/UI 节点的属性值轨道；外部资源、导入轨道和方法/音频/嵌套动画轨道仍属于后续阶段。布局工具拒绝由 `Container` 管理的子节点；样式工具只创建独立的节点本地 `StyleBoxFlat` override，不会修改共享 Theme 或外部资源。Theme 工具可绑定外部 `res://` Theme，但它们在 MCP 内只读；可写范围限于场景内嵌 Theme，因此全部 Theme 变更都能随场景撤销和重做。字体可绑定项目 `Font` 或新建内嵌 `SystemFont`，图标仅绑定项目中已有的 `Texture2D`。碰撞形状工具创建或复制独立内嵌的 `Shape2D` 后替换节点分配，不修改共享或外部 Shape2D；碰撞层工具只改动本地 `CollisionObject2D` 的 layer/mask。Area/Body/Joint 工具仅允许已核验的公开物理配置，并在写入前校验枚举、层位、端点类型与关键数值约束；RayCast/ShapeCast 工具仅保存配置和独立内嵌 Shape2D，不在静态编辑器中伪造运行时命中结果；导航节点工具支持 Region、Agent、Obstacle、Link 的安全配置与层位；NavigationPolygon 工具仅以复制后替换的内嵌资源方式写入凸多边形索引和轮廓，避免原地修改共享或外部资源，轮廓构建可同步执行。PointLight2D 与 DirectionalLight2D 仅允许经过类型和范围校验的光照属性，PointLight 纹理仅可来自项目内现有的 `Texture2D`；LightOccluder2D 总是新建内嵌遮挡资源后替换，清除也在同一撤销事务内完成。Camera2D 与 CanvasLayer 的 `custom_viewport_path` 只接受当前场景内的 `Viewport`/`SubViewport`，空字符串恢复默认 viewport；为兼容 Godot setter 的非空要求，插件内部使用节点对象执行该恢复，但 MCP 协议始终返回空字符串。TileMap 工具创建内嵌 TileSet/Atlas Source/tiles；物理层、导航层、遮挡层、terrain 集和 terrain、自定义数据层、替代 atlas tile 与 per-tile terrain/custom data、TileData 碰撞多边形、导航多边形及 OccluderPolygon2D 均在复制 TileSet 后替换，cells 写入批次则在一个编辑器撤销事务内完成。碰撞多边形写入会拒绝退化或不可分解的几何；导航多边形写入要求凸、有序且无重复索引，并用 `clear: true` 显式解除该层资源；遮挡多边形支持 closed/open 和 cull mode，并拒绝退化的闭合几何。TileSet 层编辑/删除、terrain painting 与基于场景源几何的异步 Bake 仍属于后续 TileMap 批次。全部更新均在同一撤销事务中完成。信号工具仅操作场景内本地节点的持久化连接，并要求目标方法已存在，不会生成或修改脚本回调。这是为了避免 Agent 在无法证明安全的情况下静默破坏引用。自动脚本回调生成仍属于后续阶段。
 
 ## 6. 核心数据约定
 

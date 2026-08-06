@@ -229,6 +229,30 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def node_instance_scene(
+        self,
+        scene_path: str,
+        name: str = "",
+        parent_path: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_project_resource_path(scene_path, "scene_path")
+        if len(name) > 256:
+            raise ValueError("name cannot exceed 256 characters")
+        if parent_path:
+            _validate_node_path(parent_path)
+        return await self.bridge.call(
+            "node_instance_scene",
+            _scene_params(
+                scene_file,
+                scene_path=scene_path,
+                name=name,
+                parent_path=parent_path,
+            ),
+            session_id=session_id,
+        )
+
     async def node_set_properties(
         self,
         path: str,
