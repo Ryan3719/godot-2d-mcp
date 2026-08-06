@@ -1512,6 +1512,114 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if not redo_navigation_link.get("changed"):
             raise RuntimeError("NavigationLink2D configuration was not redoable")
 
+        patrol_path = await app.service.node_create(
+            type_name="Path2D",
+            name="AgentPatrolPath",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        patrol_path_path = patrol_path["path"]
+        initial_patrol_path = await app.service.path_2d_get(
+            patrol_path_path, scene_file=scene_file
+        )
+        if initial_patrol_path["curve"] is not None or initial_patrol_path["total_points"] != 0:
+            raise RuntimeError("New Path2D unexpectedly had a Curve2D resource")
+        patrol_points = [
+            {
+                "position": {"x": 0.0, "y": 0.0},
+                "out": {"x": 32.0, "y": 0.0},
+            },
+            {
+                "position": {"x": 128.0, "y": 64.0},
+                "in": {"x": -32.0, "y": 0.0},
+            },
+            {"position": {"x": 256.0, "y": 0.0}},
+        ]
+        patrol_curve = await app.service.path_2d_curve_set(
+            patrol_path_path,
+            patrol_points,
+            bake_interval=2.5,
+            scene_file=scene_file,
+        )
+        if (
+            patrol_curve["curve"] is None
+            or patrol_curve["curve"]["embedded"] is not True
+            or not _is_close(patrol_curve["curve"]["bake_interval"], 2.5)
+            or patrol_curve["total_points"] != 3
+            or patrol_curve["points"][1]["in"] != {"x": -32.0, "y": 0.0}
+        ):
+            raise RuntimeError("Path2D Curve2D was not created")
+        paged_patrol_path = await app.service.path_2d_get(
+            patrol_path_path, offset=1, limit=1, scene_file=scene_file
+        )
+        if (
+            paged_patrol_path["points"] != [
+                {
+                    "index": 1,
+                    "position": {"x": 128.0, "y": 64.0},
+                    "in": {"x": -32.0, "y": 0.0},
+                    "out": {"x": 0.0, "y": 0.0},
+                }
+            ]
+            or paged_patrol_path["truncated"] is not True
+        ):
+            raise RuntimeError("path_2d_get did not return a stable Curve2D point page")
+        inserted_patrol_point = await app.service.path_2d_curve_point_insert(
+            patrol_path_path,
+            {"position": {"x": 64.0, "y": 16.0}},
+            index=1,
+            scene_file=scene_file,
+        )
+        if inserted_patrol_point["point_index"] != 1 or inserted_patrol_point["total_points"] != 4:
+            raise RuntimeError("Path2D Curve2D point insertion was not applied")
+        updated_patrol_point = await app.service.path_2d_curve_point_set(
+            patrol_path_path,
+            2,
+            {
+                "position": {"x": 144.0, "y": 72.0},
+                "in": {"x": -24.0, "y": -8.0},
+                "out": {"x": 16.0, "y": 12.0},
+            },
+            scene_file=scene_file,
+        )
+        if updated_patrol_point["points"][2]["out"] != {"x": 16.0, "y": 12.0}:
+            raise RuntimeError("Path2D Curve2D point update was not applied")
+        await _expect_godot_error(
+            app.service.path_2d_curve_point_remove(
+                patrol_path_path, 4, scene_file=scene_file
+            ),
+            "PATH_CURVE_POINT_NOT_FOUND",
+        )
+        removed_patrol_point = await app.service.path_2d_curve_point_remove(
+            patrol_path_path, 0, scene_file=scene_file
+        )
+        if removed_patrol_point["removed_point_index"] != 0 or removed_patrol_point["total_points"] != 3:
+            raise RuntimeError("Path2D Curve2D point removal was not applied")
+        undo_patrol_point_remove = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_patrol_point_remove.get("changed"):
+            raise RuntimeError("Path2D Curve2D point removal was not undoable")
+        restored_patrol_path = await app.service.path_2d_get(
+            patrol_path_path, scene_file=scene_file
+        )
+        if restored_patrol_path["total_points"] != 4:
+            raise RuntimeError("Undo did not restore the Path2D Curve2D point")
+        redo_patrol_point_remove = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_patrol_point_remove.get("changed"):
+            raise RuntimeError("Path2D Curve2D point removal was not redoable")
+        cleared_patrol_curve = await app.service.path_2d_curve_clear(
+            patrol_path_path, scene_file=scene_file
+        )
+        if cleared_patrol_curve["curve"] is not None:
+            raise RuntimeError("Path2D Curve2D was not cleared")
+        undo_patrol_curve_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_patrol_curve_clear.get("changed"):
+            raise RuntimeError("Path2D Curve2D clear was not undoable")
+        restored_patrol_curve = await app.service.path_2d_get(
+            patrol_path_path, scene_file=scene_file
+        )
+        if restored_patrol_curve["curve"] is None or restored_patrol_curve["total_points"] != 3:
+            raise RuntimeError("Undo did not restore the Path2D Curve2D resource")
+
         viewport = await app.service.node_create(
             type_name="SubViewport",
             name="AgentViewport",
@@ -2246,7 +2354,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 34 or _has_node(final_hierarchy, marker_path):
+        if final_hierarchy.get("total") != 35 or _has_node(final_hierarchy, marker_path):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
@@ -2262,6 +2370,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentSpringJoint" not in saved_scene
             or "AgentShapeCast" not in saved_scene
             or "AgentNavigationLink" not in saved_scene
+            or "AgentPatrolPath" not in saved_scene
             or "AgentViewport" not in saved_scene
             or "AgentCamera" not in saved_scene
             or "AgentParallax" not in saved_scene
@@ -2269,6 +2378,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentPointLight" not in saved_scene
             or "AgentDirectionalLight" not in saved_scene
             or "AgentLightOccluder" not in saved_scene
+            or "Curve2D" not in saved_scene
             or "NavigationPolygon" not in saved_scene
             or "AgentTileMap" not in saved_scene
             or "TileSetAtlasSource" not in saved_scene
