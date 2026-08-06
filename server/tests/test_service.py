@@ -1598,6 +1598,119 @@ async def test_gpu_particles_2d_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_cpu_particles_2d_tools_forward_semantic_edits() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    path = "/Main/Fire"
+    scene_file = "res://main.tscn"
+    properties = {
+        "emitting": True,
+        "amount": 96,
+        "texture_path": "res://particles.png",
+        "lifetime": 2.5,
+        "one_shot": True,
+        "preprocess": 1.0,
+        "speed_scale": 1.5,
+        "explosiveness": 0.4,
+        "randomness": 0.2,
+        "use_fixed_seed": True,
+        "seed": 42,
+        "lifetime_randomness": 0.3,
+        "fixed_fps": 30,
+        "fractional_delta": False,
+        "local_coords": True,
+        "draw_order": "lifetime",
+        "emission_shape": "directed_points",
+        "emission_sphere_radius": 12.0,
+        "emission_rect_extents": {"x": 32.0, "y": 16.0},
+        "emission_points": [{"x": -8.0, "y": 4.0}, {"x": 8.0, "y": -4.0}],
+        "emission_normals": [{"x": 0.0, "y": -1.0}, {"x": 1.0, "y": 0.0}],
+        "emission_colors": ["ff8040cc", {"r": 0.1, "g": 0.2, "b": 0.3, "a": 0.4}],
+        "emission_ring_inner_radius": 4.0,
+        "emission_ring_radius": 10.0,
+        "align_y_to_velocity": True,
+        "direction": {"x": 0.5, "y": -1.0},
+        "spread": 20.0,
+        "gravity": {"x": 0.0, "y": 98.0},
+        "initial_velocity_min": 32.0,
+        "initial_velocity_max": 64.0,
+        "angular_velocity_min": -10.0,
+        "angular_velocity_max": 20.0,
+        "orbit_velocity_min": -0.5,
+        "orbit_velocity_max": 0.75,
+        "linear_accel_min": -5.0,
+        "linear_accel_max": 10.0,
+        "radial_accel_min": -4.0,
+        "radial_accel_max": 6.0,
+        "tangential_accel_min": -3.0,
+        "tangential_accel_max": 7.0,
+        "damping_min": 0.1,
+        "damping_max": 0.8,
+        "angle_min": -15.0,
+        "angle_max": 30.0,
+        "scale_amount_min": 0.5,
+        "scale_amount_max": 1.5,
+        "hue_variation_min": -0.25,
+        "hue_variation_max": 0.5,
+        "anim_speed_min": 0.25,
+        "anim_speed_max": 1.0,
+        "anim_offset_min": 0.0,
+        "anim_offset_max": 0.5,
+        "split_scale": True,
+        "color": {"r": 1.0, "g": 0.5, "b": 0.25, "a": 0.8},
+    }
+
+    await service.cpu_particles_2d_get(path, session_id="project@a1b2", scene_file=scene_file)
+    await service.cpu_particles_2d_set(path, properties, scene_file=scene_file)
+
+    assert bridge.calls == [
+        (
+            "cpu_particles_2d_get",
+            {"path": path, "scene_file": scene_file},
+            "project@a1b2",
+        ),
+        (
+            "cpu_particles_2d_set",
+            {"path": path, "properties": properties, "scene_file": scene_file},
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_cpu_particles_2d_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+    path = "/Main/Fire"
+
+    with pytest.raises(ValueError, match="non-empty"):
+        await service.cpu_particles_2d_set(path, {})
+    with pytest.raises(ValueError, match="unsupported CPUParticles2D"):
+        await service.cpu_particles_2d_set(path, {"process_material_path": "res://fire.tres"})
+    with pytest.raises(ValueError, match="amount"):
+        await service.cpu_particles_2d_set(path, {"amount": 0})
+    with pytest.raises(ValueError, match="texture_path"):
+        await service.cpu_particles_2d_set(path, {"texture_path": "../particle.png"})
+    with pytest.raises(ValueError, match="emission_shape"):
+        await service.cpu_particles_2d_set(path, {"emission_shape": "line"})
+    with pytest.raises(ValueError, match="emission_rect_extents"):
+        await service.cpu_particles_2d_set(
+            path, {"emission_rect_extents": {"x": -1.0, "y": 2.0}}
+        )
+    with pytest.raises(ValueError, match="emission_points"):
+        await service.cpu_particles_2d_set(
+            path,
+            {"emission_points": [{"x": float("inf"), "y": 0.0}]},
+        )
+    with pytest.raises(ValueError, match="emission_colors"):
+        await service.cpu_particles_2d_set(path, {"emission_colors": [42]})
+    with pytest.raises(ValueError, match="emission_ring_inner_radius"):
+        await service.cpu_particles_2d_set(
+            path,
+            {"emission_ring_inner_radius": 8.0, "emission_ring_radius": 4.0},
+        )
+
+
+@pytest.mark.asyncio
 async def test_particle_process_material_2d_tools_forward_copy_on_write_payloads() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

@@ -2103,6 +2103,146 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if not redo_process_material.get("changed"):
             raise RuntimeError("ParticleProcessMaterial update was not redoable")
 
+        cpu_particles = await app.service.node_create(
+            type_name="CPUParticles2D",
+            name="AgentCpuParticles",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        cpu_particles_path = cpu_particles["path"]
+        initial_cpu_particles = await app.service.cpu_particles_2d_get(
+            cpu_particles_path, scene_file=scene_file
+        )
+        if initial_cpu_particles["configuration"]["texture_path"] != "":
+            raise RuntimeError("New CPUParticles2D had an unexpected texture binding")
+        await _expect_godot_error(
+            app.service.cpu_particles_2d_set(
+                cpu_particles_path,
+                {"texture_path": "res://test_audio.tres"},
+                scene_file=scene_file,
+            ),
+            "RESOURCE_TYPE_MISMATCH",
+        )
+        cpu_particles_update = await app.service.cpu_particles_2d_set(
+            cpu_particles_path,
+            {
+                "emitting": True,
+                "amount": 96,
+                "texture_path": "res://test_icon.svg",
+                "lifetime": 2.5,
+                "one_shot": True,
+                "preprocess": 1.0,
+                "speed_scale": 1.5,
+                "explosiveness": 0.4,
+                "randomness": 0.2,
+                "use_fixed_seed": True,
+                "seed": 4242,
+                "lifetime_randomness": 0.3,
+                "fixed_fps": 30,
+                "fractional_delta": False,
+                "local_coords": True,
+                "draw_order": "lifetime",
+                "emission_shape": "directed_points",
+                "emission_sphere_radius": 12.0,
+                "emission_rect_extents": {"x": 32.0, "y": 16.0},
+                "emission_points": [{"x": -8.0, "y": 4.0}, {"x": 8.0, "y": -4.0}],
+                "emission_normals": [{"x": 0.0, "y": -1.0}, {"x": 1.0, "y": 0.0}],
+                "emission_colors": [
+                    {"r": 1.0, "g": 0.5, "b": 0.25, "a": 0.8},
+                    {"r": 0.1, "g": 0.2, "b": 0.3, "a": 0.4},
+                ],
+                "emission_ring_inner_radius": 4.0,
+                "emission_ring_radius": 10.0,
+                "align_y_to_velocity": True,
+                "direction": {"x": 0.5, "y": -1.0},
+                "spread": 20.0,
+                "gravity": {"x": 0.0, "y": 98.0},
+                "initial_velocity_min": 32.0,
+                "initial_velocity_max": 64.0,
+                "angular_velocity_min": -10.0,
+                "angular_velocity_max": 20.0,
+                "orbit_velocity_min": -0.5,
+                "orbit_velocity_max": 0.75,
+                "linear_accel_min": -5.0,
+                "linear_accel_max": 10.0,
+                "radial_accel_min": -4.0,
+                "radial_accel_max": 6.0,
+                "tangential_accel_min": -3.0,
+                "tangential_accel_max": 7.0,
+                "damping_min": 0.1,
+                "damping_max": 0.8,
+                "angle_min": -15.0,
+                "angle_max": 30.0,
+                "scale_amount_min": 0.5,
+                "scale_amount_max": 1.5,
+                "hue_variation_min": -0.25,
+                "hue_variation_max": 0.5,
+                "anim_speed_min": 0.25,
+                "anim_speed_max": 1.0,
+                "anim_offset_min": 0.0,
+                "anim_offset_max": 0.5,
+                "split_scale": True,
+                "color": {"r": 1.0, "g": 0.5, "b": 0.25, "a": 0.8},
+            },
+            scene_file=scene_file,
+        )
+        cpu_configuration = cpu_particles_update["configuration"]
+        if (
+            not cpu_particles_update.get("undoable")
+            or cpu_configuration["amount"] != 96
+            or cpu_configuration["texture_path"] != "res://test_icon.svg"
+            or cpu_configuration["texture_type"] == ""
+            or not _is_close(cpu_configuration["lifetime"], 2.5)
+            or cpu_configuration["draw_order"] != "lifetime"
+            or cpu_configuration["emission_shape"] != "directed_points"
+            or cpu_configuration["emission_points"]
+            != [{"x": -8.0, "y": 4.0}, {"x": 8.0, "y": -4.0}]
+            or cpu_configuration["emission_normals"]
+            != [{"x": 0.0, "y": -1.0}, {"x": 1.0, "y": 0.0}]
+            or not _color_matches(
+                cpu_configuration["emission_colors"][0],
+                {"r": 1.0, "g": 0.5, "b": 0.25, "a": 0.8},
+            )
+            or not cpu_configuration["align_y_to_velocity"]
+            or cpu_configuration["direction"] != {"x": 0.5, "y": -1.0}
+            or cpu_configuration["gravity"] != {"x": 0.0, "y": 98.0}
+            or not _is_close(cpu_configuration["initial_velocity_min"], 32.0)
+            or not _is_close(cpu_configuration["initial_velocity_max"], 64.0)
+            or not _is_close(cpu_configuration["scale_amount_max"], 1.5)
+            or not cpu_configuration["split_scale"]
+            or not _color_matches(
+                cpu_configuration["color"],
+                {"r": 1.0, "g": 0.5, "b": 0.25, "a": 0.8},
+            )
+        ):
+            raise RuntimeError("CPUParticles2D configuration was not applied")
+        undo_cpu_particles_update = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_cpu_particles_update.get("changed"):
+            raise RuntimeError("CPUParticles2D configuration was not undoable")
+        restored_cpu_particles = await app.service.cpu_particles_2d_get(
+            cpu_particles_path, scene_file=scene_file
+        )
+        if restored_cpu_particles["configuration"]["texture_path"] != "":
+            raise RuntimeError("Undo did not restore the CPUParticles2D texture binding")
+        redo_cpu_particles_update = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_cpu_particles_update.get("changed"):
+            raise RuntimeError("CPUParticles2D configuration was not redoable")
+        cleared_cpu_particles = await app.service.cpu_particles_2d_set(
+            cpu_particles_path,
+            {"texture_path": ""},
+            scene_file=scene_file,
+        )
+        if cleared_cpu_particles["configuration"]["texture_path"] != "":
+            raise RuntimeError("CPUParticles2D texture binding was not cleared")
+        undo_cpu_particles_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_cpu_particles_clear.get("changed"):
+            raise RuntimeError("CPUParticles2D texture clear was not undoable")
+        restored_cpu_texture = await app.service.cpu_particles_2d_get(
+            cpu_particles_path, scene_file=scene_file
+        )
+        if restored_cpu_texture["configuration"]["texture_path"] != "res://test_icon.svg":
+            raise RuntimeError("Undo did not restore the CPUParticles2D texture binding")
+
         viewport = await app.service.node_create(
             type_name="SubViewport",
             name="AgentViewport",
@@ -2837,7 +2977,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 41 or _has_node(final_hierarchy, marker_path):
+        if final_hierarchy.get("total") != 42 or _has_node(final_hierarchy, marker_path):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
@@ -2861,6 +3001,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "test_audio.tres" not in saved_scene
             or "AgentSparks" not in saved_scene
             or "AgentFire" not in saved_scene
+            or "AgentCpuParticles" not in saved_scene
             or "test_icon.svg" not in saved_scene
             or "ParticleProcessMaterial" not in saved_scene
             or "AgentViewport" not in saved_scene
