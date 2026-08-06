@@ -3837,6 +3837,31 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         ):
             raise RuntimeError("Saved scene does not contain the created Button")
 
+        await _expect_godot_error(
+            app.service.editor_run(mode="custom", scene_file="res://missing_scene.tscn"),
+            "RUN_SCENE_NOT_FOUND",
+        )
+        for mode in ("current", "custom", "main"):
+            run_kwargs = {"mode": mode}
+            if mode == "custom":
+                run_kwargs["scene_file"] = scene_file
+            run_result = await app.service.editor_run(**run_kwargs)
+            if run_result.get("requested_scene") != scene_file:
+                raise RuntimeError(f"editor_run({mode}) did not target the expected scene")
+            playing_state = await _wait_for_play_state(app, "playing")
+            if playing_state.get("playing_scene") != scene_file:
+                raise RuntimeError(f"editor_run({mode}) did not report the running scene")
+            await _expect_godot_error(app.service.editor_run(mode="main"), "SCENE_ALREADY_PLAYING")
+            stop_result = await app.service.editor_stop()
+            if stop_result.get("was_playing") is not True:
+                raise RuntimeError(f"editor_stop did not observe editor_run({mode})")
+            stopped_state = await _wait_for_play_state(app, "stopped")
+            if stopped_state.get("readiness") != "ready":
+                raise RuntimeError("Editor did not become writable after editor_stop")
+        idle_stop_result = await app.service.editor_stop()
+        if idle_stop_result.get("was_playing") is not False:
+            raise RuntimeError("editor_stop was not idempotent after the scene stopped")
+
         print(
             "Godot smoke passed: "
             f"session={sessions[0]['session_id']} "
@@ -3872,6 +3897,22 @@ async def _wait_for_editor_ready(app: object, timeout_seconds: float = 30.0) -> 
     raise RuntimeError(
         "Editor did not become ready within "
         f"{timeout_seconds:.0f} seconds; last state: {state}"
+    )
+
+
+async def _wait_for_play_state(
+    app: object, expected_state: str, timeout_seconds: float = 10.0
+) -> dict:
+    attempts = int(timeout_seconds / 0.1)
+    state: dict = {}
+    for _ in range(attempts):
+        state = await app.service.editor_get_state()
+        if state.get("play_state") == expected_state:
+            return state
+        await asyncio.sleep(0.1)
+    raise RuntimeError(
+        "Editor did not reach play state "
+        f"'{expected_state}' within {timeout_seconds:.0f} seconds; last state: {state}"
     )
 
 

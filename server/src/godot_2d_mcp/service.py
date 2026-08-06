@@ -39,6 +39,28 @@ class GodotService:
     async def editor_get_state(self, session_id: str | None = None) -> dict[str, Any]:
         return await self.bridge.call("editor_get_state", session_id=session_id)
 
+    async def editor_run(
+        self,
+        mode: str = "current",
+        scene_file: str = "",
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        normalized_mode = mode.strip().lower() if isinstance(mode, str) else ""
+        if normalized_mode not in {"current", "main", "custom"}:
+            raise ValueError("mode must be current, main, or custom")
+        if normalized_mode == "custom":
+            _validate_project_resource_path(scene_file, "scene_file")
+        elif scene_file:
+            raise ValueError("scene_file is only accepted when mode is custom")
+        return await self.bridge.call(
+            "editor_run",
+            {"mode": normalized_mode, "scene_file": scene_file},
+            session_id=session_id,
+        )
+
+    async def editor_stop(self, session_id: str | None = None) -> dict[str, Any]:
+        return await self.bridge.call("editor_stop", session_id=session_id)
+
     async def scene_get_hierarchy(
         self,
         session_id: str | None = None,
