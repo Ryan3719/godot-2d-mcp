@@ -550,6 +550,19 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def canvas_item_shader_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Inspect a CanvasItem material and its assigned 2D canvas_item shader source."""
+        return await service.canvas_item_shader_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def light_2d_get(
         path: str,
         session_id: str | None = None,
@@ -1881,6 +1894,66 @@ def create_application(
     ) -> dict[str, Any]:
         """Detach a CanvasItem material while retaining editor undo support."""
         return await service.canvas_item_material_clear(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def canvas_item_shader_create(
+        path: str,
+        source: str = "shader_type canvas_item;\n",
+        replace_existing: bool = False,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Attach an embedded ShaderMaterial containing a 2D canvas_item shader."""
+        return await service.canvas_item_shader_create(
+            path=path,
+            source=source,
+            replace_existing=replace_existing,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def canvas_item_shader_bind(
+        path: str,
+        resource_path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Bind an existing canvas_item ShaderMaterial without modifying its resource."""
+        return await service.canvas_item_shader_bind(
+            path=path,
+            resource_path=resource_path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def canvas_item_shader_set(
+        path: str,
+        source: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Copy a ShaderMaterial, replace its source with a 2D canvas_item shader, and rebind it."""
+        return await service.canvas_item_shader_set(
+            path=path,
+            source=source,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def canvas_item_shader_clear(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Detach a CanvasItem material while retaining editor undo support."""
+        return await service.canvas_item_shader_clear(
             path=path,
             session_id=session_id,
             scene_file=scene_file,

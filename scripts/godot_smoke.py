@@ -2456,6 +2456,146 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if restored_embedded_canvas_material["material"]["origin"] != "embedded":
             raise RuntimeError("Undo did not restore the embedded CanvasItemMaterial")
 
+        initial_canvas_shader = await app.service.canvas_item_shader_get(
+            canvas_item_path,
+            scene_file=scene_file,
+        )
+        if initial_canvas_shader["material"]["is_shader_material"]:
+            raise RuntimeError("CanvasItem unexpectedly had a ShaderMaterial before shader creation")
+        shader_source = (
+            "shader_type canvas_item;\n\n"
+            "void fragment() {\n"
+            "\tCOLOR = vec4(0.2, 0.7, 1.0, 1.0);\n"
+            "}\n"
+        )
+        await _expect_godot_error(
+            app.service.canvas_item_shader_create(
+                canvas_item_path,
+                source="shader_type spatial;\n",
+                replace_existing=True,
+                scene_file=scene_file,
+            ),
+            "CANVAS_ITEM_SHADER_REQUIRED",
+        )
+        await _expect_godot_error(
+            app.service.canvas_item_shader_create(
+                canvas_item_path,
+                source="shader_type canvas_item;\n#include \"res://shared.gdshaderinc\"\n",
+                replace_existing=True,
+                scene_file=scene_file,
+            ),
+            "CANVAS_ITEM_SHADER_INCLUDE_UNSUPPORTED",
+        )
+        await _expect_godot_error(
+            app.service.canvas_item_shader_create(
+                canvas_item_path,
+                source=shader_source,
+                scene_file=scene_file,
+            ),
+            "CANVAS_ITEM_MATERIAL_ALREADY_ASSIGNED",
+        )
+        created_canvas_shader = await app.service.canvas_item_shader_create(
+            canvas_item_path,
+            source=shader_source,
+            replace_existing=True,
+            scene_file=scene_file,
+        )
+        if (
+            created_canvas_shader.get("created") is not True
+            or created_canvas_shader["material"]["origin"] != "embedded"
+            or created_canvas_shader["shader"]["origin"] != "embedded"
+            or created_canvas_shader["shader"]["mode"] != "canvas_item"
+            or created_canvas_shader["shader"]["source"] != shader_source
+        ):
+            raise RuntimeError("Embedded CanvasItem ShaderMaterial was not created")
+        undo_canvas_shader_create = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_canvas_shader_create.get("changed"):
+            raise RuntimeError("CanvasItem shader creation was not undoable")
+        restored_canvas_material_after_shader_undo = await app.service.canvas_item_material_get(
+            canvas_item_path,
+            scene_file=scene_file,
+        )
+        if not restored_canvas_material_after_shader_undo["material"]["is_canvas_item_material"]:
+            raise RuntimeError("Undo did not restore the CanvasItemMaterial after shader creation")
+        redo_canvas_shader_create = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_canvas_shader_create.get("changed"):
+            raise RuntimeError("CanvasItem shader creation was not redoable")
+        await _expect_godot_error(
+            app.service.canvas_item_shader_bind(
+                canvas_item_path,
+                "res://test_canvas_item_material.tres",
+                scene_file=scene_file,
+            ),
+            "RESOURCE_TYPE_MISMATCH",
+        )
+        await _expect_godot_error(
+            app.service.canvas_item_shader_bind(
+                canvas_item_path,
+                "res://test_spatial_shader_material.tres",
+                scene_file=scene_file,
+            ),
+            "CANVAS_ITEM_SHADER_REQUIRED",
+        )
+        bound_canvas_shader = await app.service.canvas_item_shader_bind(
+            canvas_item_path,
+            "res://test_canvas_item_shader_material.tres",
+            scene_file=scene_file,
+        )
+        if (
+            not bound_canvas_shader.get("undoable")
+            or bound_canvas_shader.get("bound_external_resource") is not True
+            or bound_canvas_shader["material"]["origin"] != "external"
+            or bound_canvas_shader["shader"]["mode"] != "canvas_item"
+        ):
+            raise RuntimeError("External CanvasItem ShaderMaterial was not bound")
+        updated_shader_source = (
+            "shader_type canvas_item;\n\n"
+            "uniform float amount = 0.5;\n\n"
+            "void fragment() {\n"
+            "\tCOLOR = vec4(amount, 0.0, 1.0 - amount, 1.0);\n"
+            "}\n"
+        )
+        canvas_shader_update = await app.service.canvas_item_shader_set(
+            canvas_item_path,
+            updated_shader_source,
+            scene_file=scene_file,
+        )
+        if (
+            not canvas_shader_update.get("undoable")
+            or canvas_shader_update.get("copied_external_material") is not True
+            or canvas_shader_update["material"]["origin"] != "embedded"
+            or canvas_shader_update["shader"]["origin"] != "embedded"
+            or canvas_shader_update["shader"]["source"] != updated_shader_source
+        ):
+            raise RuntimeError("CanvasItem ShaderMaterial source was not copy-on-write updated")
+        undo_canvas_shader_update = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_canvas_shader_update.get("changed"):
+            raise RuntimeError("CanvasItem ShaderMaterial update was not undoable")
+        restored_external_canvas_shader = await app.service.canvas_item_shader_get(
+            canvas_item_path,
+            scene_file=scene_file,
+        )
+        if restored_external_canvas_shader["material"]["resource_path"] != "res://test_canvas_item_shader_material.tres":
+            raise RuntimeError("Undo did not restore the external CanvasItem ShaderMaterial")
+        redo_canvas_shader_update = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_canvas_shader_update.get("changed"):
+            raise RuntimeError("CanvasItem ShaderMaterial update was not redoable")
+        cleared_canvas_shader = await app.service.canvas_item_shader_clear(
+            canvas_item_path,
+            scene_file=scene_file,
+        )
+        if cleared_canvas_shader["material"]["assigned"]:
+            raise RuntimeError("CanvasItem ShaderMaterial was not cleared")
+        undo_canvas_shader_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_canvas_shader_clear.get("changed"):
+            raise RuntimeError("CanvasItem ShaderMaterial clear was not undoable")
+        restored_embedded_canvas_shader = await app.service.canvas_item_shader_get(
+            canvas_item_path,
+            scene_file=scene_file,
+        )
+        if restored_embedded_canvas_shader["material"]["origin"] != "embedded":
+            raise RuntimeError("Undo did not restore the embedded CanvasItem ShaderMaterial")
+
         cpu_particles = await app.service.node_create(
             type_name="CPUParticles2D",
             name="AgentCpuParticles",
@@ -3568,7 +3708,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "GradientTexture1D" not in saved_scene
             or "test_icon.svg" not in saved_scene
             or "ParticleProcessMaterial" not in saved_scene
-            or "CanvasItemMaterial" not in saved_scene
+            or "ShaderMaterial" not in saved_scene
             or "AgentViewport" not in saved_scene
             or "AgentCamera" not in saved_scene
             or "AgentParallax" not in saved_scene

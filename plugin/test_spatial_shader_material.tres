@@ -1,0 +1,7 @@
+[gd_resource type="ShaderMaterial" load_steps=2 format=3]
+
+[sub_resource type="Shader" id="Shader_spatial"]
+code = "shader_type spatial;\n\nvoid fragment() {\n\tALBEDO = vec3(1.0, 0.0, 0.0);\n}\n"
+
+[resource]
+shader = SubResource("Shader_spatial")
