@@ -193,6 +193,119 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             for item in restored_script_hierarchy["nodes"]
         ):
             raise RuntimeError("Undo did not restore the detached script")
+        typed_container_properties = await app.service.node_get_properties(
+            scripted_path,
+            fields=["accent_colors", "color_labels", "color_lookup", "icon_textures"],
+            scene_file=scene_file,
+        )
+        if (
+            _property_data(typed_container_properties, "accent_colors").get("container_type")
+            != {"kind": "array", "element": {"type": "Color"}}
+            or _property_data(typed_container_properties, "color_labels").get("container_type")
+            != {
+                "kind": "dictionary",
+                "key": {"type": "String"},
+                "value": {"type": "Color"},
+            }
+            or _property_data(typed_container_properties, "color_lookup").get("container_type")
+            != {
+                "kind": "dictionary",
+                "key": {"type": "Color"},
+                "value": {"type": "String"},
+            }
+            or _property_data(typed_container_properties, "icon_textures").get("container_type")
+            != {
+                "kind": "array",
+                "element": {"type": "Object", "class_name": "Texture2D"},
+            }
+        ):
+            raise RuntimeError("Typed container metadata was not reported")
+        typed_container_update = await app.service.node_set_properties(
+            scripted_path,
+            {
+                "accent_colors": [
+                    {"r": 0.1, "g": 0.2, "b": 0.3, "a": 0.4},
+                    {"r": 0.8, "g": 0.7, "b": 0.6, "a": 1.0},
+                ],
+                "color_labels": {"primary": {"r": 0.2, "g": 0.4, "b": 0.6, "a": 1.0}},
+                "color_lookup": {
+                    "entries": [
+                        {
+                            "key": {"r": 0.9, "g": 0.1, "b": 0.2, "a": 1.0},
+                            "value": "danger",
+                        }
+                    ]
+                },
+                "icon_textures": [{"resource_path": "res://test_icon.svg"}],
+            },
+            scene_file=scene_file,
+        )
+        if not typed_container_update.get("updated"):
+            raise RuntimeError("Typed container properties were not updated")
+        typed_container_values = await app.service.node_get_properties(
+            scripted_path,
+            fields=["accent_colors", "color_labels", "color_lookup", "icon_textures"],
+            scene_file=scene_file,
+        )
+        accent_colors = _property_value(typed_container_values, "accent_colors")
+        color_labels = _property_value(typed_container_values, "color_labels")
+        color_lookup = _property_value(typed_container_values, "color_lookup")
+        icon_textures = _property_value(typed_container_values, "icon_textures")
+        color_lookup_entries = color_lookup.get("entries") if isinstance(color_lookup, dict) else None
+        if (
+            not isinstance(accent_colors, list)
+            or len(accent_colors) != 2
+            or not _color_matches(accent_colors[0], {"r": 0.1, "g": 0.2, "b": 0.3, "a": 0.4})
+            or not isinstance(color_labels, dict)
+            or not _color_matches(
+                color_labels.get("primary"), {"r": 0.2, "g": 0.4, "b": 0.6, "a": 1.0}
+            )
+            or not isinstance(color_lookup_entries, list)
+            or len(color_lookup_entries) != 1
+            or not _color_matches(
+                color_lookup_entries[0].get("key"), {"r": 0.9, "g": 0.1, "b": 0.2, "a": 1.0}
+            )
+            or color_lookup_entries[0].get("value") != "danger"
+            or not isinstance(icon_textures, list)
+            or icon_textures[0].get("resource_path") != "res://test_icon.svg"
+        ):
+            raise RuntimeError("Typed container values were not serialized correctly")
+        await _expect_godot_error(
+            app.service.node_set_properties(
+                scripted_path,
+                {
+                    "accent_colors": [{"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}],
+                    "node_references": [{"resource_path": "res://test_icon.svg"}],
+                },
+                scene_file=scene_file,
+            ),
+            "PROPERTY_TYPE_MISMATCH",
+        )
+        unchanged_accent_colors = _property_value(
+            await app.service.node_get_properties(
+                scripted_path,
+                fields=["accent_colors"],
+                scene_file=scene_file,
+            ),
+            "accent_colors",
+        )
+        if unchanged_accent_colors != accent_colors:
+            raise RuntimeError("Invalid typed container batch partially changed an earlier property")
+        undo_typed_containers = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_typed_containers.get("changed"):
+            raise RuntimeError("Typed container update was not undoable")
+        if _property_value(
+            await app.service.node_get_properties(
+                scripted_path,
+                fields=["accent_colors", "color_labels", "color_lookup", "icon_textures"],
+                scene_file=scene_file,
+            ),
+            "accent_colors",
+        ) != []:
+            raise RuntimeError("Undo did not restore typed container defaults")
+        redo_typed_containers = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_typed_containers.get("changed"):
+            raise RuntimeError("Typed container update was not redoable")
         await _expect_godot_error(
             app.service.node_get_properties("/Main/..", scene_file=scene_file),
             "NODE_NOT_FOUND",
@@ -4102,6 +4215,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "packed_scene_2d.tscn" not in saved_scene
             or "PackedSceneInternalSprite" in saved_scene
             or "test_node_2d.gd" not in saved_scene
+            or "accent_colors =" not in saved_scene
+            or "color_labels =" not in saved_scene
+            or "color_lookup =" not in saved_scene
             or "AgentCpuParticles" not in saved_scene
             or "Curve" not in saved_scene
             or "Gradient" not in saved_scene
@@ -4342,9 +4458,13 @@ def _png_top_left_rgb(data: bytes) -> tuple[int, int, int]:
 
 
 def _property_value(result: dict, name: str) -> object:
+    return _property_data(result, name).get("value")
+
+
+def _property_data(result: dict, name: str) -> dict:
     for property_data in result.get("properties", []):
         if property_data.get("name") == name:
-            return property_data.get("value")
+            return property_data
     raise RuntimeError(f"Property was not returned: {name}")
 
 

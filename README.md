@@ -2,7 +2,7 @@
 
 Godot 2D MCP connects Codex, Claude Code, and other MCP clients to a live Godot editor. The project is designed for comprehensive Godot 2D authoring while keeping editor mutations on Godot's main thread and inside its undo/redo system.
 
-The current `0.36.0` preview adds safe PackedScene instance-root duplication and reparenting alongside safe custom 2D/UI script-node creation and binding, project-local scene creation, audited scene opening, `PackedScene` instantiation, typed project-resource binding through generic node properties, game-process logs, viewport screenshots, input simulation, editor run and stop control, `canvas_item` `ShaderMaterial` uniform authoring, source, `CanvasItemMaterial`, `ParticleProcessMaterial` CurveTexture/GradientTexture1D, and `CPUParticles2D` Curve/Gradient resources for scene, signal, animation, UI, Theme, collision, query, navigation, lighting, TileMap, viewport composition, path, skeleton, audio, and particle-node editing. Agents can start a new 2D scene from scratch, attach existing gameplay scripts without editor-side execution, compose existing 2D scenes, configure project-owned textures, fonts, and other declared resource fields, run a scene, inspect real game output, and verify rendered pixels while retaining Godot-native undo and save behavior.
+The current `0.37.0` preview adds strict `TypedArray` and `TypedDictionary` property editing alongside safe PackedScene instance-root duplication and reparenting, custom 2D/UI script-node creation and binding, project-local scene creation, audited scene opening, `PackedScene` instantiation, typed project-resource binding through generic node properties, game-process logs, viewport screenshots, input simulation, editor run and stop control, `canvas_item` `ShaderMaterial` uniform authoring, source, `CanvasItemMaterial`, `ParticleProcessMaterial` CurveTexture/GradientTexture1D, and `CPUParticles2D` Curve/Gradient resources for scene, signal, animation, UI, Theme, collision, query, navigation, lighting, TileMap, viewport composition, path, skeleton, audio, and particle-node editing. Agents can start a new 2D scene from scratch, attach existing gameplay scripts without editor-side execution, compose existing 2D scenes, configure project-owned textures, fonts, and other declared resource fields, run a scene, inspect real game output, and verify rendered pixels while retaining Godot-native undo and save behavior.
 
 ## Current capabilities
 
@@ -57,7 +57,7 @@ The current `0.36.0` preview adds safe PackedScene instance-root duplication and
 - `scene_undo`, `scene_redo`, and `scene_save` through Godot editor APIs.
 - `scene_create` creates and opens a previously absent project-local `.tscn` with a supported built-in 2D/UI root; `scene_open` audits an existing project `PackedScene` before opening it and rejects any unsupported or 3D subtree.
 - Atomic multi-property updates registered with `EditorUndoRedoManager`.
-- Strict 2D Variant conversion for `Vector2`, `Vector2i`, `Rect2`, `Rect2i`, `Transform2D`, `Color`, arrays, dictionaries, and common packed arrays.
+- Strict 2D Variant conversion for `Vector2`, `Vector2i`, `Rect2`, `Rect2i`, `Transform2D`, `Color`, typed arrays, typed dictionaries, and common packed arrays.
 - Real Godot 4.7 smoke coverage for create, update, signals, animation authoring and binding, Control layout, StyleBoxFlat overrides, cameras, parallax, canvas layers, viewport bindings, rename, duplicate, reparent, reorder, undo, redo, delete, restore, animation-track migration, and save.
 
 See [the initial implementation plan](docs/INITIAL_PLAN.md) for the complete 2D scope and roadmap.
@@ -103,6 +103,8 @@ For any public property Godot declares as a `Resource`, `node_set_properties` al
   "texture": {"resource_path": "res://art/player.svg"}
 }
 ```
+
+`node_get_properties` reports a `container_type` descriptor for typed arrays and dictionaries. `node_set_properties` converts every item to that declared type before applying the batch. `Dictionary[String, T]` and `Dictionary[StringName, T]` use a JSON object; dictionaries with any other key type use `{"entries": [{"key": ..., "value": ...}]}` so key types survive JSON serialization. Typed object containers only accept `null` or verified project-local `Resource` references, never scene-object references or script-constrained values.
 
 Use `node_instance_scene` to add an existing project `PackedScene` below a locally owned parent. It only accepts a complete 2D/UI subtree and preserves the instance boundary: the instance root belongs to the current scene while its internal owners remain unchanged. The instance root can be removed atomically with `node_delete` and restored through `scene_undo`; editing an internal node still requires opening its source scene.
 

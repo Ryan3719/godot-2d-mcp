@@ -897,15 +897,20 @@ func _serialize_script(script: Script) -> Dictionary:
 func _serialize_property(node: Node, property_info: Dictionary) -> Dictionary:
 	var property_name := str(property_info.get("name", ""))
 	var usage := int(property_info.get("usage", PROPERTY_USAGE_NONE))
-	return {
+	var value = node.get(property_name)
+	var serialized := {
 		"name": property_name,
 		"type": type_string(int(property_info.get("type", TYPE_NIL))),
 		"class_name": str(property_info.get("class_name", "")),
 		"hint": int(property_info.get("hint", PROPERTY_HINT_NONE)),
 		"hint_string": str(property_info.get("hint_string", "")),
 		"read_only": not _is_writable_property(property_name, usage),
-		"value": VariantCodec.serialize(node.get(property_name)),
+		"value": VariantCodec.serialize(value),
 	}
+	var container_type := VariantCodec.describe_container(value)
+	if container_type != null:
+		serialized["container_type"] = container_type
+	return serialized
 
 
 func _is_public_property(usage: int) -> bool:
