@@ -146,6 +146,75 @@ func create_node(params: Dictionary) -> Dictionary:
 	}
 
 
+func instance_packed_scene(params: Dictionary) -> Dictionary:
+	var guarded := MutationGuard.require_scene(params)
+	if guarded.has("_error"):
+		return guarded
+	var scene_root: Node = guarded["scene_root"]
+	var scene_path := str(params.get("scene_path", "")).strip_edges()
+	var loaded := _load_supported_packed_scene(scene_path)
+	if loaded.has("_error"):
+		return loaded
+	var instance: Node = loaded["instance"]
+
+	var parent_path := str(params.get("parent_path", ""))
+	var parent := ScenePath.resolve(parent_path, scene_root)
+	if parent == null:
+		instance.free()
+		return Errors.make(
+			"NODE_NOT_FOUND",
+			"Parent node not found: %s" % parent_path,
+			false,
+			"Use scene_get_hierarchy to refresh node paths."
+		)
+	if not TypePolicy.is_supported_node_class(parent.get_class()):
+		instance.free()
+		return Errors.make(
+			"UNSUPPORTED_2D_TYPE",
+			"Parent node is outside the supported 2D policy: %s" % parent.get_class()
+		)
+	var parent_editability := _require_locally_owned(parent, scene_root, "instance scenes under")
+	if parent_editability != null:
+		instance.free()
+		return parent_editability
+
+	var requested_name := str(params.get("name", "")).strip_edges()
+	if requested_name.is_empty():
+		requested_name = String(instance.name)
+	var name_error := _validate_node_name(requested_name)
+	if name_error != null:
+		instance.free()
+		return name_error
+	if _has_sibling_name(parent, requested_name, null):
+		instance.free()
+		return _name_conflict_error(requested_name)
+	instance.name = requested_name
+	var subtree_node_count := _collect_subtree(instance).size()
+
+	_undo_redo.create_action(
+		"Godot 2D MCP: Instance %s" % requested_name,
+		UndoRedo.MERGE_DISABLE,
+		scene_root
+	)
+	_undo_redo.add_do_method(parent, "add_child", instance, true)
+	# Only the instance root belongs to this scene; child owners preserve the PackedScene boundary.
+	_undo_redo.add_do_method(instance, "set_owner", scene_root)
+	_undo_redo.add_do_reference(instance)
+	_undo_redo.add_undo_method(parent, "remove_child", instance)
+	_undo_redo.commit_action()
+
+	return {
+		"path": ScenePath.from_node(instance, scene_root),
+		"parent_path": ScenePath.from_node(parent, scene_root),
+		"name": String(instance.name),
+		"type": instance.get_class(),
+		"scene_path": scene_path,
+		"subtree_node_count": subtree_node_count,
+		"undoable": true,
+		"_scene_mutated": true,
+	}
+
+
 func set_properties(params: Dictionary) -> Dictionary:
 	var resolved := _resolve_node(params)
 	if resolved.has("_error"):
@@ -249,7 +318,7 @@ func delete_node(params: Dictionary) -> Dictionary:
 	var editability := _require_locally_owned(node, scene_root, "delete")
 	if editability != null:
 		return editability
-	var subtree_check := _require_local_subtree(node, scene_root, "delete")
+	var subtree_check := _require_supported_subtree(node, "delete")
 	if subtree_check != null:
 		return subtree_check
 	var deletion_check := NodePathMigration.validate_removal(scene_root, node)
@@ -689,6 +758,20 @@ func _require_local_subtree(node: Node, scene_root: Node, operation: String) -> 
 	return null
 
 
+func _require_supported_subtree(node: Node, operation: String) -> Variant:
+	for descendant in _collect_subtree(node):
+		if TypePolicy.is_supported_node_class(descendant.get_class()):
+			continue
+		return Errors.make(
+			"UNSUPPORTED_2D_TYPE",
+			"Cannot %s '%s' because its subtree contains unsupported node type %s"
+			% [operation, node.name, descendant.get_class()],
+			false,
+			"Use this tool only with a subtree made entirely of supported 2D nodes."
+		)
+	return null
+
+
 func _validate_node_name(value: String) -> Variant:
 	if value.is_empty():
 		return Errors.make("MISSING_PARAMETER", "name is required")
@@ -711,3 +794,51 @@ func _name_conflict_error(name: String) -> Dictionary:
 		false,
 		"Choose a unique sibling name."
 	)
+
+
+func _load_supported_packed_scene(scene_path: String) -> Dictionary:
+	if (
+		scene_path.is_empty()
+		or scene_path.length() > 4096
+		or not scene_path.begins_with("res://")
+		or scene_path.contains("/../")
+		or scene_path.ends_with("/..")
+	):
+		return Errors.make(
+			"INVALID_PACKED_SCENE_PATH",
+			"scene_path must be a bounded project-local res:// path",
+			false,
+			"Pass an existing 2D PackedScene path such as res://scenes/player.tscn."
+		)
+	if not ResourceLoader.exists(scene_path):
+		return Errors.make(
+			"PACKED_SCENE_NOT_FOUND",
+			"PackedScene path does not exist: %s" % scene_path,
+			false,
+			"Use an existing PackedScene under the current project."
+		)
+	var resource := ResourceLoader.load(scene_path)
+	if not resource is PackedScene:
+		return Errors.make(
+			"PACKED_SCENE_TYPE_MISMATCH",
+			"scene_path does not load a PackedScene: %s" % scene_path,
+			false,
+			"Pass a .tscn or .scn resource with a supported 2D root node."
+		)
+	var instance := (resource as PackedScene).instantiate()
+	if instance == null:
+		return Errors.make("PACKED_SCENE_INSTANTIATION_FAILED", "Godot could not instance: %s" % scene_path)
+	for descendant in _collect_subtree(instance):
+		if TypePolicy.is_supported_node_class(descendant.get_class()):
+			continue
+		var unsupported_type := descendant.get_class()
+		instance.free()
+		return Errors.make(
+			"UNSUPPORTED_2D_TYPE",
+			"PackedScene '%s' contains unsupported node type %s" % [
+				scene_path, unsupported_type
+			],
+			false,
+			"Instance PackedScenes whose complete subtree uses supported 2D and UI node types."
+		)
+	return {"instance": instance}

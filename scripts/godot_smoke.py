@@ -142,6 +142,45 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if not redo_update.get("changed"):
             raise RuntimeError("Property update was not redoable")
 
+        await _expect_godot_error(
+            app.service.node_instance_scene(
+                "res://packed_scene_3d.tscn",
+                parent_path="/Main",
+                scene_file=scene_file,
+            ),
+            "UNSUPPORTED_2D_TYPE",
+        )
+        packed_instance = await app.service.node_instance_scene(
+            "res://packed_scene_2d.tscn",
+            name="AgentPackedVisual",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        packed_instance_path = packed_instance["path"]
+        if (
+            packed_instance["scene_path"] != "res://packed_scene_2d.tscn"
+            or packed_instance["subtree_node_count"] != 2
+            or packed_instance["type"] != "Node2D"
+        ):
+            raise RuntimeError("PackedScene instance metadata was not reported correctly")
+        undo_packed_instance = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_packed_instance.get("changed"):
+            raise RuntimeError("PackedScene instance was not undoable")
+        hierarchy_after_packed_undo = await app.service.scene_get_hierarchy(limit=20)
+        if _has_node(hierarchy_after_packed_undo, packed_instance_path):
+            raise RuntimeError("Undo did not remove the PackedScene instance root")
+        redo_packed_instance = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_packed_instance.get("changed"):
+            raise RuntimeError("PackedScene instance was not redoable")
+        deleted_packed_instance = await app.service.node_delete(
+            packed_instance_path, scene_file=scene_file
+        )
+        if not deleted_packed_instance.get("deleted"):
+            raise RuntimeError("PackedScene instance root was not deletable")
+        undo_packed_delete = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_packed_delete.get("changed"):
+            raise RuntimeError("PackedScene instance deletion was not undoable")
+
         transform_parent = await app.service.node_create(
             type_name="Node2D",
             name="TransformParent",
@@ -3832,7 +3871,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 43 or _has_node(final_hierarchy, marker_path):
+        if final_hierarchy.get("total") != 45 or _has_node(final_hierarchy, marker_path):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
@@ -3857,6 +3896,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentSparks" not in saved_scene
             or "AgentFire" not in saved_scene
             or "AgentCanvasItem" not in saved_scene
+            or "AgentPackedVisual" not in saved_scene
+            or "packed_scene_2d.tscn" not in saved_scene
+            or "PackedSceneInternalSprite" in saved_scene
             or "AgentCpuParticles" not in saved_scene
             or "Curve" not in saved_scene
             or "Gradient" not in saved_scene

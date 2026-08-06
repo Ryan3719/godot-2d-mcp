@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Texture2D" path="res://test_icon.svg" id="1_icon"]
+
+[node name="PackedVisual" type="Node2D"]
+
+[node name="PackedSceneInternalSprite" type="Sprite2D" parent="."]
+texture = ExtResource("1_icon")

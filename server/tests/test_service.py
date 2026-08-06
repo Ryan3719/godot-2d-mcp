@@ -187,6 +187,38 @@ async def test_node_create_forwards_scene_guard_and_session() -> None:
 
 
 @pytest.mark.asyncio
+async def test_node_instance_scene_forwards_project_scene_and_rejects_invalid_paths() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+
+    result = await service.node_instance_scene(
+        scene_path="res://scenes/player.tscn",
+        name="AgentPlayer",
+        parent_path="/Main/Actors",
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
+
+    assert result == {"command": "node_instance_scene"}
+    assert bridge.calls == [
+        (
+            "node_instance_scene",
+            {
+                "scene_path": "res://scenes/player.tscn",
+                "name": "AgentPlayer",
+                "parent_path": "/Main/Actors",
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        )
+    ]
+    with pytest.raises(ValueError, match="scene_path"):
+        await service.node_instance_scene("../player.tscn")
+    with pytest.raises(ValueError, match="scene_path"):
+        await service.node_instance_scene("res://../player.tscn")
+
+
+@pytest.mark.asyncio
 async def test_node_set_properties_forwards_one_atomic_payload() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

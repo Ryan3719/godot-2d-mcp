@@ -791,6 +791,23 @@ def create_application(
         )
 
     @mcp.tool(annotations=WRITE)
+    async def node_instance_scene(
+        scene_path: str,
+        name: str = "",
+        parent_path: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Instance a project-local 2D PackedScene while retaining its scene boundary."""
+        return await service.node_instance_scene(
+            scene_path=scene_path,
+            name=name,
+            parent_path=parent_path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
     async def node_set_properties(
         path: str,
         properties: dict[str, Any],
