@@ -801,14 +801,46 @@ def create_application(
         type: str,
         name: str = "",
         parent_path: str = "",
+        script_path: str = "",
         session_id: str | None = None,
         scene_file: str = "",
     ) -> dict[str, Any]:
-        """Create a ClassDB-backed 2D or UI node in the edited scene."""
+        """Create a 2D/UI node and optionally attach a compatible project-local non-tool script."""
         return await service.node_create(
             type_name=type,
             name=name,
             parent_path=parent_path,
+            script_path=script_path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def node_script_bind(
+        path: str,
+        script_path: str,
+        replace_existing: bool = False,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Attach a compatible existing project-local non-tool Script to a local 2D/UI node."""
+        return await service.node_script_bind(
+            path=path,
+            script_path=script_path,
+            replace_existing=replace_existing,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def node_script_clear(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Detach the script from a local 2D/UI node while retaining editor undo support."""
+        return await service.node_script_clear(
+            path=path,
             session_id=session_id,
             scene_file=scene_file,
         )

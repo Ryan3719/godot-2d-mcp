@@ -141,6 +141,59 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             "UNSUPPORTED_2D_TYPE",
         )
         await _expect_godot_error(
+            app.service.node_create(
+                type_name="Node2D",
+                name="RejectedToolScript",
+                parent_path="/Main",
+                script_path="res://test_tool_node_2d.gd",
+                scene_file=scene_file,
+            ),
+            "TOOL_SCRIPT_NOT_SUPPORTED",
+        )
+        await _expect_godot_error(
+            app.service.node_create(
+                type_name="Button",
+                name="RejectedScriptBase",
+                parent_path="/Main",
+                script_path="res://test_node_2d.gd",
+                scene_file=scene_file,
+            ),
+            "SCRIPT_BASE_TYPE_MISMATCH",
+        )
+        scripted_node = await app.service.node_create(
+            type_name="Node2D",
+            name="AgentScriptedNode",
+            parent_path="/Main",
+            script_path="res://test_node_2d.gd",
+            scene_file=scene_file,
+        )
+        if scripted_node["script"] != {
+            "resource_path": "res://test_node_2d.gd",
+            "base_type": "Node2D",
+            "global_name": "",
+            "is_tool": False,
+        }:
+            raise RuntimeError("node_create did not attach the requested 2D script")
+        scripted_path = scripted_node["path"]
+        scripted_hierarchy = await app.service.scene_get_hierarchy(limit=20)
+        if not any(
+            item["path"] == scripted_path and item["script_path"] == "res://test_node_2d.gd"
+            for item in scripted_hierarchy["nodes"]
+        ):
+            raise RuntimeError("Scripted node was not persisted in the scene hierarchy")
+        cleared_script = await app.service.node_script_clear(scripted_path, scene_file=scene_file)
+        if not cleared_script.get("cleared"):
+            raise RuntimeError("node_script_clear did not detach the script")
+        undone_script_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undone_script_clear.get("changed"):
+            raise RuntimeError("node_script_clear was not undoable")
+        restored_script_hierarchy = await app.service.scene_get_hierarchy(limit=20)
+        if not any(
+            item["path"] == scripted_path and item["script_path"] == "res://test_node_2d.gd"
+            for item in restored_script_hierarchy["nodes"]
+        ):
+            raise RuntimeError("Undo did not restore the detached script")
+        await _expect_godot_error(
             app.service.node_get_properties("/Main/..", scene_file=scene_file),
             "NODE_NOT_FOUND",
         )
@@ -151,6 +204,48 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         marker_path = marker["path"]
+        bound_script = await app.service.node_script_bind(
+            path=marker_path,
+            script_path="res://test_node_2d.gd",
+            scene_file=scene_file,
+        )
+        if not bound_script.get("changed") or bound_script["script"]["resource_path"] != "res://test_node_2d.gd":
+            raise RuntimeError("node_script_bind did not attach a compatible script")
+        unchanged_script = await app.service.node_script_bind(
+            path=marker_path,
+            script_path="res://test_node_2d.gd",
+            scene_file=scene_file,
+        )
+        if unchanged_script.get("changed"):
+            raise RuntimeError("Binding the same script should be idempotent")
+        await _expect_godot_error(
+            app.service.node_script_bind(
+                path=marker_path,
+                script_path="res://test_node_2d_alternate.gd",
+                scene_file=scene_file,
+            ),
+            "SCRIPT_ALREADY_ATTACHED",
+        )
+        replaced_script = await app.service.node_script_bind(
+            path=marker_path,
+            script_path="res://test_node_2d_alternate.gd",
+            replace_existing=True,
+            scene_file=scene_file,
+        )
+        if replaced_script["script"]["resource_path"] != "res://test_node_2d_alternate.gd":
+            raise RuntimeError("node_script_bind did not replace the existing script")
+        undo_script_replace = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_script_replace.get("changed"):
+            raise RuntimeError("Script replacement was not undoable")
+        undo_replace_hierarchy = await app.service.scene_get_hierarchy(limit=20)
+        if not any(
+            item["path"] == marker_path and item["script_path"] == "res://test_node_2d.gd"
+            for item in undo_replace_hierarchy["nodes"]
+        ):
+            raise RuntimeError("Undo did not restore the previous script")
+        redo_script_replace = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_script_replace.get("changed"):
+            raise RuntimeError("Script replacement was not redoable")
         if marker["meta"]["scene_revision"] <= initial_revision:
             raise RuntimeError("Node creation did not advance scene_revision")
         await _expect_godot_error(
@@ -3927,7 +4022,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 45 or _has_node(final_hierarchy, marker_path):
+        if final_hierarchy.get("total") != 46 or _has_node(final_hierarchy, marker_path):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
@@ -3955,6 +4050,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentPackedVisual" not in saved_scene
             or "packed_scene_2d.tscn" not in saved_scene
             or "PackedSceneInternalSprite" in saved_scene
+            or "test_node_2d.gd" not in saved_scene
             or "AgentCpuParticles" not in saved_scene
             or "Curve" not in saved_scene
             or "Gradient" not in saved_scene

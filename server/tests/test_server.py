@@ -68,6 +68,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "tile_set_layers_get",
         "tile_set_atlas_tile_get",
         "node_create",
+        "node_script_bind",
+        "node_script_clear",
         "node_instance_scene",
         "node_set_properties",
         "node_delete",
@@ -324,6 +326,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["tile_map_layer_cells_clear"].destructiveHint is True
     assert annotations["scene_create"].destructiveHint is True
     assert annotations["scene_open"].readOnlyHint is False
+    assert annotations["node_script_bind"].readOnlyHint is False
+    assert annotations["node_script_clear"].destructiveHint is True
     assert annotations["scene_save"].idempotentHint is True
 
 
