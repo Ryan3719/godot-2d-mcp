@@ -822,6 +822,19 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def gpu_particles_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "gpu_particles_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def light_2d_get(
         self,
         path: str,
@@ -1607,6 +1620,21 @@ class GodotService:
         _validate_audio_stream_player_2d_properties(properties)
         return await self.bridge.call(
             "audio_stream_player_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def gpu_particles_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_gpu_particles_2d_properties(properties)
+        return await self.bridge.call(
+            "gpu_particles_2d_set",
             _scene_params(scene_file, path=path, properties=properties),
             session_id=session_id,
         )
@@ -2865,6 +2893,101 @@ def _validate_audio_stream_player_2d_properties(properties: dict[str, Any]) -> N
             raise ValueError("max_polyphony must be an integer between 1 and 256")
     if "area_layers" in properties:
         _validate_collision_layer_numbers(properties["area_layers"], "area_layers")
+
+
+def _validate_gpu_particles_2d_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "emitting",
+        "amount",
+        "amount_ratio",
+        "sub_emitter_path",
+        "texture_path",
+        "process_material_path",
+        "lifetime",
+        "interp_to_end",
+        "one_shot",
+        "preprocess",
+        "speed_scale",
+        "explosiveness",
+        "randomness",
+        "use_fixed_seed",
+        "seed",
+        "fixed_fps",
+        "interpolate",
+        "fractional_delta",
+        "collision_base_size",
+        "visibility_rect",
+        "local_coords",
+        "draw_order",
+        "trail_enabled",
+        "trail_lifetime",
+        "trail_sections",
+        "trail_section_subdivisions",
+    }
+    if not isinstance(properties, dict) or not properties:
+        raise ValueError("properties must be a non-empty object")
+    if len(properties) > len(allowed):
+        raise ValueError("properties contains too many GPUParticles2D properties")
+    if set(properties) - allowed:
+        raise ValueError("properties contains an unsupported GPUParticles2D property")
+    for name in (
+        "emitting",
+        "one_shot",
+        "use_fixed_seed",
+        "interpolate",
+        "fractional_delta",
+        "local_coords",
+        "trail_enabled",
+    ):
+        if name in properties:
+            _validate_boolean(properties[name], name)
+    for name in ("texture_path", "process_material_path"):
+        if name in properties:
+            _validate_optional_project_resource_path(properties[name], name)
+    if "sub_emitter_path" in properties:
+        value = properties["sub_emitter_path"]
+        if not isinstance(value, str):
+            raise ValueError("sub_emitter_path must be a scene node path string")
+        if value.strip():
+            _validate_node_path(value)
+    if "draw_order" in properties and (
+        not isinstance(properties["draw_order"], str)
+        or properties["draw_order"].strip().lower()
+        not in {"index", "lifetime", "reverse_lifetime"}
+    ):
+        raise ValueError("draw_order must be one of: index, lifetime, reverse_lifetime")
+    for name, minimum, maximum in (
+        ("amount", 1, 1_000_000),
+        ("seed", 0, 4_294_967_295),
+        ("fixed_fps", 0, 1000),
+        ("trail_sections", 2, 128),
+        ("trail_section_subdivisions", 1, 1024),
+    ):
+        if name in properties and (
+            isinstance(properties[name], bool)
+            or not isinstance(properties[name], int)
+            or not minimum <= properties[name] <= maximum
+        ):
+            raise ValueError(f"{name} must be an integer between {minimum} and {maximum}")
+    for name, minimum, maximum in (
+        ("amount_ratio", 0.0, 1.0),
+        ("lifetime", 0.01, 600.0),
+        ("interp_to_end", 0.0, 1.0),
+        ("preprocess", 0.0, 600.0),
+        ("speed_scale", 0.0, 64.0),
+        ("explosiveness", 0.0, 1.0),
+        ("randomness", 0.0, 1.0),
+        ("collision_base_size", 0.0, 1_000_000.0),
+        ("trail_lifetime", 0.01, 600.0),
+    ):
+        if name in properties:
+            _validate_viewport_number(properties[name], name, minimum=minimum, maximum=maximum)
+    if "visibility_rect" in properties:
+        value = properties["visibility_rect"]
+        if not isinstance(value, dict) or set(value) != {"position", "size"}:
+            raise ValueError("visibility_rect must contain position and size Vector2 values")
+        _validate_viewport_vector2(value["position"], "visibility_rect.position")
+        _validate_viewport_vector2(value["size"], "visibility_rect.size")
 
 
 def _validate_viewport_vector2(value: Any, label: str) -> None:

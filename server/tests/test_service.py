@@ -1520,6 +1520,84 @@ async def test_audio_stream_player_2d_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_gpu_particles_2d_tools_forward_semantic_edits() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    path = "/Main/Fire"
+    scene_file = "res://main.tscn"
+    properties = {
+        "emitting": True,
+        "amount": 128,
+        "amount_ratio": 0.75,
+        "sub_emitter_path": "/Main/Sparks",
+        "texture_path": "res://particles.png",
+        "process_material_path": "res://fire_particles.tres",
+        "lifetime": 2.5,
+        "interp_to_end": 0.25,
+        "one_shot": False,
+        "preprocess": 1.0,
+        "speed_scale": 1.5,
+        "explosiveness": 0.4,
+        "randomness": 0.2,
+        "use_fixed_seed": True,
+        "seed": 42,
+        "fixed_fps": 30,
+        "interpolate": True,
+        "fractional_delta": False,
+        "collision_base_size": 2.0,
+        "visibility_rect": {
+            "position": {"x": -128.0, "y": -64.0},
+            "size": {"x": 256.0, "y": 128.0},
+        },
+        "local_coords": True,
+        "draw_order": "reverse_lifetime",
+        "trail_enabled": True,
+        "trail_lifetime": 0.5,
+        "trail_sections": 8,
+        "trail_section_subdivisions": 4,
+    }
+
+    await service.gpu_particles_2d_get(path, session_id="project@a1b2", scene_file=scene_file)
+    await service.gpu_particles_2d_set(path, properties, scene_file=scene_file)
+
+    assert bridge.calls == [
+        (
+            "gpu_particles_2d_get",
+            {"path": path, "scene_file": scene_file},
+            "project@a1b2",
+        ),
+        (
+            "gpu_particles_2d_set",
+            {"path": path, "properties": properties, "scene_file": scene_file},
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_gpu_particles_2d_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+    path = "/Main/Fire"
+
+    with pytest.raises(ValueError, match="non-empty"):
+        await service.gpu_particles_2d_set(path, {})
+    with pytest.raises(ValueError, match="unsupported GPUParticles2D"):
+        await service.gpu_particles_2d_set(path, {"playing": True})
+    with pytest.raises(ValueError, match="amount"):
+        await service.gpu_particles_2d_set(path, {"amount": 0})
+    with pytest.raises(ValueError, match="seed"):
+        await service.gpu_particles_2d_set(path, {"seed": True})
+    with pytest.raises(ValueError, match="draw_order"):
+        await service.gpu_particles_2d_set(path, {"draw_order": "front_to_back"})
+    with pytest.raises(ValueError, match="texture_path"):
+        await service.gpu_particles_2d_set(path, {"texture_path": "../particle.png"})
+    with pytest.raises(ValueError, match="sub_emitter_path"):
+        await service.gpu_particles_2d_set(path, {"sub_emitter_path": 42})
+    with pytest.raises(ValueError, match="visibility_rect"):
+        await service.gpu_particles_2d_set(path, {"visibility_rect": {"x": 1.0}})
+
+
+@pytest.mark.asyncio
 async def test_lighting_tools_forward_atomic_semantic_payloads() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

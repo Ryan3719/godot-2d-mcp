@@ -1,0 +1,5 @@
+[gd_resource type="ParticleProcessMaterial" format=3]
+
+[resource]
+direction = Vector3(1, 0, 0)
+gravity = Vector3(0, 98, 0)

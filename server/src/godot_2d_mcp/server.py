@@ -438,6 +438,19 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def gpu_particles_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read persistent GPUParticles2D emission, drawing, trail, and resource bindings."""
+        return await service.gpu_particles_2d_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def light_2d_get(
         path: str,
         session_id: str | None = None,
@@ -1454,6 +1467,21 @@ def create_application(
     ) -> dict[str, Any]:
         """Atomically configure a local AudioStreamPlayer2D without mutating its stream resource."""
         return await service.audio_stream_player_2d_set(
+            path=path,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def gpu_particles_2d_set(
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically configure a local GPUParticles2D without mutating assigned resources."""
+        return await service.gpu_particles_2d_set(
             path=path,
             properties=properties,
             session_id=session_id,
