@@ -5,6 +5,7 @@ const Errors := preload("res://addons/godot_2d_mcp/utils/errors.gd")
 
 const MAX_CONTAINER_ITEMS := 512
 const MAX_DEPTH := 8
+const MAX_RESOURCE_PATH_LENGTH := 4096
 
 
 static func decode(value: Variant, property_info: Dictionary, current_value: Variant) -> Dictionary:
@@ -68,8 +69,7 @@ static func decode(value: Variant, property_info: Dictionary, current_value: Var
 		TYPE_PACKED_COLOR_ARRAY:
 			return _decode_packed_colors(value)
 		TYPE_OBJECT:
-			if value == null:
-				return _success(null)
+			return _decode_resource_reference(value, property_info, current_value)
 
 	return _failure(
 		"Cannot convert JSON value to Godot property type %s" % type_string(target_type),
@@ -259,6 +259,40 @@ static func _decode_packed_colors(value: Variant) -> Dictionary:
 			return decoded
 		output.append(decoded["value"])
 	return _success(output)
+
+
+static func _decode_resource_reference(
+	value: Variant, property_info: Dictionary, current_value: Variant
+) -> Dictionary:
+	if value == null:
+		return _success(null)
+	if not value is Dictionary or not _has_exact_keys(value, ["resource_path"]):
+		return _failure("Resource properties require null or an object with exactly resource_path")
+	var resource_path := str(value["resource_path"]).strip_edges()
+	if (
+		resource_path.is_empty()
+		or resource_path.length() > MAX_RESOURCE_PATH_LENGTH
+		or not resource_path.begins_with("res://")
+		or resource_path.contains("/../")
+		or resource_path.ends_with("/..")
+	):
+		return _failure("resource_path must be a bounded project-local res:// path")
+	if int(property_info.get("hint", PROPERTY_HINT_NONE)) != PROPERTY_HINT_RESOURCE_TYPE:
+		return _failure("Only Godot Resource properties accept resource_path references")
+	var resource := ResourceLoader.load(resource_path)
+	if resource == null or not resource is Resource:
+		return _failure("resource_path does not load a Godot Resource: %s" % resource_path)
+	var expected_type := str(property_info.get("hint_string", "")).strip_edges()
+	if expected_type.is_empty() and current_value is Resource:
+		expected_type = current_value.get_class()
+	if expected_type.is_empty() or not resource.is_class(expected_type):
+		return _failure(
+			"resource_path must load %s, received %s" % [
+				expected_type if not expected_type.is_empty() else "the declared resource type",
+				resource.get_class(),
+			]
+		)
+	return _success(resource)
 
 
 static func _has_exact_keys(value: Dictionary, expected: Array[String]) -> bool:

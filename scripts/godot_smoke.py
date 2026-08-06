@@ -2356,6 +2356,43 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         canvas_item_path = canvas_item["path"]
+        bound_sprite_texture = await app.service.node_set_properties(
+            canvas_item_path,
+            {"texture": {"resource_path": "res://test_icon.svg"}},
+            scene_file=scene_file,
+        )
+        texture_value = bound_sprite_texture["updated"].get("texture", {})
+        if texture_value.get("resource_path") != "res://test_icon.svg":
+            raise RuntimeError("Generic project Texture2D binding was not applied")
+        await _expect_godot_error(
+            app.service.node_set_properties(
+                canvas_item_path,
+                {"texture": {"resource_path": "res://test_cpu_curve.tres"}},
+                scene_file=scene_file,
+            ),
+            "PROPERTY_TYPE_MISMATCH",
+        )
+        await _expect_godot_error(
+            app.service.node_set_properties(
+                canvas_item_path,
+                {"texture": {"resource_path": "res://../test_icon.svg"}},
+                scene_file=scene_file,
+            ),
+            "PROPERTY_TYPE_MISMATCH",
+        )
+        undo_sprite_texture = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_sprite_texture.get("changed"):
+            raise RuntimeError("Generic project Texture2D binding was not undoable")
+        restored_sprite_texture = await app.service.node_get_properties(
+            canvas_item_path,
+            fields=["texture"],
+            scene_file=scene_file,
+        )
+        if _property_value(restored_sprite_texture, "texture") is not None:
+            raise RuntimeError("Undo did not clear the generic project Texture2D binding")
+        redo_sprite_texture = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_sprite_texture.get("changed"):
+            raise RuntimeError("Generic project Texture2D binding was not redoable")
         initial_canvas_material = await app.service.canvas_item_material_get(
             canvas_item_path,
             scene_file=scene_file,

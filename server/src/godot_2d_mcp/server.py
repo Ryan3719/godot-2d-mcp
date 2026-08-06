@@ -797,7 +797,7 @@ def create_application(
         session_id: str | None = None,
         scene_file: str = "",
     ) -> dict[str, Any]:
-        """Atomically set public properties after strict Godot Variant conversion."""
+        """Atomically set typed public properties, including safe res:// resource references."""
         return await service.node_set_properties(
             path=path,
             properties=properties,
