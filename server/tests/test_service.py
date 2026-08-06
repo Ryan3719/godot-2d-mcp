@@ -1146,6 +1146,112 @@ async def test_navigation_polygon_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_viewport_tools_forward_atomic_semantic_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    scene_file = "res://main.tscn"
+    camera_path = "/Main/Camera"
+    parallax_path = "/Main/Background"
+    canvas_layer_path = "/Main/HUD"
+    camera_properties = {
+        "anchor_mode": "drag_center",
+        "drag_left_margin": 0.1,
+        "limit_left": -960,
+        "limit_right": 960,
+        "position_smoothing_enabled": True,
+        "position_smoothing_speed": 8.0,
+        "process_callback": "physics",
+        "zoom": {"x": 1.5, "y": 1.5},
+    }
+    parallax_properties = {
+        "autoscroll": {"x": 12.0, "y": 0.0},
+        "limit_begin": {"x": -1024.0, "y": -512.0},
+        "limit_end": {"x": 1024.0, "y": 512.0},
+        "repeat_size": {"x": 320.0, "y": 180.0},
+        "repeat_times": 3,
+        "scroll_scale": {"x": 0.5, "y": 0.5},
+    }
+    canvas_layer_properties = {
+        "follow_viewport_enabled": True,
+        "follow_viewport_scale": 0.75,
+        "layer": 10,
+        "offset": {"x": 16.0, "y": 24.0},
+        "scale": {"x": 1.0, "y": -1.0},
+        "visible": True,
+    }
+
+    await service.camera_2d_get(camera_path, session_id="project@a1b2", scene_file=scene_file)
+    await service.parallax_2d_get(parallax_path, scene_file=scene_file)
+    await service.canvas_layer_get(canvas_layer_path, scene_file=scene_file)
+    await service.camera_2d_set(camera_path, camera_properties, scene_file=scene_file)
+    await service.parallax_2d_set(parallax_path, parallax_properties, scene_file=scene_file)
+    await service.canvas_layer_set(
+        canvas_layer_path, canvas_layer_properties, scene_file=scene_file
+    )
+
+    assert bridge.calls == [
+        ("camera_2d_get", {"path": camera_path, "scene_file": scene_file}, "project@a1b2"),
+        ("parallax_2d_get", {"path": parallax_path, "scene_file": scene_file}, None),
+        (
+            "canvas_layer_get",
+            {"path": canvas_layer_path, "scene_file": scene_file},
+            None,
+        ),
+        (
+            "camera_2d_set",
+            {"path": camera_path, "properties": camera_properties, "scene_file": scene_file},
+            None,
+        ),
+        (
+            "parallax_2d_set",
+            {"path": parallax_path, "properties": parallax_properties, "scene_file": scene_file},
+            None,
+        ),
+        (
+            "canvas_layer_set",
+            {
+                "path": canvas_layer_path,
+                "properties": canvas_layer_properties,
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_viewport_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="non-empty"):
+        await service.camera_2d_set("/Main/Camera", {})
+    with pytest.raises(ValueError, match="unsupported viewport property"):
+        await service.camera_2d_set("/Main/Camera", {"texture": "res://camera.png"})
+    with pytest.raises(ValueError, match="zoom"):
+        await service.camera_2d_set("/Main/Camera", {"zoom": {"x": 0.0, "y": 1.0}})
+    with pytest.raises(ValueError, match="custom_viewport_path"):
+        await service.camera_2d_set("/Main/Camera", {"custom_viewport_path": 3})
+    with pytest.raises(ValueError, match="repeat_times"):
+        await service.parallax_2d_set("/Main/Background", {"repeat_times": 0})
+    with pytest.raises(ValueError, match="repeat_size"):
+        await service.parallax_2d_set(
+            "/Main/Background", {"repeat_size": {"x": -1.0, "y": 1.0}}
+        )
+    with pytest.raises(ValueError, match="transform cannot"):
+        await service.canvas_layer_set(
+            "/Main/HUD",
+            {
+                "transform": {
+                    "x": {"x": 1.0, "y": 0.0},
+                    "y": {"x": 0.0, "y": 1.0},
+                    "origin": {"x": 0.0, "y": 0.0},
+                },
+                "scale": {"x": 1.0, "y": 1.0},
+            },
+        )
+
+
+@pytest.mark.asyncio
 async def test_lighting_tools_forward_atomic_semantic_payloads() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

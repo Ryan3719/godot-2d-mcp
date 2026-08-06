@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.17.0"
+const PLUGIN_VERSION := "0.18.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 
 const ConnectionScript := preload("res://addons/godot_2d_mcp/transport/connection.gd")
@@ -18,6 +18,7 @@ const ThemeHandlerScript := preload("res://addons/godot_2d_mcp/handlers/theme_ha
 const PhysicsHandlerScript := preload("res://addons/godot_2d_mcp/handlers/physics_handler.gd")
 const TileMapHandlerScript := preload("res://addons/godot_2d_mcp/handlers/tilemap_handler.gd")
 const LightingHandlerScript := preload("res://addons/godot_2d_mcp/handlers/lighting_handler.gd")
+const ViewportHandlerScript := preload("res://addons/godot_2d_mcp/handlers/viewport_handler.gd")
 
 var _connection: Node
 var _dispatcher: RefCounted
@@ -69,9 +70,10 @@ func _register_handlers() -> void:
 	var physics_handler: RefCounted = PhysicsHandlerScript.new(get_undo_redo())
 	var tile_map_handler: RefCounted = TileMapHandlerScript.new(get_undo_redo())
 	var lighting_handler: RefCounted = LightingHandlerScript.new(get_undo_redo())
+	var viewport_handler: RefCounted = ViewportHandlerScript.new(get_undo_redo())
 	_handlers.assign([
 		editor_handler, scene_handler, node_handler, class_handler, signal_handler, animation_handler,
-		ui_handler, theme_handler, physics_handler, tile_map_handler, lighting_handler
+		ui_handler, theme_handler, physics_handler, tile_map_handler, lighting_handler, viewport_handler
 	])
 
 	_dispatcher.register("editor_get_state", editor_handler.get_state)
@@ -95,6 +97,9 @@ func _register_handlers() -> void:
 	_dispatcher.register("shape_cast_2d_get", physics_handler.get_shape_cast)
 	_dispatcher.register("navigation_2d_get", physics_handler.get_navigation_node)
 	_dispatcher.register("navigation_polygon_get", physics_handler.get_navigation_polygon)
+	_dispatcher.register("camera_2d_get", viewport_handler.get_camera_2d)
+	_dispatcher.register("parallax_2d_get", viewport_handler.get_parallax_2d)
+	_dispatcher.register("canvas_layer_get", viewport_handler.get_canvas_layer)
 	_dispatcher.register("light_2d_get", lighting_handler.get_light_2d)
 	_dispatcher.register("light_occluder_2d_get", lighting_handler.get_light_occluder_2d)
 	_dispatcher.register("tile_map_layer_get", tile_map_handler.get_tile_map_layer)
@@ -143,6 +148,9 @@ func _register_handlers() -> void:
 	_dispatcher.register("navigation_polygon_outline_remove", physics_handler.remove_navigation_polygon_outline)
 	_dispatcher.register("navigation_polygon_make_from_outlines", physics_handler.make_navigation_polygon_from_outlines)
 	_dispatcher.register("navigation_polygon_clear", physics_handler.clear_navigation_polygon)
+	_dispatcher.register("camera_2d_set", viewport_handler.set_camera_2d)
+	_dispatcher.register("parallax_2d_set", viewport_handler.set_parallax_2d)
+	_dispatcher.register("canvas_layer_set", viewport_handler.set_canvas_layer)
 	_dispatcher.register("light_2d_set", lighting_handler.set_light_2d)
 	_dispatcher.register("light_occluder_2d_set", lighting_handler.set_light_occluder_2d)
 	_dispatcher.register("tile_set_create", tile_map_handler.create_tile_set)

@@ -728,6 +728,45 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def camera_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "camera_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def parallax_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "parallax_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def canvas_layer_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "canvas_layer_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def light_2d_get(
         self,
         path: str,
@@ -1298,6 +1337,51 @@ class GodotService:
         return await self.bridge.call(
             "navigation_polygon_clear",
             _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def camera_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_viewport_configuration_properties(properties)
+        return await self.bridge.call(
+            "camera_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def parallax_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_viewport_configuration_properties(properties)
+        return await self.bridge.call(
+            "parallax_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def canvas_layer_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_viewport_configuration_properties(properties)
+        return await self.bridge.call(
+            "canvas_layer_set",
+            _scene_params(scene_file, path=path, properties=properties),
             session_id=session_id,
         )
 
@@ -2252,6 +2336,206 @@ def _validate_light_2d_properties(properties: dict[str, Any]) -> None:
         _validate_light_vector2(properties["offset"], "offset")
     if "texture_path" in properties:
         _validate_optional_project_resource_path(properties["texture_path"], "texture_path")
+
+
+def _validate_viewport_configuration_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "anchor_mode",
+        "autoscroll",
+        "custom_viewport_path",
+        "drag_bottom_margin",
+        "drag_horizontal_enabled",
+        "drag_horizontal_offset",
+        "drag_left_margin",
+        "drag_right_margin",
+        "drag_top_margin",
+        "drag_vertical_enabled",
+        "drag_vertical_offset",
+        "editor_draw_drag_margin",
+        "editor_draw_limits",
+        "editor_draw_screen",
+        "enabled",
+        "follow_viewport",
+        "follow_viewport_enabled",
+        "follow_viewport_scale",
+        "ignore_camera_scroll",
+        "ignore_rotation",
+        "layer",
+        "limit_begin",
+        "limit_bottom",
+        "limit_enabled",
+        "limit_end",
+        "limit_left",
+        "limit_right",
+        "limit_smoothed",
+        "limit_top",
+        "offset",
+        "position_smoothing_enabled",
+        "position_smoothing_speed",
+        "process_callback",
+        "repeat_size",
+        "repeat_times",
+        "rotation",
+        "rotation_smoothing_enabled",
+        "rotation_smoothing_speed",
+        "scale",
+        "screen_offset",
+        "scroll_offset",
+        "scroll_scale",
+        "transform",
+        "visible",
+        "zoom",
+    }
+    if not isinstance(properties, dict) or not properties:
+        raise ValueError("properties must be a non-empty object")
+    if len(properties) > 32:
+        raise ValueError("properties can contain at most 32 entries")
+    if any(not isinstance(name, str) or name not in allowed for name in properties):
+        raise ValueError("properties contains an unsupported viewport property")
+    if any(not _is_json_bind_value(value) for value in properties.values()):
+        raise ValueError("properties must contain bounded JSON-compatible values")
+
+    boolean_properties = {
+        "drag_horizontal_enabled",
+        "drag_vertical_enabled",
+        "editor_draw_drag_margin",
+        "editor_draw_limits",
+        "editor_draw_screen",
+        "enabled",
+        "follow_viewport",
+        "follow_viewport_enabled",
+        "ignore_camera_scroll",
+        "ignore_rotation",
+        "limit_enabled",
+        "limit_smoothed",
+        "position_smoothing_enabled",
+        "rotation_smoothing_enabled",
+        "visible",
+    }
+    for name in boolean_properties & properties.keys():
+        _validate_boolean(properties[name], name)
+
+    for name, supported in {
+        "anchor_mode": {"fixed_top_left", "drag_center"},
+        "process_callback": {"physics", "idle"},
+    }.items():
+        if name in properties and (
+            not isinstance(properties[name], str)
+            or properties[name].strip().lower() not in supported
+        ):
+            choices = ", ".join(sorted(supported))
+            raise ValueError(f"{name} must be one of: {choices}")
+
+    vector_properties = {
+        "autoscroll",
+        "limit_begin",
+        "limit_end",
+        "offset",
+        "repeat_size",
+        "scale",
+        "screen_offset",
+        "scroll_offset",
+        "scroll_scale",
+        "zoom",
+    }
+    for name in vector_properties & properties.keys():
+        _validate_viewport_vector2(properties[name], name)
+    if "transform" in properties:
+        _validate_viewport_transform2d(properties["transform"])
+
+    if "custom_viewport_path" in properties:
+        custom_viewport_path = properties["custom_viewport_path"]
+        if not isinstance(custom_viewport_path, str):
+            raise ValueError("custom_viewport_path must be a scene path or an empty string")
+        if custom_viewport_path.strip():
+            _validate_node_path(custom_viewport_path.strip())
+
+    integer_properties = {"limit_bottom", "limit_left", "limit_right", "limit_top", "layer"}
+    for name in integer_properties & properties.keys():
+        value = properties[name]
+        if isinstance(value, bool) or not isinstance(value, int) or not -(2**31) <= value < 2**31:
+            raise ValueError(f"{name} must be a signed 32-bit integer")
+    if "repeat_times" in properties:
+        value = properties["repeat_times"]
+        if isinstance(value, bool) or not isinstance(value, int) or not 1 <= value <= 128:
+            raise ValueError("repeat_times must be an integer between 1 and 128")
+
+    drag_margin_properties = {
+        "drag_bottom_margin",
+        "drag_left_margin",
+        "drag_right_margin",
+        "drag_top_margin",
+    }
+    for name in drag_margin_properties & properties.keys():
+        _validate_viewport_number(properties[name], name, minimum=0.0, maximum=1.0)
+    for name in {"drag_horizontal_offset", "drag_vertical_offset"} & properties.keys():
+        _validate_viewport_number(properties[name], name, minimum=-1.0, maximum=1.0)
+    for name in {"position_smoothing_speed", "rotation_smoothing_speed"} & properties.keys():
+        _validate_viewport_number(properties[name], name, minimum=0.0, exclusive_minimum=True)
+    if "rotation" in properties:
+        _validate_viewport_number(properties["rotation"], "rotation")
+    if "follow_viewport_scale" in properties:
+        _validate_viewport_number(properties["follow_viewport_scale"], "follow_viewport_scale")
+        if math.isclose(float(properties["follow_viewport_scale"]), 0.0, abs_tol=1e-12):
+            raise ValueError("follow_viewport_scale must be finite and non-zero")
+    if "repeat_size" in properties and (
+        properties["repeat_size"]["x"] < 0 or properties["repeat_size"]["y"] < 0
+    ):
+        raise ValueError("repeat_size components must be greater than or equal to zero")
+    for name in ("zoom",):
+        if name in properties and (
+            properties[name]["x"] <= 0 or properties[name]["y"] <= 0
+        ):
+            raise ValueError("zoom components must be finite and greater than zero")
+    if "scale" in properties and (
+        math.isclose(float(properties["scale"]["x"]), 0.0, abs_tol=1e-12)
+        or math.isclose(float(properties["scale"]["y"]), 0.0, abs_tol=1e-12)
+    ):
+        raise ValueError("scale components must be finite and non-zero")
+    if "transform" in properties and {"offset", "rotation", "scale"} & properties.keys():
+        raise ValueError("transform cannot be combined with offset, rotation, or scale")
+
+
+def _validate_viewport_vector2(value: Any, label: str) -> None:
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"x", "y"}
+        or not _is_finite_number(value["x"])
+        or not _is_finite_number(value["y"])
+    ):
+        raise ValueError(f"{label} must contain finite x and y values")
+
+
+def _validate_viewport_transform2d(value: Any) -> None:
+    if not isinstance(value, dict) or set(value) != {"x", "y", "origin"}:
+        raise ValueError("transform must contain x, y, and origin Vector2 values")
+    for name in ("x", "y", "origin"):
+        _validate_viewport_vector2(value[name], f"transform.{name}")
+    determinant = float(value["x"]["x"]) * float(value["y"]["y"]) - float(
+        value["x"]["y"]
+    ) * float(value["y"]["x"])
+    if math.isclose(determinant, 0.0, abs_tol=1e-12):
+        raise ValueError("transform must have a non-zero determinant")
+
+
+def _validate_viewport_number(
+    value: Any,
+    label: str,
+    minimum: float | None = None,
+    maximum: float | None = None,
+    *,
+    exclusive_minimum: bool = False,
+) -> None:
+    if not _is_finite_number(value):
+        raise ValueError(f"{label} must be a finite number")
+    numeric_value = float(value)
+    if minimum is not None and (
+        numeric_value <= minimum if exclusive_minimum else numeric_value < minimum
+    ):
+        comparison = "greater than" if exclusive_minimum else "greater than or equal to"
+        raise ValueError(f"{label} must be {comparison} {minimum:g}")
+    if maximum is not None and numeric_value > maximum:
+        raise ValueError(f"{label} must be less than or equal to {maximum:g}")
 
 
 def _validate_light_color(value: Any, label: str) -> None:
