@@ -2103,6 +2103,247 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if not redo_process_material.get("changed"):
             raise RuntimeError("ParticleProcessMaterial update was not redoable")
 
+        undo_process_material_resources = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_process_material_resources.get("changed"):
+            raise RuntimeError("ParticleProcessMaterial resource setup did not restore the external material")
+        initial_process_curve = await app.service.particle_process_material_2d_curve_get(
+            fire_path,
+            "scale",
+            scene_file=scene_file,
+        )
+        if initial_process_curve["resource"]["assigned"]:
+            raise RuntimeError("External ParticleProcessMaterial unexpectedly had a scale CurveTexture")
+        await _expect_godot_error(
+            app.service.particle_process_material_2d_curve_bind(
+                fire_path,
+                "scale",
+                "res://test_particle_gradient_texture.tres",
+                scene_file=scene_file,
+            ),
+            "RESOURCE_TYPE_MISMATCH",
+        )
+        bound_process_curve = await app.service.particle_process_material_2d_curve_bind(
+            fire_path,
+            "scale",
+            "res://test_particle_curve_texture.tres",
+            scene_file=scene_file,
+        )
+        if (
+            not bound_process_curve.get("undoable")
+            or bound_process_curve.get("bound_external_resource") is not True
+            or bound_process_curve.get("copied_external_material") is not True
+            or bound_process_curve["material"]["origin"] != "embedded"
+            or bound_process_curve["resource"]["resource_path"]
+            != "res://test_particle_curve_texture.tres"
+        ):
+            raise RuntimeError("ParticleProcessMaterial CurveTexture was not bound safely")
+        process_curve_update = await app.service.particle_process_material_2d_curve_set(
+            fire_path,
+            "scale",
+            {
+                "width": 128,
+                "texture_mode": "red",
+                "min_domain": 0.0,
+                "max_domain": 1.0,
+                "min_value": -2.0,
+                "max_value": 2.0,
+                "bake_resolution": 64,
+                "points": [
+                    {"position": {"x": 0.0, "y": -1.0}},
+                    {"position": {"x": 1.0, "y": 1.0}},
+                ],
+            },
+            scene_file=scene_file,
+        )
+        process_curve_configuration = process_curve_update["configuration"]
+        if (
+            not process_curve_update.get("undoable")
+            or process_curve_update.get("copied_external_resource") is not True
+            or process_curve_configuration["width"] != 128
+            or process_curve_configuration["texture_mode"] != "red"
+            or not _is_close(process_curve_configuration["curve"]["min_value"], -2.0)
+            or not _is_close(process_curve_configuration["curve"]["max_value"], 2.0)
+            or process_curve_configuration["curve"]["bake_resolution"] != 64
+            or len(process_curve_configuration["curve"]["points"]) != 2
+            or process_curve_update["resource"]["origin"] != "embedded"
+        ):
+            raise RuntimeError("ParticleProcessMaterial CurveTexture configuration was not applied")
+        undo_process_curve_update = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_process_curve_update.get("changed"):
+            raise RuntimeError("ParticleProcessMaterial CurveTexture update was not undoable")
+        restored_process_curve = await app.service.particle_process_material_2d_curve_get(
+            fire_path,
+            "scale",
+            scene_file=scene_file,
+        )
+        if restored_process_curve["resource"]["resource_path"] != "res://test_particle_curve_texture.tres":
+            raise RuntimeError("Undo did not restore the external ParticleProcessMaterial CurveTexture")
+        redo_process_curve_update = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_process_curve_update.get("changed"):
+            raise RuntimeError("ParticleProcessMaterial CurveTexture update was not redoable")
+        cleared_process_curve = await app.service.particle_process_material_2d_curve_clear(
+            fire_path,
+            "scale",
+            scene_file=scene_file,
+        )
+        if cleared_process_curve["resource"]["assigned"]:
+            raise RuntimeError("ParticleProcessMaterial CurveTexture was not cleared")
+        undo_process_curve_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_process_curve_clear.get("changed"):
+            raise RuntimeError("ParticleProcessMaterial CurveTexture clear was not undoable")
+        restored_embedded_process_curve = await app.service.particle_process_material_2d_curve_get(
+            fire_path,
+            "scale",
+            scene_file=scene_file,
+        )
+        if restored_embedded_process_curve["resource"]["origin"] != "embedded":
+            raise RuntimeError("Undo did not restore the embedded ParticleProcessMaterial CurveTexture")
+
+        initial_process_gradient = await app.service.particle_process_material_2d_gradient_get(
+            fire_path,
+            "color",
+            scene_file=scene_file,
+        )
+        if initial_process_gradient["resource"]["assigned"]:
+            raise RuntimeError("ParticleProcessMaterial unexpectedly had a color GradientTexture1D")
+        await _expect_godot_error(
+            app.service.particle_process_material_2d_gradient_bind(
+                fire_path,
+                "color",
+                "res://test_particle_curve_texture.tres",
+                scene_file=scene_file,
+            ),
+            "RESOURCE_TYPE_MISMATCH",
+        )
+        bound_process_gradient = await app.service.particle_process_material_2d_gradient_bind(
+            fire_path,
+            "color",
+            "res://test_particle_gradient_texture.tres",
+            scene_file=scene_file,
+        )
+        if (
+            not bound_process_gradient.get("undoable")
+            or bound_process_gradient.get("bound_external_resource") is not True
+            or bound_process_gradient["resource"]["resource_path"]
+            != "res://test_particle_gradient_texture.tres"
+        ):
+            raise RuntimeError("ParticleProcessMaterial GradientTexture1D was not bound safely")
+        process_gradient_update = await app.service.particle_process_material_2d_gradient_set(
+            fire_path,
+            "color",
+            {
+                "width": 512,
+                "use_hdr": True,
+                "points": [
+                    {"offset": 0.0, "color": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}},
+                    {"offset": 0.5, "color": {"r": 0.0, "g": 1.0, "b": 0.0, "a": 0.8}},
+                    {"offset": 1.0, "color": {"r": 0.0, "g": 0.0, "b": 1.0, "a": 0.5}},
+                ],
+                "interpolation_mode": "cubic",
+                "interpolation_color_space": "oklab",
+            },
+            scene_file=scene_file,
+        )
+        process_gradient_configuration = process_gradient_update["configuration"]
+        if (
+            not process_gradient_update.get("undoable")
+            or process_gradient_update.get("copied_external_resource") is not True
+            or process_gradient_configuration["width"] != 512
+            or process_gradient_configuration["use_hdr"] is not True
+            or process_gradient_configuration["gradient"]["interpolation_mode"] != "cubic"
+            or process_gradient_configuration["gradient"]["interpolation_color_space"] != "oklab"
+            or len(process_gradient_configuration["gradient"]["points"]) != 3
+            or not _color_matches(
+                process_gradient_configuration["gradient"]["points"][1]["color"],
+                {"r": 0.0, "g": 1.0, "b": 0.0, "a": 0.8},
+            )
+            or process_gradient_update["resource"]["origin"] != "embedded"
+        ):
+            raise RuntimeError("ParticleProcessMaterial GradientTexture1D configuration was not applied")
+        undo_process_gradient_update = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_process_gradient_update.get("changed"):
+            raise RuntimeError("ParticleProcessMaterial GradientTexture1D update was not undoable")
+        restored_process_gradient = await app.service.particle_process_material_2d_gradient_get(
+            fire_path,
+            "color",
+            scene_file=scene_file,
+        )
+        if restored_process_gradient["resource"]["resource_path"] != "res://test_particle_gradient_texture.tres":
+            raise RuntimeError("Undo did not restore the external ParticleProcessMaterial GradientTexture1D")
+        redo_process_gradient_update = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_process_gradient_update.get("changed"):
+            raise RuntimeError("ParticleProcessMaterial GradientTexture1D update was not redoable")
+        cleared_process_gradient = await app.service.particle_process_material_2d_gradient_clear(
+            fire_path,
+            "color",
+            scene_file=scene_file,
+        )
+        if cleared_process_gradient["resource"]["assigned"]:
+            raise RuntimeError("ParticleProcessMaterial GradientTexture1D was not cleared")
+        undo_process_gradient_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_process_gradient_clear.get("changed"):
+            raise RuntimeError("ParticleProcessMaterial GradientTexture1D clear was not undoable")
+        restored_embedded_process_gradient = await app.service.particle_process_material_2d_gradient_get(
+            fire_path,
+            "color",
+            scene_file=scene_file,
+        )
+        if restored_embedded_process_gradient["resource"]["origin"] != "embedded":
+            raise RuntimeError("Undo did not restore the embedded ParticleProcessMaterial GradientTexture1D")
+        expected_process_curve_names = {
+            "angle",
+            "angular_velocity",
+            "orbit_velocity",
+            "radial_velocity",
+            "velocity_limit",
+            "linear_accel",
+            "radial_accel",
+            "tangential_accel",
+            "damping",
+            "scale",
+            "scale_over_velocity",
+            "alpha",
+            "emission",
+            "hue_variation",
+            "anim_speed",
+            "anim_offset",
+            "turbulence_influence_over_life",
+        }
+        if (
+            set(restored_embedded_process_curve["curve_names"]) != expected_process_curve_names
+            or set(restored_embedded_process_gradient["gradient_names"]) != {"color", "initial_color"}
+        ):
+            raise RuntimeError("ParticleProcessMaterial resource slots were not enumerated")
+        scalar_process_curve = await app.service.particle_process_material_2d_curve_set(
+            fire_path,
+            "alpha",
+            {"points": [{"position": {"x": 0.0, "y": 1.0}}, {"position": {"x": 1.0, "y": 0.0}}]},
+            scene_file=scene_file,
+        )
+        if (
+            scalar_process_curve.get("created") is not True
+            or scalar_process_curve["resource"]["origin"] != "embedded"
+            or set(scalar_process_curve["curve_names"]) != expected_process_curve_names
+        ):
+            raise RuntimeError("ParticleProcessMaterial direct CurveTexture slot was not configured")
+        initial_color_gradient = await app.service.particle_process_material_2d_gradient_set(
+            fire_path,
+            "initial_color",
+            {
+                "points": [
+                    {"offset": 0.0, "color": {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0}},
+                    {"offset": 1.0, "color": {"r": 0.0, "g": 0.0, "b": 0.0, "a": 0.0}},
+                ]
+            },
+            scene_file=scene_file,
+        )
+        if (
+            initial_color_gradient.get("created") is not True
+            or initial_color_gradient["resource"]["origin"] != "embedded"
+            or len(initial_color_gradient["configuration"]["gradient"]["points"]) != 2
+        ):
+            raise RuntimeError("ParticleProcessMaterial initial_color GradientTexture1D was not configured")
+
         cpu_particles = await app.service.node_create(
             type_name="CPUParticles2D",
             name="AgentCpuParticles",
@@ -3210,6 +3451,8 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentCpuParticles" not in saved_scene
             or "Curve" not in saved_scene
             or "Gradient" not in saved_scene
+            or "CurveTexture" not in saved_scene
+            or "GradientTexture1D" not in saved_scene
             or "test_icon.svg" not in saved_scene
             or "ParticleProcessMaterial" not in saved_scene
             or "AgentViewport" not in saved_scene

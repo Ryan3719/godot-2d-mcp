@@ -891,6 +891,36 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def particle_process_material_2d_curve_get(
+        self,
+        path: str,
+        curve: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_particle_process_material_curve_name(curve)
+        return await self.bridge.call(
+            "particle_process_material_2d_curve_get",
+            _scene_params(scene_file, path=path, curve=curve),
+            session_id=session_id,
+        )
+
+    async def particle_process_material_2d_gradient_get(
+        self,
+        path: str,
+        gradient: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_particle_process_material_gradient_name(gradient)
+        return await self.bridge.call(
+            "particle_process_material_2d_gradient_get",
+            _scene_params(scene_file, path=path, gradient=gradient),
+            session_id=session_id,
+        )
+
     async def light_2d_get(
         self,
         path: str,
@@ -1835,6 +1865,104 @@ class GodotService:
         return await self.bridge.call(
             "particle_process_material_2d_set",
             _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def particle_process_material_2d_curve_bind(
+        self,
+        path: str,
+        curve: str,
+        resource_path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_particle_process_material_curve_name(curve)
+        _validate_project_resource_path(resource_path, "resource_path")
+        return await self.bridge.call(
+            "particle_process_material_2d_curve_bind",
+            _scene_params(scene_file, path=path, curve=curve, resource_path=resource_path),
+            session_id=session_id,
+        )
+
+    async def particle_process_material_2d_curve_set(
+        self,
+        path: str,
+        curve: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_particle_process_material_curve_name(curve)
+        _validate_particle_process_material_curve_properties(properties)
+        return await self.bridge.call(
+            "particle_process_material_2d_curve_set",
+            _scene_params(scene_file, path=path, curve=curve, properties=properties),
+            session_id=session_id,
+        )
+
+    async def particle_process_material_2d_curve_clear(
+        self,
+        path: str,
+        curve: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_particle_process_material_curve_name(curve)
+        return await self.bridge.call(
+            "particle_process_material_2d_curve_clear",
+            _scene_params(scene_file, path=path, curve=curve),
+            session_id=session_id,
+        )
+
+    async def particle_process_material_2d_gradient_bind(
+        self,
+        path: str,
+        gradient: str,
+        resource_path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_particle_process_material_gradient_name(gradient)
+        _validate_project_resource_path(resource_path, "resource_path")
+        return await self.bridge.call(
+            "particle_process_material_2d_gradient_bind",
+            _scene_params(scene_file, path=path, gradient=gradient, resource_path=resource_path),
+            session_id=session_id,
+        )
+
+    async def particle_process_material_2d_gradient_set(
+        self,
+        path: str,
+        gradient: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_particle_process_material_gradient_name(gradient)
+        _validate_particle_process_material_gradient_properties(properties)
+        return await self.bridge.call(
+            "particle_process_material_2d_gradient_set",
+            _scene_params(scene_file, path=path, gradient=gradient, properties=properties),
+            session_id=session_id,
+        )
+
+    async def particle_process_material_2d_gradient_clear(
+        self,
+        path: str,
+        gradient: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_particle_process_material_gradient_name(gradient)
+        return await self.bridge.call(
+            "particle_process_material_2d_gradient_clear",
+            _scene_params(scene_file, path=path, gradient=gradient),
             session_id=session_id,
         )
 
@@ -3497,6 +3625,111 @@ def _validate_cpu_particles_gradient_points(points: Any) -> None:
             raise ValueError("Gradient points must use strictly increasing offsets")
         previous_offset = float(point["offset"])
         _validate_light_color(point["color"], f"points[{index}].color")
+
+
+def _validate_particle_process_material_curve_name(value: str) -> None:
+    allowed = {
+        "angle",
+        "angular_velocity",
+        "orbit_velocity",
+        "radial_velocity",
+        "velocity_limit",
+        "linear_accel",
+        "radial_accel",
+        "tangential_accel",
+        "damping",
+        "scale",
+        "scale_over_velocity",
+        "alpha",
+        "emission",
+        "hue_variation",
+        "anim_speed",
+        "anim_offset",
+        "turbulence_influence_over_life",
+    }
+    if not isinstance(value, str) or value.strip().lower() not in allowed:
+        raise ValueError(f"curve must be one of: {', '.join(sorted(allowed))}")
+
+
+def _validate_particle_process_material_gradient_name(value: str) -> None:
+    if not isinstance(value, str) or value.strip().lower() not in {"color", "initial_color"}:
+        raise ValueError("gradient must be one of: color, initial_color")
+
+
+def _validate_particle_process_material_curve_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "width",
+        "texture_mode",
+        "min_domain",
+        "max_domain",
+        "min_value",
+        "max_value",
+        "bake_resolution",
+        "points",
+    }
+    if not isinstance(properties, dict) or not properties:
+        raise ValueError("properties must be a non-empty object")
+    if len(properties) > len(allowed):
+        raise ValueError("properties can contain at most 8 CurveTexture entries")
+    if set(properties) - allowed:
+        raise ValueError("properties contains an unsupported CurveTexture field")
+    curve_properties = {
+        name: value
+        for name, value in properties.items()
+        if name
+        in {
+            "min_domain",
+            "max_domain",
+            "min_value",
+            "max_value",
+            "bake_resolution",
+            "points",
+        }
+    }
+    if curve_properties:
+        _validate_cpu_particles_curve_properties(curve_properties)
+    if "width" in properties and (
+        isinstance(properties["width"], bool)
+        or not isinstance(properties["width"], int)
+        or not 32 <= properties["width"] <= 4096
+    ):
+        raise ValueError("width must be an integer between 32 and 4096")
+    if "texture_mode" in properties and (
+        not isinstance(properties["texture_mode"], str)
+        or properties["texture_mode"].strip().lower() not in {"rgb", "red"}
+    ):
+        raise ValueError("texture_mode must be rgb or red")
+
+
+def _validate_particle_process_material_gradient_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "width",
+        "use_hdr",
+        "points",
+        "interpolation_mode",
+        "interpolation_color_space",
+    }
+    if not isinstance(properties, dict) or not properties:
+        raise ValueError("properties must be a non-empty object")
+    if len(properties) > len(allowed):
+        raise ValueError("properties can contain at most 5 GradientTexture1D entries")
+    if set(properties) - allowed:
+        raise ValueError("properties contains an unsupported GradientTexture1D field")
+    gradient_properties = {
+        name: value
+        for name, value in properties.items()
+        if name in {"points", "interpolation_mode", "interpolation_color_space"}
+    }
+    if gradient_properties:
+        _validate_cpu_particles_gradient_properties(gradient_properties)
+    if "width" in properties and (
+        isinstance(properties["width"], bool)
+        or not isinstance(properties["width"], int)
+        or not 1 <= properties["width"] <= 16384
+    ):
+        raise ValueError("width must be an integer between 1 and 16384")
+    if "use_hdr" in properties:
+        _validate_boolean(properties["use_hdr"], "use_hdr")
 
 
 def _validate_particle_process_material_2d_properties(properties: dict[str, Any]) -> None:

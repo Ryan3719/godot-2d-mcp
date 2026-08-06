@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.25.0"
+const PLUGIN_VERSION := "0.26.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 
 const ConnectionScript := preload("res://addons/godot_2d_mcp/transport/connection.gd")
@@ -24,6 +24,7 @@ const SkeletonHandlerScript := preload("res://addons/godot_2d_mcp/handlers/skele
 const AudioHandlerScript := preload("res://addons/godot_2d_mcp/handlers/audio_handler.gd")
 const GpuParticlesHandlerScript := preload("res://addons/godot_2d_mcp/handlers/gpu_particles_handler.gd")
 const ParticleProcessMaterialHandlerScript := preload("res://addons/godot_2d_mcp/handlers/particle_process_material_handler.gd")
+const ParticleProcessMaterialResourcesHandlerScript := preload("res://addons/godot_2d_mcp/handlers/particle_process_material_resources_handler.gd")
 const CpuParticlesHandlerScript := preload("res://addons/godot_2d_mcp/handlers/cpu_particles_handler.gd")
 const CpuParticleResourcesHandlerScript := preload("res://addons/godot_2d_mcp/handlers/cpu_particle_resources_handler.gd")
 
@@ -83,12 +84,14 @@ func _register_handlers() -> void:
 	var audio_handler: RefCounted = AudioHandlerScript.new(get_undo_redo())
 	var gpu_particles_handler: RefCounted = GpuParticlesHandlerScript.new(get_undo_redo())
 	var particle_process_material_handler: RefCounted = ParticleProcessMaterialHandlerScript.new(get_undo_redo())
+	var particle_process_material_resources_handler: RefCounted = ParticleProcessMaterialResourcesHandlerScript.new(get_undo_redo())
 	var cpu_particles_handler: RefCounted = CpuParticlesHandlerScript.new(get_undo_redo())
 	var cpu_particle_resources_handler: RefCounted = CpuParticleResourcesHandlerScript.new(get_undo_redo())
 	_handlers.assign([
 		editor_handler, scene_handler, node_handler, class_handler, signal_handler, animation_handler,
 		ui_handler, theme_handler, physics_handler, tile_map_handler, lighting_handler, viewport_handler,
 		path_handler, skeleton_handler, audio_handler, gpu_particles_handler, particle_process_material_handler,
+		particle_process_material_resources_handler,
 		cpu_particles_handler, cpu_particle_resources_handler
 	])
 
@@ -122,6 +125,8 @@ func _register_handlers() -> void:
 	_dispatcher.register("audio_stream_player_2d_get", audio_handler.get_audio_stream_player_2d)
 	_dispatcher.register("gpu_particles_2d_get", gpu_particles_handler.get_gpu_particles_2d)
 	_dispatcher.register("particle_process_material_2d_get", particle_process_material_handler.get_particle_process_material_2d)
+	_dispatcher.register("particle_process_material_2d_curve_get", particle_process_material_resources_handler.get_particle_process_material_2d_curve)
+	_dispatcher.register("particle_process_material_2d_gradient_get", particle_process_material_resources_handler.get_particle_process_material_2d_gradient)
 	_dispatcher.register("cpu_particles_2d_get", cpu_particles_handler.get_cpu_particles_2d)
 	_dispatcher.register("cpu_particles_2d_curve_get", cpu_particle_resources_handler.get_cpu_particles_2d_curve)
 	_dispatcher.register("cpu_particles_2d_gradient_get", cpu_particle_resources_handler.get_cpu_particles_2d_gradient)
@@ -189,6 +194,12 @@ func _register_handlers() -> void:
 	_dispatcher.register("gpu_particles_2d_set", gpu_particles_handler.set_gpu_particles_2d)
 	_dispatcher.register("particle_process_material_2d_create", particle_process_material_handler.create_particle_process_material_2d)
 	_dispatcher.register("particle_process_material_2d_set", particle_process_material_handler.set_particle_process_material_2d)
+	_dispatcher.register("particle_process_material_2d_curve_bind", particle_process_material_resources_handler.bind_particle_process_material_2d_curve)
+	_dispatcher.register("particle_process_material_2d_curve_set", particle_process_material_resources_handler.set_particle_process_material_2d_curve)
+	_dispatcher.register("particle_process_material_2d_curve_clear", particle_process_material_resources_handler.clear_particle_process_material_2d_curve)
+	_dispatcher.register("particle_process_material_2d_gradient_bind", particle_process_material_resources_handler.bind_particle_process_material_2d_gradient)
+	_dispatcher.register("particle_process_material_2d_gradient_set", particle_process_material_resources_handler.set_particle_process_material_2d_gradient)
+	_dispatcher.register("particle_process_material_2d_gradient_clear", particle_process_material_resources_handler.clear_particle_process_material_2d_gradient)
 	_dispatcher.register("cpu_particles_2d_set", cpu_particles_handler.set_cpu_particles_2d)
 	_dispatcher.register("cpu_particles_2d_curve_bind", cpu_particle_resources_handler.bind_cpu_particles_2d_curve)
 	_dispatcher.register("cpu_particles_2d_curve_set", cpu_particle_resources_handler.set_cpu_particles_2d_curve)

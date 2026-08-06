@@ -45,6 +45,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "cpu_particles_2d_curve_get",
         "cpu_particles_2d_gradient_get",
         "particle_process_material_2d_get",
+        "particle_process_material_2d_curve_get",
+        "particle_process_material_2d_gradient_get",
         "light_2d_get",
         "light_occluder_2d_get",
         "tile_map_layer_get",
@@ -116,6 +118,12 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "cpu_particles_2d_gradient_clear",
         "particle_process_material_2d_create",
         "particle_process_material_2d_set",
+        "particle_process_material_2d_curve_bind",
+        "particle_process_material_2d_curve_set",
+        "particle_process_material_2d_curve_clear",
+        "particle_process_material_2d_gradient_bind",
+        "particle_process_material_2d_gradient_set",
+        "particle_process_material_2d_gradient_clear",
         "light_2d_set",
         "light_occluder_2d_set",
         "tile_set_create",
@@ -170,6 +178,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["cpu_particles_2d_curve_get"].readOnlyHint is True
     assert annotations["cpu_particles_2d_gradient_get"].readOnlyHint is True
     assert annotations["particle_process_material_2d_get"].readOnlyHint is True
+    assert annotations["particle_process_material_2d_curve_get"].readOnlyHint is True
+    assert annotations["particle_process_material_2d_gradient_get"].readOnlyHint is True
     assert annotations["light_2d_get"].readOnlyHint is True
     assert annotations["light_occluder_2d_get"].readOnlyHint is True
     assert annotations["tile_map_layer_get"].readOnlyHint is True
@@ -240,6 +250,12 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["cpu_particles_2d_gradient_clear"].destructiveHint is True
     assert annotations["particle_process_material_2d_create"].destructiveHint is True
     assert annotations["particle_process_material_2d_set"].readOnlyHint is False
+    assert annotations["particle_process_material_2d_curve_bind"].readOnlyHint is False
+    assert annotations["particle_process_material_2d_curve_set"].readOnlyHint is False
+    assert annotations["particle_process_material_2d_curve_clear"].destructiveHint is True
+    assert annotations["particle_process_material_2d_gradient_bind"].readOnlyHint is False
+    assert annotations["particle_process_material_2d_gradient_set"].readOnlyHint is False
+    assert annotations["particle_process_material_2d_gradient_clear"].destructiveHint is True
     assert annotations["light_2d_set"].readOnlyHint is False
     assert annotations["light_occluder_2d_set"].readOnlyHint is False
     assert annotations["tile_set_create"].readOnlyHint is False
