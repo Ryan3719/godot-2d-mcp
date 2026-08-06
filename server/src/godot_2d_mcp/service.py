@@ -934,6 +934,19 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def canvas_item_shader_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "canvas_item_shader_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def light_2d_get(
         self,
         path: str,
@@ -2033,6 +2046,71 @@ class GodotService:
         _validate_node_path(path)
         return await self.bridge.call(
             "canvas_item_material_clear",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def canvas_item_shader_create(
+        self,
+        path: str,
+        source: str = "shader_type canvas_item;\n",
+        replace_existing: bool = False,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_canvas_item_shader_source(source)
+        _validate_boolean(replace_existing, "replace_existing")
+        return await self.bridge.call(
+            "canvas_item_shader_create",
+            _scene_params(
+                scene_file,
+                path=path,
+                source=source,
+                replace_existing=replace_existing,
+            ),
+            session_id=session_id,
+        )
+
+    async def canvas_item_shader_bind(
+        self,
+        path: str,
+        resource_path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_project_resource_path(resource_path, "resource_path")
+        return await self.bridge.call(
+            "canvas_item_shader_bind",
+            _scene_params(scene_file, path=path, resource_path=resource_path),
+            session_id=session_id,
+        )
+
+    async def canvas_item_shader_set(
+        self,
+        path: str,
+        source: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_canvas_item_shader_source(source)
+        return await self.bridge.call(
+            "canvas_item_shader_set",
+            _scene_params(scene_file, path=path, source=source),
+            session_id=session_id,
+        )
+
+    async def canvas_item_shader_clear(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "canvas_item_shader_clear",
             _scene_params(scene_file, path=path),
             session_id=session_id,
         )
@@ -3837,6 +3915,11 @@ def _validate_canvas_item_material_properties(properties: dict[str, Any]) -> Non
             or not 1 <= properties[name] <= 128
         ):
             raise ValueError(f"{name} must be an integer between 1 and 128")
+
+
+def _validate_canvas_item_shader_source(source: str) -> None:
+    if not isinstance(source, str) or not source.strip() or len(source) > 65_536:
+        raise ValueError("source must contain between 1 and 65536 characters")
 
 
 def _validate_particle_process_material_2d_properties(properties: dict[str, Any]) -> None:

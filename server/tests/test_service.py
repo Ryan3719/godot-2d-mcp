@@ -2190,6 +2190,75 @@ async def test_canvas_item_material_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_canvas_item_shader_tools_forward_copy_on_write_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    path = "/Main/Badge"
+    scene_file = "res://main.tscn"
+    source = "shader_type canvas_item;\nvoid fragment() { COLOR = vec4(1.0); }\n"
+
+    await service.canvas_item_shader_get(path, session_id="project@a1b2", scene_file=scene_file)
+    await service.canvas_item_shader_create(path, source=source, scene_file=scene_file)
+    await service.canvas_item_shader_bind(
+        path, "res://canvas_item_shader_material.tres", scene_file=scene_file
+    )
+    await service.canvas_item_shader_set(path, source, scene_file=scene_file)
+    await service.canvas_item_shader_clear(path, scene_file=scene_file)
+
+    assert bridge.calls == [
+        (
+            "canvas_item_shader_get",
+            {"path": path, "scene_file": scene_file},
+            "project@a1b2",
+        ),
+        (
+            "canvas_item_shader_create",
+            {
+                "path": path,
+                "source": source,
+                "replace_existing": False,
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "canvas_item_shader_bind",
+            {
+                "path": path,
+                "resource_path": "res://canvas_item_shader_material.tres",
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "canvas_item_shader_set",
+            {"path": path, "source": source, "scene_file": scene_file},
+            None,
+        ),
+        (
+            "canvas_item_shader_clear",
+            {"path": path, "scene_file": scene_file},
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_canvas_item_shader_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+    path = "/Main/Badge"
+
+    with pytest.raises(ValueError, match="replace_existing"):
+        await service.canvas_item_shader_create(path, replace_existing=1)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="source"):
+        await service.canvas_item_shader_create(path, source="")
+    with pytest.raises(ValueError, match="source"):
+        await service.canvas_item_shader_set(path, "x" * 65_537)
+    with pytest.raises(ValueError, match="resource_path"):
+        await service.canvas_item_shader_bind(path, "canvas_item_shader_material.tres")
+
+
+@pytest.mark.asyncio
 async def test_lighting_tools_forward_atomic_semantic_payloads() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)
