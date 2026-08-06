@@ -1956,6 +1956,153 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         ):
             raise RuntimeError("Undo did not restore GPUParticles2D resource bindings")
 
+        initial_sparks_material = await app.service.particle_process_material_2d_get(
+            sparks_path, scene_file=scene_file
+        )
+        if initial_sparks_material["material"]["assigned"]:
+            raise RuntimeError("New GPUParticles2D unexpectedly had a process material")
+        sparks_material = await app.service.particle_process_material_2d_create(
+            sparks_path, scene_file=scene_file
+        )
+        if (
+            not sparks_material.get("created")
+            or sparks_material["material"]["origin"] != "embedded"
+            or sparks_material["configuration"] is None
+            or sparks_material["configuration"]["disable_z"] is not True
+        ):
+            raise RuntimeError("ParticleProcessMaterial was not created as an embedded 2D material")
+        await _expect_godot_error(
+            app.service.particle_process_material_2d_create(sparks_path, scene_file=scene_file),
+            "PROCESS_MATERIAL_ALREADY_ASSIGNED",
+        )
+        undo_sparks_material = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_sparks_material.get("changed"):
+            raise RuntimeError("ParticleProcessMaterial creation was not undoable")
+        restored_sparks_material = await app.service.particle_process_material_2d_get(
+            sparks_path, scene_file=scene_file
+        )
+        if restored_sparks_material["material"]["assigned"]:
+            raise RuntimeError("Undo did not remove the created ParticleProcessMaterial")
+        redo_sparks_material = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_sparks_material.get("changed"):
+            raise RuntimeError("ParticleProcessMaterial creation was not redoable")
+
+        initial_fire_material = await app.service.particle_process_material_2d_get(
+            fire_path, scene_file=scene_file
+        )
+        if (
+            initial_fire_material["material"]["origin"] != "external"
+            or initial_fire_material["material"]["resource_path"] != "res://test_particles.tres"
+            or initial_fire_material["configuration"]["direction"] != {"x": 1.0, "y": 0.0}
+        ):
+            raise RuntimeError("External ParticleProcessMaterial was not reported accurately")
+        await _expect_godot_error(
+            app.service.particle_process_material_2d_set(
+                fire_path,
+                {"emission_ring_inner_radius": 5.0},
+                scene_file=scene_file,
+            ),
+            "INVALID_PROCESS_MATERIAL_CONFIGURATION",
+        )
+        process_material_update = await app.service.particle_process_material_2d_set(
+            fire_path,
+            {
+                "lifetime_randomness": 0.25,
+                "align_y_to_velocity": True,
+                "disable_z": True,
+                "damping_as_friction": True,
+                "emission_shape": "box",
+                "emission_shape_offset": {"x": 4.0, "y": 8.0},
+                "emission_shape_scale": {"x": 2.0, "y": 3.0},
+                "emission_sphere_radius": 12.0,
+                "emission_box_extents": {"x": 32.0, "y": 16.0},
+                "emission_point_count": 64,
+                "emission_ring_height": 8.0,
+                "emission_ring_radius": 10.0,
+                "emission_ring_inner_radius": 4.0,
+                "emission_ring_cone_angle": 45.0,
+                "direction": {"x": 0.5, "y": -1.0},
+                "spread": 20.0,
+                "flatness": 0.2,
+                "inherit_velocity_ratio": 0.5,
+                "velocity_pivot": {"x": 3.0, "y": 5.0},
+                "initial_velocity_min": 32.0,
+                "initial_velocity_max": 64.0,
+                "angular_velocity_min": -10.0,
+                "angular_velocity_max": 20.0,
+                "orbit_velocity_min": -0.5,
+                "orbit_velocity_max": 0.75,
+                "radial_velocity_min": -12.0,
+                "radial_velocity_max": 18.0,
+                "directional_velocity_min": -9.0,
+                "directional_velocity_max": 11.0,
+                "gravity": {"x": 0.0, "y": 98.0},
+                "linear_accel_min": -5.0,
+                "linear_accel_max": 10.0,
+                "radial_accel_min": -4.0,
+                "radial_accel_max": 6.0,
+                "tangential_accel_min": -3.0,
+                "tangential_accel_max": 7.0,
+                "damping_min": 0.1,
+                "damping_max": 0.8,
+                "attractor_interaction_enabled": True,
+                "scale_min": 0.5,
+                "scale_max": 1.5,
+                "color": {"r": 1.0, "g": 0.5, "b": 0.25, "a": 0.8},
+                "turbulence_enabled": True,
+                "turbulence_noise_strength": 2.0,
+                "turbulence_noise_scale": 0.5,
+                "turbulence_noise_speed": {"x": 4.0, "y": -2.0},
+                "turbulence_noise_speed_random": 0.3,
+                "collision_mode": "rigid",
+                "collision_friction": 0.4,
+                "collision_bounce": 0.6,
+                "collision_use_scale": True,
+                "sub_emitter_mode": "at_collision",
+                "sub_emitter_frequency": 12.0,
+                "sub_emitter_amount_at_end": 2,
+                "sub_emitter_amount_at_collision": 3,
+                "sub_emitter_amount_at_start": 4,
+                "sub_emitter_keep_velocity": True,
+            },
+            scene_file=scene_file,
+        )
+        process_configuration = process_material_update["configuration"]
+        if (
+            not process_material_update.get("undoable")
+            or process_material_update.get("copied_external_material") is not True
+            or process_material_update["material"]["origin"] != "embedded"
+            or process_material_update["material"]["resource_path"] != ""
+            or process_configuration["emission_shape"] != "box"
+            or process_configuration["emission_box_extents"] != {"x": 32.0, "y": 16.0}
+            or process_configuration["direction"] != {"x": 0.5, "y": -1.0}
+            or not _is_close(process_configuration["initial_velocity_min"], 32.0)
+            or not _is_close(process_configuration["initial_velocity_max"], 64.0)
+            or process_configuration["gravity"] != {"x": 0.0, "y": 98.0}
+            or not _color_matches(
+                process_configuration["color"], {"r": 1.0, "g": 0.5, "b": 0.25, "a": 0.8}
+            )
+            or process_configuration["collision_mode"] != "rigid"
+            or process_configuration["sub_emitter_mode"] != "at_collision"
+            or process_configuration["sub_emitter_amount_at_collision"] != 3
+        ):
+            raise RuntimeError("ParticleProcessMaterial configuration was not applied")
+        undo_process_material = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_process_material.get("changed"):
+            raise RuntimeError("ParticleProcessMaterial update was not undoable")
+        restored_fire_material = await app.service.particle_process_material_2d_get(
+            fire_path, scene_file=scene_file
+        )
+        if (
+            restored_fire_material["material"]["origin"] != "external"
+            or restored_fire_material["material"]["resource_path"] != "res://test_particles.tres"
+            or restored_fire_material["configuration"]["direction"] != {"x": 1.0, "y": 0.0}
+        ):
+            raise RuntimeError("Undo did not restore the untouched external ParticleProcessMaterial")
+        redo_process_material = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_process_material.get("changed"):
+            raise RuntimeError("ParticleProcessMaterial update was not redoable")
+
         viewport = await app.service.node_create(
             type_name="SubViewport",
             name="AgentViewport",
@@ -2715,7 +2862,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentSparks" not in saved_scene
             or "AgentFire" not in saved_scene
             or "test_icon.svg" not in saved_scene
-            or "test_particles.tres" not in saved_scene
+            or "ParticleProcessMaterial" not in saved_scene
             or "AgentViewport" not in saved_scene
             or "AgentCamera" not in saved_scene
             or "AgentParallax" not in saved_scene
@@ -2785,6 +2932,12 @@ def _theme_item(result: dict, group: str, theme_type: str, name: str) -> dict | 
 
 def _is_close(actual: object, expected: float) -> bool:
     return isinstance(actual, (int, float)) and abs(float(actual) - expected) < 1e-6
+
+
+def _color_matches(actual: object, expected: dict[str, float]) -> bool:
+    return isinstance(actual, dict) and all(
+        _is_close(actual.get(channel), value) for channel, value in expected.items()
+    )
 
 
 def _has_node(hierarchy: dict, path: str) -> bool:

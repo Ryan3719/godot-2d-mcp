@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：阶段 0 已完成；阶段 1 已交付首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式与嵌入式 Theme 资源能力；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力；阶段 4 已交付 TileMapLayer、内嵌 TileSet Atlas、TileSet 语义能力与 Atlas TileData 碰撞/导航/遮挡几何；阶段 5 已交付 PointLight2D、DirectionalLight2D、LightOccluder2D、Camera2D、Parallax2D、CanvasLayer、Path2D、Curve2D、Skeleton2D、Bone2D、AudioStreamPlayer2D 和 GPUParticles2D 的安全语义编辑（v0.22.0）
+状态：阶段 0 已完成；阶段 1 已交付首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式与嵌入式 Theme 资源能力；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力；阶段 4 已交付 TileMapLayer、内嵌 TileSet Atlas、TileSet 语义能力与 Atlas TileData 碰撞/导航/遮挡几何；阶段 5 已交付 PointLight2D、DirectionalLight2D、LightOccluder2D、Camera2D、Parallax2D、CanvasLayer、Path2D、Curve2D、Skeleton2D、Bone2D、AudioStreamPlayer2D、GPUParticles2D 和 ParticleProcessMaterial 的安全语义编辑（v0.23.0）
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -143,6 +143,7 @@ Codex / Claude Code / MCP Client
 - `parallax_2d_get`、`parallax_2d_set`，支持 `Parallax2D` 的自动滚动、相机跟随、滚动限位、重复尺寸/次数与偏移缩放；拒绝无效限位和负重复尺寸。
 - `canvas_layer_get`、`canvas_layer_set`，支持 `CanvasLayer` 的 viewport 绑定、层级、跟随、偏移、旋转、缩放、完整 Transform2D 与可见性；同一事务拒绝同时设置 `transform` 和派生的偏移/旋转/缩放，避免顺序依赖。
 - `gpu_particles_2d_get`、`gpu_particles_2d_set`，支持 GPUParticles2D 的公开持久化节点配置、现有 `Texture2D`/`Material` 资源绑定和场景内子发射器绑定；所有更新均在单个撤销事务中完成。
+- `particle_process_material_2d_get`、`particle_process_material_2d_create`、`particle_process_material_2d_set`，支持 GPUParticles2D 的 ParticleProcessMaterial 查询、独立内嵌材质创建，以及发射、速度、加速度、缩放、颜色、湍流、碰撞和子发射器的复制后替换编辑；外部或共享材质不会被原地修改。
 - `tile_map_layer_get`、`tile_map_layer_cells_get`、`tile_set_get`、`tile_set_layers_get`、`tile_set_atlas_tile_get`、`tile_set_create`、`tile_set_clear`、`tile_set_atlas_source_create`、`tile_set_atlas_tile_create`、`tile_set_physics_layer_create`、`tile_set_navigation_layer_create`、`tile_set_occlusion_layer_create`、`tile_set_custom_data_layer_create`、`tile_set_terrain_set_create`、`tile_set_terrain_create`、`tile_set_atlas_alternative_create`、`tile_set_atlas_tile_terrain_set`、`tile_set_atlas_tile_custom_data_set`、`tile_set_atlas_tile_collision_set`、`tile_set_atlas_tile_navigation_set`、`tile_set_atlas_tile_occlusion_set`、`tile_map_layer_cells_set`、`tile_map_layer_cells_clear`，支持 TileMapLayer 的内嵌 TileSet 创建/解绑、Atlas Source、基础与替代 Atlas tile、物理/导航/遮挡层定义、typed custom data、terrain 定义、已验证的 per-tile terrain/custom data、读取/原子替换 TileData 碰撞多边形、导航多边形和 OccluderPolygon2D、分页 cells 读取、已验证的 cells 批量写入/清除与撤销重做。
 - 重命名和重新挂载时迁移场景内直接 `NodePath` 属性及内嵌 `AnimationPlayer` 动画轨道。
 - 重新挂载默认保持 `Node2D`/`Control` 的全局视觉位置，并允许调用方关闭该行为。
@@ -277,7 +278,7 @@ godot-2d-mcp/
 ### 阶段 5：高级 2D
 
 - 粒子、光照、遮挡、Shader、骨骼、路径、相机和音频。
-- 已交付：光照、遮挡、相机、视口组合、Path2D/Curve2D 的独立内嵌资源替换与 Bézier 点编辑、Skeleton2D/Bone2D 的安全层级创建与 Rest Pose、AudioStreamPlayer2D 的外部流绑定和空间播放配置，以及 GPUParticles2D 的完整节点配置、资源绑定与场景内子发射器编排。
+- 已交付：光照、遮挡、相机、视口组合、Path2D/Curve2D 的独立内嵌资源替换与 Bézier 点编辑、Skeleton2D/Bone2D 的安全层级创建与 Rest Pose、AudioStreamPlayer2D 的外部流绑定和空间播放配置、GPUParticles2D 的完整节点配置/资源绑定/场景内子发射器编排，以及 ParticleProcessMaterial 的内嵌创建与核心 2D 复制后替换编辑。
 
 ### 阶段 6：运行反馈
 

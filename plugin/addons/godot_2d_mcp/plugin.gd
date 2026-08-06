@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.22.0"
+const PLUGIN_VERSION := "0.23.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 
 const ConnectionScript := preload("res://addons/godot_2d_mcp/transport/connection.gd")
@@ -23,6 +23,7 @@ const PathHandlerScript := preload("res://addons/godot_2d_mcp/handlers/path_hand
 const SkeletonHandlerScript := preload("res://addons/godot_2d_mcp/handlers/skeleton_handler.gd")
 const AudioHandlerScript := preload("res://addons/godot_2d_mcp/handlers/audio_handler.gd")
 const GpuParticlesHandlerScript := preload("res://addons/godot_2d_mcp/handlers/gpu_particles_handler.gd")
+const ParticleProcessMaterialHandlerScript := preload("res://addons/godot_2d_mcp/handlers/particle_process_material_handler.gd")
 
 var _connection: Node
 var _dispatcher: RefCounted
@@ -79,10 +80,11 @@ func _register_handlers() -> void:
 	var skeleton_handler: RefCounted = SkeletonHandlerScript.new(get_undo_redo())
 	var audio_handler: RefCounted = AudioHandlerScript.new(get_undo_redo())
 	var gpu_particles_handler: RefCounted = GpuParticlesHandlerScript.new(get_undo_redo())
+	var particle_process_material_handler: RefCounted = ParticleProcessMaterialHandlerScript.new(get_undo_redo())
 	_handlers.assign([
 		editor_handler, scene_handler, node_handler, class_handler, signal_handler, animation_handler,
 		ui_handler, theme_handler, physics_handler, tile_map_handler, lighting_handler, viewport_handler,
-		path_handler, skeleton_handler, audio_handler, gpu_particles_handler
+		path_handler, skeleton_handler, audio_handler, gpu_particles_handler, particle_process_material_handler
 	])
 
 	_dispatcher.register("editor_get_state", editor_handler.get_state)
@@ -114,6 +116,7 @@ func _register_handlers() -> void:
 	_dispatcher.register("bone_2d_get", skeleton_handler.get_bone_2d)
 	_dispatcher.register("audio_stream_player_2d_get", audio_handler.get_audio_stream_player_2d)
 	_dispatcher.register("gpu_particles_2d_get", gpu_particles_handler.get_gpu_particles_2d)
+	_dispatcher.register("particle_process_material_2d_get", particle_process_material_handler.get_particle_process_material_2d)
 	_dispatcher.register("light_2d_get", lighting_handler.get_light_2d)
 	_dispatcher.register("light_occluder_2d_get", lighting_handler.get_light_occluder_2d)
 	_dispatcher.register("tile_map_layer_get", tile_map_handler.get_tile_map_layer)
@@ -176,6 +179,8 @@ func _register_handlers() -> void:
 	_dispatcher.register("skeleton_2d_make_rest_from_current", skeleton_handler.make_skeleton_2d_rest_from_current)
 	_dispatcher.register("audio_stream_player_2d_set", audio_handler.set_audio_stream_player_2d)
 	_dispatcher.register("gpu_particles_2d_set", gpu_particles_handler.set_gpu_particles_2d)
+	_dispatcher.register("particle_process_material_2d_create", particle_process_material_handler.create_particle_process_material_2d)
+	_dispatcher.register("particle_process_material_2d_set", particle_process_material_handler.set_particle_process_material_2d)
 	_dispatcher.register("light_2d_set", lighting_handler.set_light_2d)
 	_dispatcher.register("light_occluder_2d_set", lighting_handler.set_light_occluder_2d)
 	_dispatcher.register("tile_set_create", tile_map_handler.create_tile_set)

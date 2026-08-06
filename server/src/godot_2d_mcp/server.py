@@ -451,6 +451,19 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def particle_process_material_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read a GPUParticles2D process material and its 2D particle simulation settings."""
+        return await service.particle_process_material_2d_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def light_2d_get(
         path: str,
         session_id: str | None = None,
@@ -1482,6 +1495,36 @@ def create_application(
     ) -> dict[str, Any]:
         """Atomically configure a local GPUParticles2D without mutating assigned resources."""
         return await service.gpu_particles_2d_set(
+            path=path,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def particle_process_material_2d_create(
+        path: str,
+        replace_existing: bool = False,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Attach a new embedded ParticleProcessMaterial to a local GPUParticles2D node."""
+        return await service.particle_process_material_2d_create(
+            path=path,
+            replace_existing=replace_existing,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def particle_process_material_2d_set(
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Copy, update, and rebind a GPUParticles2D ParticleProcessMaterial atomically."""
+        return await service.particle_process_material_2d_set(
             path=path,
             properties=properties,
             session_id=session_id,

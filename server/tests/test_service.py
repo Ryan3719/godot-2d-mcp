@@ -1598,6 +1598,83 @@ async def test_gpu_particles_2d_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_particle_process_material_2d_tools_forward_copy_on_write_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    path = "/Main/Fire"
+    scene_file = "res://main.tscn"
+    properties = {
+        "lifetime_randomness": 0.25,
+        "align_y_to_velocity": True,
+        "disable_z": True,
+        "emission_shape": "box",
+        "emission_shape_offset": {"x": 4.0, "y": 8.0},
+        "emission_box_extents": {"x": 32.0, "y": 16.0},
+        "direction": {"x": 1.0, "y": -0.5},
+        "spread": 20.0,
+        "initial_velocity_min": 32.0,
+        "initial_velocity_max": 64.0,
+        "gravity": {"x": 0.0, "y": 98.0},
+        "scale_min": 0.5,
+        "scale_max": 1.5,
+        "color": {"r": 1.0, "g": 0.5, "b": 0.25, "a": 1.0},
+        "collision_mode": "rigid",
+        "sub_emitter_mode": "at_collision",
+        "sub_emitter_amount_at_collision": 2,
+    }
+
+    await service.particle_process_material_2d_get(
+        path, session_id="project@a1b2", scene_file=scene_file
+    )
+    await service.particle_process_material_2d_create(path, scene_file=scene_file)
+    await service.particle_process_material_2d_set(path, properties, scene_file=scene_file)
+
+    assert bridge.calls == [
+        (
+            "particle_process_material_2d_get",
+            {"path": path, "scene_file": scene_file},
+            "project@a1b2",
+        ),
+        (
+            "particle_process_material_2d_create",
+            {"path": path, "replace_existing": False, "scene_file": scene_file},
+            None,
+        ),
+        (
+            "particle_process_material_2d_set",
+            {"path": path, "properties": properties, "scene_file": scene_file},
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_particle_process_material_2d_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+    path = "/Main/Fire"
+
+    with pytest.raises(ValueError, match="replace_existing"):
+        await service.particle_process_material_2d_create(path, replace_existing=1)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="non-empty"):
+        await service.particle_process_material_2d_set(path, {})
+    with pytest.raises(ValueError, match="unsupported ParticleProcessMaterial"):
+        await service.particle_process_material_2d_set(path, {"color_ramp_path": "res://ramp.tres"})
+    with pytest.raises(ValueError, match="emission_shape"):
+        await service.particle_process_material_2d_set(path, {"emission_shape": "line"})
+    with pytest.raises(ValueError, match="emission_box_extents"):
+        await service.particle_process_material_2d_set(
+            path, {"emission_box_extents": {"x": -1.0, "y": 2.0}}
+        )
+    with pytest.raises(ValueError, match="scale_min"):
+        await service.particle_process_material_2d_set(path, {"scale_min": -0.1})
+    with pytest.raises(ValueError, match="emission_ring_inner_radius"):
+        await service.particle_process_material_2d_set(
+            path,
+            {"emission_ring_inner_radius": 8.0, "emission_ring_radius": 4.0},
+        )
+
+
+@pytest.mark.asyncio
 async def test_lighting_tools_forward_atomic_semantic_payloads() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)
