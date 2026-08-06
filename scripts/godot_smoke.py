@@ -2344,6 +2344,118 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         ):
             raise RuntimeError("ParticleProcessMaterial initial_color GradientTexture1D was not configured")
 
+        canvas_item = await app.service.node_create(
+            type_name="Sprite2D",
+            name="AgentCanvasItem",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        canvas_item_path = canvas_item["path"]
+        initial_canvas_material = await app.service.canvas_item_material_get(
+            canvas_item_path,
+            scene_file=scene_file,
+        )
+        if initial_canvas_material["material"]["assigned"] or initial_canvas_material["configuration"] is not None:
+            raise RuntimeError("New CanvasItem unexpectedly had a material")
+        canvas_material = await app.service.canvas_item_material_create(
+            canvas_item_path,
+            scene_file=scene_file,
+        )
+        if (
+            canvas_material.get("created") is not True
+            or canvas_material["material"]["origin"] != "embedded"
+            or canvas_material["configuration"]["blend_mode"] != "mix"
+        ):
+            raise RuntimeError("CanvasItemMaterial was not created as an embedded resource")
+        await _expect_godot_error(
+            app.service.canvas_item_material_create(canvas_item_path, scene_file=scene_file),
+            "CANVAS_ITEM_MATERIAL_ALREADY_ASSIGNED",
+        )
+        undo_canvas_material_create = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_canvas_material_create.get("changed"):
+            raise RuntimeError("CanvasItemMaterial creation was not undoable")
+        restored_empty_canvas_material = await app.service.canvas_item_material_get(
+            canvas_item_path,
+            scene_file=scene_file,
+        )
+        if restored_empty_canvas_material["material"]["assigned"]:
+            raise RuntimeError("Undo did not remove the CanvasItemMaterial")
+        redo_canvas_material_create = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_canvas_material_create.get("changed"):
+            raise RuntimeError("CanvasItemMaterial creation was not redoable")
+        await _expect_godot_error(
+            app.service.canvas_item_material_bind(
+                canvas_item_path,
+                "res://test_cpu_curve.tres",
+                scene_file=scene_file,
+            ),
+            "RESOURCE_TYPE_MISMATCH",
+        )
+        bound_canvas_material = await app.service.canvas_item_material_bind(
+            canvas_item_path,
+            "res://test_canvas_item_material.tres",
+            scene_file=scene_file,
+        )
+        if (
+            not bound_canvas_material.get("undoable")
+            or bound_canvas_material.get("bound_external_resource") is not True
+            or bound_canvas_material["material"]["origin"] != "external"
+            or bound_canvas_material["material"]["resource_path"] != "res://test_canvas_item_material.tres"
+        ):
+            raise RuntimeError("External CanvasItemMaterial was not bound")
+        canvas_material_update = await app.service.canvas_item_material_set(
+            canvas_item_path,
+            {
+                "blend_mode": "add",
+                "light_mode": "unshaded",
+                "particles_animation": True,
+                "particles_anim_h_frames": 4,
+                "particles_anim_v_frames": 2,
+                "particles_anim_loop": True,
+            },
+            scene_file=scene_file,
+        )
+        canvas_material_configuration = canvas_material_update["configuration"]
+        if (
+            not canvas_material_update.get("undoable")
+            or canvas_material_update.get("copied_external_material") is not True
+            or canvas_material_update["material"]["origin"] != "embedded"
+            or canvas_material_configuration["blend_mode"] != "add"
+            or canvas_material_configuration["light_mode"] != "unshaded"
+            or canvas_material_configuration["particles_animation"] is not True
+            or canvas_material_configuration["particles_anim_h_frames"] != 4
+            or canvas_material_configuration["particles_anim_v_frames"] != 2
+            or canvas_material_configuration["particles_anim_loop"] is not True
+        ):
+            raise RuntimeError("CanvasItemMaterial configuration was not applied")
+        undo_canvas_material_update = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_canvas_material_update.get("changed"):
+            raise RuntimeError("CanvasItemMaterial update was not undoable")
+        restored_external_canvas_material = await app.service.canvas_item_material_get(
+            canvas_item_path,
+            scene_file=scene_file,
+        )
+        if restored_external_canvas_material["material"]["resource_path"] != "res://test_canvas_item_material.tres":
+            raise RuntimeError("Undo did not restore the external CanvasItemMaterial")
+        redo_canvas_material_update = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_canvas_material_update.get("changed"):
+            raise RuntimeError("CanvasItemMaterial update was not redoable")
+        cleared_canvas_material = await app.service.canvas_item_material_clear(
+            canvas_item_path,
+            scene_file=scene_file,
+        )
+        if cleared_canvas_material["material"]["assigned"]:
+            raise RuntimeError("CanvasItemMaterial was not cleared")
+        undo_canvas_material_clear = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_canvas_material_clear.get("changed"):
+            raise RuntimeError("CanvasItemMaterial clear was not undoable")
+        restored_embedded_canvas_material = await app.service.canvas_item_material_get(
+            canvas_item_path,
+            scene_file=scene_file,
+        )
+        if restored_embedded_canvas_material["material"]["origin"] != "embedded":
+            raise RuntimeError("Undo did not restore the embedded CanvasItemMaterial")
+
         cpu_particles = await app.service.node_create(
             type_name="CPUParticles2D",
             name="AgentCpuParticles",
@@ -3424,7 +3536,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 42 or _has_node(final_hierarchy, marker_path):
+        if final_hierarchy.get("total") != 43 or _has_node(final_hierarchy, marker_path):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
@@ -3448,6 +3560,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "test_audio.tres" not in saved_scene
             or "AgentSparks" not in saved_scene
             or "AgentFire" not in saved_scene
+            or "AgentCanvasItem" not in saved_scene
             or "AgentCpuParticles" not in saved_scene
             or "Curve" not in saved_scene
             or "Gradient" not in saved_scene
@@ -3455,6 +3568,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "GradientTexture1D" not in saved_scene
             or "test_icon.svg" not in saved_scene
             or "ParticleProcessMaterial" not in saved_scene
+            or "CanvasItemMaterial" not in saved_scene
             or "AgentViewport" not in saved_scene
             or "AgentCamera" not in saved_scene
             or "AgentParallax" not in saved_scene

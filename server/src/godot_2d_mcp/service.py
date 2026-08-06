@@ -921,6 +921,19 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def canvas_item_material_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "canvas_item_material_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def light_2d_get(
         self,
         path: str,
@@ -1963,6 +1976,64 @@ class GodotService:
         return await self.bridge.call(
             "particle_process_material_2d_gradient_clear",
             _scene_params(scene_file, path=path, gradient=gradient),
+            session_id=session_id,
+        )
+
+    async def canvas_item_material_create(
+        self,
+        path: str,
+        replace_existing: bool = False,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_boolean(replace_existing, "replace_existing")
+        return await self.bridge.call(
+            "canvas_item_material_create",
+            _scene_params(scene_file, path=path, replace_existing=replace_existing),
+            session_id=session_id,
+        )
+
+    async def canvas_item_material_bind(
+        self,
+        path: str,
+        resource_path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_project_resource_path(resource_path, "resource_path")
+        return await self.bridge.call(
+            "canvas_item_material_bind",
+            _scene_params(scene_file, path=path, resource_path=resource_path),
+            session_id=session_id,
+        )
+
+    async def canvas_item_material_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_canvas_item_material_properties(properties)
+        return await self.bridge.call(
+            "canvas_item_material_set",
+            _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def canvas_item_material_clear(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "canvas_item_material_clear",
+            _scene_params(scene_file, path=path),
             session_id=session_id,
         )
 
@@ -3730,6 +3801,42 @@ def _validate_particle_process_material_gradient_properties(properties: dict[str
         raise ValueError("width must be an integer between 1 and 16384")
     if "use_hdr" in properties:
         _validate_boolean(properties["use_hdr"], "use_hdr")
+
+
+def _validate_canvas_item_material_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "blend_mode",
+        "light_mode",
+        "particles_animation",
+        "particles_anim_h_frames",
+        "particles_anim_v_frames",
+        "particles_anim_loop",
+    }
+    if not isinstance(properties, dict) or not properties:
+        raise ValueError("properties must be a non-empty object")
+    if len(properties) > len(allowed):
+        raise ValueError("properties can contain at most 6 CanvasItemMaterial entries")
+    if set(properties) - allowed:
+        raise ValueError("properties contains an unsupported CanvasItemMaterial property")
+    for name, values in {
+        "blend_mode": {"mix", "add", "subtract", "multiply", "premultiplied_alpha"},
+        "light_mode": {"normal", "unshaded", "light_only"},
+    }.items():
+        if name in properties and (
+            not isinstance(properties[name], str)
+            or properties[name].strip().lower() not in values
+        ):
+            raise ValueError(f"{name} must be one of: {', '.join(sorted(values))}")
+    for name in ("particles_animation", "particles_anim_loop"):
+        if name in properties:
+            _validate_boolean(properties[name], name)
+    for name in ("particles_anim_h_frames", "particles_anim_v_frames"):
+        if name in properties and (
+            isinstance(properties[name], bool)
+            or not isinstance(properties[name], int)
+            or not 1 <= properties[name] <= 128
+        ):
+            raise ValueError(f"{name} must be an integer between 1 and 128")
 
 
 def _validate_particle_process_material_2d_properties(properties: dict[str, Any]) -> None:

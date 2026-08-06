@@ -1,3 +1,3 @@
 """Godot 2D MCP server package."""
 
-__version__ = "0.26.0"
+__version__ = "0.27.0"

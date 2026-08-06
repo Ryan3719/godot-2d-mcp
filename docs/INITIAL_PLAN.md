@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：阶段 0 已完成；阶段 1 已交付首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式与嵌入式 Theme 资源能力；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力；阶段 4 已交付 TileMapLayer、内嵌 TileSet Atlas、TileSet 语义能力与 Atlas TileData 碰撞/导航/遮挡几何；阶段 5 已交付 PointLight2D、DirectionalLight2D、LightOccluder2D、Camera2D、Parallax2D、CanvasLayer、Path2D、Curve2D、Skeleton2D、Bone2D、AudioStreamPlayer2D、GPUParticles2D、ParticleProcessMaterial 及其 CurveTexture/GradientTexture1D 和包含 Curve/Gradient 资源的 CPUParticles2D 安全语义编辑（v0.26.0）
+状态：阶段 0 已完成；阶段 1 已交付首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式与嵌入式 Theme 资源能力；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力；阶段 4 已交付 TileMapLayer、内嵌 TileSet Atlas、TileSet 语义能力与 Atlas TileData 碰撞/导航/遮挡几何；阶段 5 已交付 PointLight2D、DirectionalLight2D、LightOccluder2D、CanvasItemMaterial、Camera2D、Parallax2D、CanvasLayer、Path2D、Curve2D、Skeleton2D、Bone2D、AudioStreamPlayer2D、GPUParticles2D、ParticleProcessMaterial 及其 CurveTexture/GradientTexture1D 和包含 Curve/Gradient 资源的 CPUParticles2D 安全语义编辑（v0.27.0）
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -146,6 +146,7 @@ Codex / Claude Code / MCP Client
 - `particle_process_material_2d_get`、`particle_process_material_2d_create`、`particle_process_material_2d_set`，支持 GPUParticles2D 的 ParticleProcessMaterial 查询、独立内嵌材质创建，以及发射、速度、加速度、缩放、颜色、湍流、碰撞和子发射器的复制后替换编辑；外部或共享材质不会被原地修改。
 - `particle_process_material_2d_curve_get`、`particle_process_material_2d_curve_bind`、`particle_process_material_2d_curve_set`、`particle_process_material_2d_curve_clear`，支持 GPUParticles2D ParticleProcessMaterial 的全部 17 个 2D 标量 CurveTexture 槽位查询、项目资源绑定、复制后替换的内嵌编辑和解绑，覆盖纹理宽度/模式以及嵌套 Curve 的范围、烘焙、点和切线。
 - `particle_process_material_2d_gradient_get`、`particle_process_material_2d_gradient_bind`、`particle_process_material_2d_gradient_set`、`particle_process_material_2d_gradient_clear`，支持 color 和 initial_color GradientTexture1D 的查询、项目资源绑定、复制后替换的内嵌编辑和解绑，覆盖 HDR、纹理宽度及嵌套 Gradient 的色标和插值；外部或共享的材质、纹理和 Gradient 均不会被原地修改。
+- `canvas_item_material_get`、`canvas_item_material_create`、`canvas_item_material_bind`、`canvas_item_material_set`、`canvas_item_material_clear`，支持任意本地 CanvasItem 上 CanvasItemMaterial 的查询、内嵌创建、项目资源绑定、复制后替换的 blend/light/粒子图集动画配置和解绑；外部或共享材质不会被原地修改，替换非 CanvasItemMaterial 前必须显式确认。
 - `cpu_particles_2d_get`、`cpu_particles_2d_set`，支持 CPUParticles2D 的发射、时间、纹理绑定、点/法线/颜色发射几何、方向与重力、全部公开 min/max 运动参数、颜色和 split scale；所有写入在单个撤销事务中完成。
 - `cpu_particles_2d_curve_get`、`cpu_particles_2d_curve_bind`、`cpu_particles_2d_curve_set`、`cpu_particles_2d_curve_clear`，支持 CPUParticles2D 全部 14 个参数 Curve 槽位的查询、项目资源绑定、复制后替换的内嵌编辑和解绑；外部或共享 Curve 不会被原地修改。
 - `cpu_particles_2d_gradient_get`、`cpu_particles_2d_gradient_bind`、`cpu_particles_2d_gradient_set`、`cpu_particles_2d_gradient_clear`，支持 color 和 initial_color Gradient 坡度的查询、项目资源绑定、复制后替换的内嵌编辑和解绑；外部或共享 Gradient 不会被原地修改。
@@ -283,7 +284,7 @@ godot-2d-mcp/
 ### 阶段 5：高级 2D
 
 - 粒子、光照、遮挡、Shader、骨骼、路径、相机和音频。
-- 已交付：光照、遮挡、相机、视口组合、Path2D/Curve2D 的独立内嵌资源替换与 Bézier 点编辑、Skeleton2D/Bone2D 的安全层级创建与 Rest Pose、AudioStreamPlayer2D 的外部流绑定和空间播放配置、GPUParticles2D 的完整节点配置/资源绑定/场景内子发射器编排、ParticleProcessMaterial 的内嵌创建与核心 2D 复制后替换编辑、17 个标量 CurveTexture 槽位与两类 GradientTexture1D 坡度，以及 CPUParticles2D 的核心发射、运动、绘制和纹理绑定配置、全部 14 个参数 Curve 槽位与两类 Gradient 坡度的安全资源编辑。
+- 已交付：光照、遮挡、CanvasItemMaterial 的安全绑定和复制后替换配置、相机、视口组合、Path2D/Curve2D 的独立内嵌资源替换与 Bézier 点编辑、Skeleton2D/Bone2D 的安全层级创建与 Rest Pose、AudioStreamPlayer2D 的外部流绑定和空间播放配置、GPUParticles2D 的完整节点配置/资源绑定/场景内子发射器编排、ParticleProcessMaterial 的内嵌创建与核心 2D 复制后替换编辑、17 个标量 CurveTexture 槽位与两类 GradientTexture1D 坡度，以及 CPUParticles2D 的核心发射、运动、绘制和纹理绑定配置、全部 14 个参数 Curve 槽位与两类 Gradient 坡度的安全资源编辑。
 
 ### 阶段 6：运行反馈
 
