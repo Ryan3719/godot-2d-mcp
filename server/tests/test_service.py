@@ -1964,6 +1964,155 @@ async def test_particle_process_material_2d_tools_reject_invalid_payloads() -> N
 
 
 @pytest.mark.asyncio
+async def test_particle_process_material_2d_resource_tools_forward_safe_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    path = "/Main/Fire"
+    scene_file = "res://main.tscn"
+    curve_properties = {
+        "width": 128,
+        "texture_mode": "red",
+        "min_domain": 0.0,
+        "max_domain": 1.0,
+        "min_value": -2.0,
+        "max_value": 2.0,
+        "bake_resolution": 64,
+        "points": [
+            {"position": {"x": 0.0, "y": -1.0}, "right_mode": "linear"},
+            {"position": {"x": 1.0, "y": 1.0}, "left_mode": "linear"},
+        ],
+    }
+    gradient_properties = {
+        "width": 512,
+        "use_hdr": True,
+        "points": [
+            {"offset": 0.0, "color": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}},
+            {"offset": 1.0, "color": "0000ffff"},
+        ],
+        "interpolation_mode": "cubic",
+        "interpolation_color_space": "oklab",
+    }
+
+    await service.particle_process_material_2d_curve_get(
+        path, "scale", session_id="project@a1b2", scene_file=scene_file
+    )
+    await service.particle_process_material_2d_curve_bind(
+        path, "scale", "res://curve_texture.tres", scene_file=scene_file
+    )
+    await service.particle_process_material_2d_curve_set(
+        path, "scale", curve_properties, scene_file=scene_file
+    )
+    await service.particle_process_material_2d_curve_clear(path, "scale", scene_file=scene_file)
+    await service.particle_process_material_2d_gradient_get(
+        path, "color", session_id="project@a1b2", scene_file=scene_file
+    )
+    await service.particle_process_material_2d_gradient_bind(
+        path, "color", "res://gradient_texture.tres", scene_file=scene_file
+    )
+    await service.particle_process_material_2d_gradient_set(
+        path, "color", gradient_properties, scene_file=scene_file
+    )
+    await service.particle_process_material_2d_gradient_clear(path, "color", scene_file=scene_file)
+
+    assert bridge.calls == [
+        (
+            "particle_process_material_2d_curve_get",
+            {"path": path, "curve": "scale", "scene_file": scene_file},
+            "project@a1b2",
+        ),
+        (
+            "particle_process_material_2d_curve_bind",
+            {
+                "path": path,
+                "curve": "scale",
+                "resource_path": "res://curve_texture.tres",
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "particle_process_material_2d_curve_set",
+            {
+                "path": path,
+                "curve": "scale",
+                "properties": curve_properties,
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "particle_process_material_2d_curve_clear",
+            {"path": path, "curve": "scale", "scene_file": scene_file},
+            None,
+        ),
+        (
+            "particle_process_material_2d_gradient_get",
+            {"path": path, "gradient": "color", "scene_file": scene_file},
+            "project@a1b2",
+        ),
+        (
+            "particle_process_material_2d_gradient_bind",
+            {
+                "path": path,
+                "gradient": "color",
+                "resource_path": "res://gradient_texture.tres",
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "particle_process_material_2d_gradient_set",
+            {
+                "path": path,
+                "gradient": "color",
+                "properties": gradient_properties,
+                "scene_file": scene_file,
+            },
+            None,
+        ),
+        (
+            "particle_process_material_2d_gradient_clear",
+            {"path": path, "gradient": "color", "scene_file": scene_file},
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_particle_process_material_2d_resource_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+    path = "/Main/Fire"
+
+    with pytest.raises(ValueError, match="curve"):
+        await service.particle_process_material_2d_curve_get(path, "initial_velocity")
+    with pytest.raises(ValueError, match="resource_path"):
+        await service.particle_process_material_2d_curve_bind(path, "scale", "../curve.tres")
+    with pytest.raises(ValueError, match="width"):
+        await service.particle_process_material_2d_curve_set(path, "scale", {"width": 16})
+    with pytest.raises(ValueError, match="texture_mode"):
+        await service.particle_process_material_2d_curve_set(
+            path, "scale", {"texture_mode": "alpha"}
+        )
+    with pytest.raises(ValueError, match="min_domain"):
+        await service.particle_process_material_2d_curve_set(
+            path, "scale", {"min_domain": 1.0, "max_domain": 0.0}
+        )
+    with pytest.raises(ValueError, match="strictly increasing"):
+        await service.particle_process_material_2d_gradient_set(
+            path,
+            "color",
+            {
+                "points": [
+                    {"offset": 0.5, "color": "ffffffff"},
+                    {"offset": 0.25, "color": "ffffffff"},
+                ]
+            },
+        )
+    with pytest.raises(ValueError, match="use_hdr"):
+        await service.particle_process_material_2d_gradient_set(path, "color", {"use_hdr": 1})
+
+
+@pytest.mark.asyncio
 async def test_lighting_tools_forward_atomic_semantic_payloads() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

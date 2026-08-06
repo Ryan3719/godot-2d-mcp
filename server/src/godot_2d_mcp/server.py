@@ -507,6 +507,36 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def particle_process_material_2d_curve_get(
+        path: str,
+        curve: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Inspect a scalar CurveTexture assigned to a GPUParticles2D ParticleProcessMaterial."""
+        return await service.particle_process_material_2d_curve_get(
+            path=path,
+            curve=curve,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def particle_process_material_2d_gradient_get(
+        path: str,
+        gradient: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Inspect a GradientTexture1D assigned to a GPUParticles2D ParticleProcessMaterial."""
+        return await service.particle_process_material_2d_gradient_get(
+            path=path,
+            gradient=gradient,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def light_2d_get(
         path: str,
         session_id: str | None = None,
@@ -1683,6 +1713,104 @@ def create_application(
         return await service.particle_process_material_2d_set(
             path=path,
             properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def particle_process_material_2d_curve_bind(
+        path: str,
+        curve: str,
+        resource_path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Bind an existing CurveTexture to one scalar ParticleProcessMaterial curve slot."""
+        return await service.particle_process_material_2d_curve_bind(
+            path=path,
+            curve=curve,
+            resource_path=resource_path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def particle_process_material_2d_curve_set(
+        path: str,
+        curve: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Copy, update, and rebind one scalar ParticleProcessMaterial CurveTexture."""
+        return await service.particle_process_material_2d_curve_set(
+            path=path,
+            curve=curve,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def particle_process_material_2d_curve_clear(
+        path: str,
+        curve: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Detach one scalar ParticleProcessMaterial CurveTexture with editor undo support."""
+        return await service.particle_process_material_2d_curve_clear(
+            path=path,
+            curve=curve,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def particle_process_material_2d_gradient_bind(
+        path: str,
+        gradient: str,
+        resource_path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Bind an existing GradientTexture1D to a ParticleProcessMaterial color ramp."""
+        return await service.particle_process_material_2d_gradient_bind(
+            path=path,
+            gradient=gradient,
+            resource_path=resource_path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def particle_process_material_2d_gradient_set(
+        path: str,
+        gradient: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Copy, update, and rebind one ParticleProcessMaterial GradientTexture1D."""
+        return await service.particle_process_material_2d_gradient_set(
+            path=path,
+            gradient=gradient,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def particle_process_material_2d_gradient_clear(
+        path: str,
+        gradient: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Detach one ParticleProcessMaterial GradientTexture1D with editor undo support."""
+        return await service.particle_process_material_2d_gradient_clear(
+            path=path,
+            gradient=gradient,
             session_id=session_id,
             scene_file=scene_file,
         )

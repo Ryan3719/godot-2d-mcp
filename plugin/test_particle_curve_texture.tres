@@ -1,0 +1,6 @@
+[gd_resource type="CurveTexture" load_steps=2 format=3]
+
+[sub_resource type="Curve" id="Curve_particle"]
+
+[resource]
+curve = SubResource("Curve_particle")
