@@ -31,3 +31,11 @@ func send_runtime_input(params: Dictionary) -> Dictionary:
 
 func get_runtime_input_result(params: Dictionary) -> Dictionary:
 	return _runtime_bridge.get_input_result(params)
+
+
+func request_runtime_audio_stream_player_2d_control(params: Dictionary) -> Dictionary:
+	return _runtime_bridge.request_audio_stream_player_2d_control(params)
+
+
+func get_runtime_audio_stream_player_2d_control_result(params: Dictionary) -> Dictionary:
+	return _runtime_bridge.get_audio_stream_player_2d_control_result(params)

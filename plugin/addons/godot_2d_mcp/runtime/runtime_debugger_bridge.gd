@@ -7,6 +7,7 @@ const CAPTURE_NAME := "godot_2d_mcp"
 const MAX_LOG_ENTRIES := 1000
 const MAX_SCREENSHOT_RESULTS := 8
 const MAX_INPUT_RESULTS := 32
+const MAX_AUDIO_CONTROL_RESULTS := 32
 
 var _autoload_status: Dictionary = {"available": false, "reason": "not_configured"}
 var _session_states: Dictionary = {}
@@ -17,6 +18,8 @@ var _screenshot_requests: Dictionary = {}
 var _screenshot_order: Array[String] = []
 var _input_requests: Dictionary = {}
 var _input_order: Array[String] = []
+var _audio_control_requests: Dictionary = {}
+var _audio_control_order: Array[String] = []
 
 
 func configure_autoload(status: Dictionary) -> void:
@@ -61,6 +64,10 @@ func _capture(message: String, data: Array, session_id: int) -> bool:
 			if data.size() == 2 and data[1] is Dictionary:
 				_store_input_result(str(data[0]), data[1], session_id)
 			return true
+		"audio_control_result":
+			if data.size() == 2 and data[1] is Dictionary:
+				_store_audio_control_result(str(data[0]), data[1], session_id)
+			return true
 	return false
 
 
@@ -74,6 +81,7 @@ func get_runtime_state(_params: Dictionary) -> Dictionary:
 		"latest_log_sequence": _next_log_sequence - 1,
 		"pending_screenshots": _pending_count(_screenshot_requests),
 		"pending_inputs": _pending_count(_input_requests),
+		"pending_audio_controls": _pending_count(_audio_control_requests),
 	}
 
 
@@ -158,6 +166,33 @@ func get_input_result(params: Dictionary) -> Dictionary:
 	return {"request_id": request_id, "status": result["status"], "result": result.get("result", {})}
 
 
+func request_audio_stream_player_2d_control(params: Dictionary) -> Dictionary:
+	var session_result := _active_session_result()
+	if session_result.has("_error"):
+		return session_result
+	var request_id := _new_request_id("audio")
+	_audio_control_requests[request_id] = {
+		"status": "pending", "session_id": session_result["session_id"]
+	}
+	(session_result["session"] as EditorDebuggerSession).send_message(
+		"%s:audio_control" % CAPTURE_NAME, [request_id, params.duplicate(true)]
+	)
+	return {"request_id": request_id, "status": "pending"}
+
+
+func get_audio_stream_player_2d_control_result(params: Dictionary) -> Dictionary:
+	var request_id := str(params.get("request_id", "")).strip_edges()
+	if not _audio_control_requests.has(request_id):
+		return Errors.make(
+			"RUNTIME_AUDIO_CONTROL_NOT_FOUND",
+			"No runtime audio control request exists with this request_id",
+			false,
+			"Call runtime_audio_stream_player_2d_control first and retain its request_id."
+		)
+	var result: Dictionary = _audio_control_requests[request_id]
+	return {"request_id": request_id, "status": result["status"], "result": result.get("result", {})}
+
+
 func _on_session_started(session_id: int) -> void:
 	var state: Dictionary = _session_states.get(session_id, {})
 	state["started"] = true
@@ -217,6 +252,20 @@ func _store_input_result(request_id: String, result: Dictionary, session_id: int
 	_input_order.erase(request_id)
 	_input_order.append(request_id)
 	_trim_results(_input_requests, _input_order, MAX_INPUT_RESULTS)
+
+
+func _store_audio_control_result(request_id: String, result: Dictionary, session_id: int) -> void:
+	if not _audio_control_requests.has(request_id):
+		return
+	var request: Dictionary = _audio_control_requests[request_id]
+	if int(request.get("session_id", -1)) != session_id:
+		return
+	request["status"] = "ready" if bool(result.get("ok", false)) else "error"
+	request["result"] = result.duplicate(true)
+	_audio_control_requests[request_id] = request
+	_audio_control_order.erase(request_id)
+	_audio_control_order.append(request_id)
+	_trim_results(_audio_control_requests, _audio_control_order, MAX_AUDIO_CONTROL_RESULTS)
 
 
 func _active_session_result() -> Dictionary:

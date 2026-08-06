@@ -130,6 +130,39 @@ class GodotService:
             "runtime_input_result_get", {"request_id": request_id}, session_id=session_id
         )
 
+    async def runtime_audio_stream_player_2d_control(
+        self,
+        path: str,
+        action: str,
+        position_seconds: float | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        normalized_action = _validate_runtime_audio_action(action)
+        if position_seconds is None:
+            if normalized_action == "seek":
+                raise ValueError("seek requires position_seconds")
+        else:
+            _validate_runtime_audio_position(position_seconds)
+            if normalized_action in {"get", "stop"}:
+                raise ValueError("position_seconds is only accepted for play or seek")
+        params: dict[str, Any] = {"path": path, "action": normalized_action}
+        if position_seconds is not None:
+            params["position_seconds"] = float(position_seconds)
+        return await self.bridge.call(
+            "runtime_audio_stream_player_2d_control", params, session_id=session_id
+        )
+
+    async def runtime_audio_stream_player_2d_control_result_get(
+        self, request_id: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        _validate_runtime_request_id(request_id)
+        return await self.bridge.call(
+            "runtime_audio_stream_player_2d_control_result_get",
+            {"request_id": request_id},
+            session_id=session_id,
+        )
+
     async def scene_get_hierarchy(
         self,
         session_id: str | None = None,
@@ -2876,6 +2909,18 @@ def _validate_runtime_screenshot_dimension(value: int, label: str) -> None:
 def _validate_runtime_request_id(value: str) -> None:
     if not isinstance(value, str) or not 1 <= len(value) <= 128:
         raise ValueError("request_id must contain between 1 and 128 characters")
+
+
+def _validate_runtime_audio_action(value: str) -> str:
+    normalized = value.strip().lower() if isinstance(value, str) else ""
+    if normalized not in {"get", "play", "stop", "seek"}:
+        raise ValueError("action must be get, play, stop, or seek")
+    return normalized
+
+
+def _validate_runtime_audio_position(value: float) -> None:
+    if not _is_finite_number(value) or not 0 <= float(value) <= 3600:
+        raise ValueError("position_seconds must be a finite number between 0 and 3600")
 
 
 def _validate_runtime_input_events(events: list[dict[str, Any]]) -> None:

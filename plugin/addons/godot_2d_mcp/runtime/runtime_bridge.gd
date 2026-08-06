@@ -7,6 +7,8 @@ const MAX_SCREENSHOT_BYTES := 1_000_000
 const MAX_SCREENSHOT_DIMENSION := 1024
 const MAX_INPUT_EVENTS := 64
 const MAX_COORDINATE := 100_000.0
+const MAX_RUNTIME_NODE_PATH_LENGTH := 4096
+const MAX_AUDIO_POSITION_SECONDS := 3600.0
 
 var _logger: Logger
 var _pending_logs: Array[Dictionary] = []
@@ -34,7 +36,10 @@ func _ready() -> void:
 		EngineDebugger.register_message_capture(CAPTURE_NAME, _capture_debugger_message)
 	_logger = RuntimeLogger.new(self)
 	OS.add_logger(_logger)
-	_send_message("ready", [{"protocol_version": 1, "capabilities": ["logs", "screenshot", "input"]}])
+	_send_message(
+		"ready",
+		[{"protocol_version": 1, "capabilities": ["logs", "screenshot", "input", "audio_stream_player_2d"]}]
+	)
 
 
 func _exit_tree() -> void:
@@ -92,6 +97,14 @@ func _capture_debugger_message(message: String, data: Array) -> bool:
 			if request_id.is_empty() or request_id.length() > 128:
 				return true
 			_handle_input(request_id, data[1])
+			return true
+		"audio_control":
+			if data.size() != 2 or not data[1] is Dictionary:
+				return true
+			var audio_request_id := str(data[0]).strip_edges()
+			if audio_request_id.is_empty() or audio_request_id.length() > 128:
+				return true
+			_handle_audio_control(audio_request_id, data[1])
 			return true
 	return false
 
@@ -181,6 +194,171 @@ func _handle_input(request_id: String, events: Array) -> void:
 		Input.parse_input_event(decoded["event"])
 		applied += 1
 	_send_message("input_result", [request_id, {"ok": true, "applied": applied}])
+
+
+func _handle_audio_control(request_id: String, request: Dictionary) -> void:
+	for field in request:
+		if field not in ["path", "action", "position_seconds"]:
+			_send_audio_control_error(
+				request_id,
+				"INVALID_RUNTIME_AUDIO_REQUEST",
+				"Runtime audio control only accepts path, action, and position_seconds"
+			)
+			return
+	var raw_path: Variant = request.get("path", null)
+	if not raw_path is String:
+		_send_audio_control_error(
+			request_id, "RUNTIME_AUDIO_PATH_INVALID", "path must be a bounded absolute scene node path"
+		)
+		return
+	var path: String = raw_path.strip_edges()
+	var path_result := _resolve_runtime_scene_node(path)
+	if path_result.has("error"):
+		_send_audio_control_error(request_id, path_result["code"], path_result["error"])
+		return
+	var node: Node = path_result["node"]
+	if not node is AudioStreamPlayer2D:
+		_send_audio_control_error(
+			request_id,
+			"RUNTIME_AUDIO_STREAM_PLAYER_2D_REQUIRED",
+			"Node '%s' is %s, not AudioStreamPlayer2D" % [node.name, node.get_class()]
+		)
+		return
+	var raw_action: Variant = request.get("action", null)
+	if not raw_action is String:
+		_send_audio_control_error(
+			request_id, "RUNTIME_AUDIO_ACTION_INVALID", "action must be get, play, stop, or seek"
+		)
+		return
+	var action: String = raw_action.strip_edges().to_lower()
+	if action not in ["get", "play", "stop", "seek"]:
+		_send_audio_control_error(
+			request_id, "RUNTIME_AUDIO_ACTION_INVALID", "action must be get, play, stop, or seek"
+		)
+		return
+	var player := node as AudioStreamPlayer2D
+	var position_seconds: Variant = null
+	if action in ["get", "stop"]:
+		if request.has("position_seconds"):
+			_send_audio_control_error(
+				request_id,
+				"RUNTIME_AUDIO_POSITION_UNEXPECTED",
+				"position_seconds is only accepted for play or seek"
+			)
+			return
+	elif action == "seek":
+		var seek_position := _parse_audio_position(request, true)
+		if seek_position.has("error"):
+			_send_audio_control_error(request_id, seek_position["code"], seek_position["error"])
+			return
+		position_seconds = seek_position["position_seconds"]
+	else:
+		var play_position := _parse_audio_position(request, false)
+		if play_position.has("error"):
+			_send_audio_control_error(request_id, play_position["code"], play_position["error"])
+			return
+		position_seconds = play_position["position_seconds"]
+
+	if action in ["play", "seek"] and player.get_stream() == null:
+		_send_audio_control_error(
+			request_id,
+			"RUNTIME_AUDIO_STREAM_MISSING",
+			"AudioStreamPlayer2D must have a stream before play or seek"
+		)
+		return
+	match action:
+		"play":
+			player.play(float(position_seconds))
+		"stop":
+			player.stop()
+		"seek":
+			player.seek(float(position_seconds))
+	var result := {"ok": true, "action": action, "player": _audio_player_state(player, path)}
+	if action in ["play", "seek"]:
+		result["requested_position_seconds"] = position_seconds
+	_send_message("audio_control_result", [request_id, result])
+
+
+func _parse_audio_position(request: Dictionary, required: bool) -> Dictionary:
+	if not request.has("position_seconds"):
+		if required:
+			return {
+				"code": "RUNTIME_AUDIO_POSITION_REQUIRED",
+				"error": "seek requires position_seconds"
+			}
+		return {"position_seconds": 0.0}
+	var value: Variant = request["position_seconds"]
+	if not (value is int or value is float) or not is_finite(float(value)) \
+		or float(value) < 0.0 or float(value) > MAX_AUDIO_POSITION_SECONDS:
+		return {
+			"code": "RUNTIME_AUDIO_POSITION_INVALID",
+			"error": "position_seconds must be a finite number between 0 and %.0f" % MAX_AUDIO_POSITION_SECONDS
+		}
+	return {"position_seconds": float(value)}
+
+
+func _resolve_runtime_scene_node(path: String) -> Dictionary:
+	if path.is_empty() or path.length() > MAX_RUNTIME_NODE_PATH_LENGTH or not path.begins_with("/") \
+		or path.contains("//"):
+		return {
+			"code": "RUNTIME_AUDIO_PATH_INVALID",
+			"error": "path must be a bounded absolute scene node path"
+		}
+	var segments := path.trim_prefix("/").split("/", false)
+	if segments.is_empty() or segments[0].is_empty():
+		return {
+			"code": "RUNTIME_AUDIO_PATH_INVALID",
+			"error": "path must name the running scene root"
+		}
+	for segment in segments:
+		if segment in [".", ".."]:
+			return {
+				"code": "RUNTIME_AUDIO_PATH_INVALID",
+				"error": "path cannot contain . or .. segments"
+			}
+	var scene_root := get_tree().current_scene
+	if scene_root == null:
+		return {
+			"code": "RUNTIME_AUDIO_SCENE_UNAVAILABLE",
+			"error": "The running game does not expose a current scene"
+		}
+	if str(segments[0]) != scene_root.name:
+		return {
+			"code": "RUNTIME_AUDIO_SCENE_ROOT_MISMATCH",
+			"error": "path must begin with the running scene root '%s'" % scene_root.name
+		}
+	var node: Node = scene_root
+	for index in range(1, segments.size()):
+		var child := node.get_node_or_null(NodePath(str(segments[index])))
+		if child == null:
+			return {
+				"code": "RUNTIME_AUDIO_NODE_NOT_FOUND",
+				"error": "No runtime node exists at path: %s" % path
+			}
+		node = child
+	return {"node": node}
+
+
+func _audio_player_state(player: AudioStreamPlayer2D, path: String) -> Dictionary:
+	var stream := player.get_stream()
+	var stream_length := 0.0 if stream == null else stream.get_length()
+	return {
+		"path": path,
+		"name": str(player.name),
+		"is_playing": player.is_playing(),
+		"playback_position_seconds": _safe_runtime_number(player.get_playback_position()),
+		"stream_path": "" if stream == null else stream.resource_path,
+		"stream_type": "" if stream == null else stream.get_class(),
+		"stream_length_seconds": _safe_runtime_number(stream_length),
+	}
+
+
+func _safe_runtime_number(value: float) -> float:
+	return value if is_finite(value) else 0.0
+
+
+func _send_audio_control_error(request_id: String, code: String, message: String) -> void:
+	_send_message("audio_control_result", [request_id, {"ok": false, "code": code, "message": message}])
 
 
 func _decode_input_event(value) -> Dictionary:

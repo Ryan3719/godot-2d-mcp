@@ -202,6 +202,30 @@ def create_application(
         """Poll whether a runtime input request reached and was accepted by the game."""
         return await service.runtime_input_result_get(request_id=request_id, session_id=session_id)
 
+    @mcp.tool(annotations=WRITE)
+    async def runtime_audio_stream_player_2d_control(
+        path: str,
+        action: str,
+        position_seconds: float | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Request a running AudioStreamPlayer2D state query, play, stop, or seek action."""
+        return await service.runtime_audio_stream_player_2d_control(
+            path=path,
+            action=action,
+            position_seconds=position_seconds,
+            session_id=session_id,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def runtime_audio_stream_player_2d_control_result_get(
+        request_id: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        """Poll a runtime AudioStreamPlayer2D request for state or a structured error."""
+        return await service.runtime_audio_stream_player_2d_control_result_get(
+            request_id=request_id, session_id=session_id
+        )
+
     @mcp.tool(annotations=READ_ONLY)
     async def scene_get_hierarchy(
         session_id: str | None = None,

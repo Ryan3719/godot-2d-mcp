@@ -4273,6 +4273,61 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         runtime_state = await _wait_for_runtime_connected(app)
         if runtime_state.get("autoload", {}).get("available") is not True:
             raise RuntimeError("Runtime bridge did not report its managed autoload")
+        missing_audio_request = await app.service.runtime_audio_stream_player_2d_control(
+            "/RuntimeSmoke/MissingSound", "get"
+        )
+        missing_audio_result = await _wait_for_runtime_audio_control_result(
+            app, missing_audio_request["request_id"]
+        )
+        if (
+            missing_audio_result.get("status") != "error"
+            or missing_audio_result.get("result", {}).get("code") != "RUNTIME_AUDIO_NODE_NOT_FOUND"
+        ):
+            raise RuntimeError(f"Runtime audio missing-node error was not reported: {missing_audio_result}")
+        audio_state_request = await app.service.runtime_audio_stream_player_2d_control(
+            "/RuntimeSmoke/RuntimeSound", "get"
+        )
+        audio_state = await _wait_for_runtime_audio_control_result(
+            app, audio_state_request["request_id"]
+        )
+        audio_player_state = audio_state.get("result", {}).get("player", {})
+        if (
+            audio_state.get("status") != "ready"
+            or audio_state.get("result", {}).get("action") != "get"
+            or audio_player_state.get("stream_path") != "res://test_audio.tres"
+            or audio_player_state.get("is_playing") is not False
+        ):
+            raise RuntimeError(f"Runtime audio state was not reported: {audio_state}")
+        audio_play_request = await app.service.runtime_audio_stream_player_2d_control(
+            "/RuntimeSmoke/RuntimeSound", "play"
+        )
+        audio_play = await _wait_for_runtime_audio_control_result(app, audio_play_request["request_id"])
+        if (
+            audio_play.get("status") != "ready"
+            or audio_play.get("result", {}).get("action") != "play"
+            or audio_play.get("result", {}).get("player", {}).get("is_playing") is not True
+        ):
+            raise RuntimeError(f"Runtime audio did not start playing: {audio_play}")
+        audio_seek_request = await app.service.runtime_audio_stream_player_2d_control(
+            "/RuntimeSmoke/RuntimeSound", "seek", position_seconds=0.02
+        )
+        audio_seek = await _wait_for_runtime_audio_control_result(app, audio_seek_request["request_id"])
+        if (
+            audio_seek.get("status") != "ready"
+            or audio_seek.get("result", {}).get("action") != "seek"
+            or not _is_close(audio_seek.get("result", {}).get("requested_position_seconds"), 0.02)
+        ):
+            raise RuntimeError(f"Runtime audio seek was not applied: {audio_seek}")
+        audio_stop_request = await app.service.runtime_audio_stream_player_2d_control(
+            "/RuntimeSmoke/RuntimeSound", "stop"
+        )
+        audio_stop = await _wait_for_runtime_audio_control_result(app, audio_stop_request["request_id"])
+        if (
+            audio_stop.get("status") != "ready"
+            or audio_stop.get("result", {}).get("action") != "stop"
+            or audio_stop.get("result", {}).get("player", {}).get("is_playing") is not False
+        ):
+            raise RuntimeError(f"Runtime audio did not stop playing: {audio_stop}")
         screenshot_request = await app.service.runtime_screenshot_request(
             format="png", max_width=128, max_height=128
         )
@@ -4413,6 +4468,22 @@ async def _wait_for_runtime_input_result(
         await asyncio.sleep(0.1)
     raise RuntimeError(
         "Runtime input did not complete within "
+        f"{timeout_seconds:.0f} seconds; last result: {result}"
+    )
+
+
+async def _wait_for_runtime_audio_control_result(
+    app: object, request_id: str, timeout_seconds: float = 10.0
+) -> dict:
+    attempts = int(timeout_seconds / 0.1)
+    result: dict = {}
+    for _ in range(attempts):
+        result = await app.service.runtime_audio_stream_player_2d_control_result_get(request_id)
+        if result.get("status") != "pending":
+            return result
+        await asyncio.sleep(0.1)
+    raise RuntimeError(
+        "Runtime audio control did not complete within "
         f"{timeout_seconds:.0f} seconds; last result: {result}"
     )
 
