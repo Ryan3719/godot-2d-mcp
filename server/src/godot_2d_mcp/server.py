@@ -96,6 +96,27 @@ def create_application(
         """Read project, scene, play, import, and compatibility state from Godot."""
         return await service.editor_get_state(session_id)
 
+    @mcp.tool(annotations=WRITE)
+    async def editor_run(
+        mode: str = "current",
+        scene_file: str = "",
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Start a project scene; poll editor_get_state for launch completion."""
+        return await service.editor_run(mode=mode, scene_file=scene_file, session_id=session_id)
+
+    @mcp.tool(
+        annotations=ToolAnnotations(
+            readOnlyHint=False,
+            destructiveHint=False,
+            idempotentHint=True,
+            openWorldHint=False,
+        )
+    )
+    async def editor_stop(session_id: str | None = None) -> dict[str, Any]:
+        """Request that the currently running Godot scene stops; safe when no scene is running."""
+        return await service.editor_stop(session_id=session_id)
+
     @mcp.tool(annotations=READ_ONLY)
     async def scene_get_hierarchy(
         session_id: str | None = None,

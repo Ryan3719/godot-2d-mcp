@@ -2,7 +2,7 @@
 
 Godot 2D MCP connects Codex, Claude Code, and other MCP clients to a live Godot editor. The project is designed for comprehensive Godot 2D authoring while keeping editor mutations on Godot's main thread and inside its undo/redo system.
 
-The current `0.29.0` preview adds safe `canvas_item` `ShaderMaterial` uniform authoring alongside source, `CanvasItemMaterial`, `ParticleProcessMaterial` CurveTexture/GradientTexture1D, and `CPUParticles2D` Curve/Gradient resources for scene, signal, animation, UI, Theme, collision, query, navigation, lighting, TileMap, viewport composition, path, skeleton, audio, and particle-node editing. Agents can configure 2D rendering and particle simulation while retaining Godot-native undo and save behavior.
+The current `0.30.0` preview adds safe editor run and stop control alongside `canvas_item` `ShaderMaterial` uniform authoring, source, `CanvasItemMaterial`, `ParticleProcessMaterial` CurveTexture/GradientTexture1D, and `CPUParticles2D` Curve/Gradient resources for scene, signal, animation, UI, Theme, collision, query, navigation, lighting, TileMap, viewport composition, path, skeleton, audio, and particle-node editing. Agents can configure 2D rendering and particle simulation, then run and stop the edited scene while retaining Godot-native undo and save behavior.
 
 ## Current capabilities
 
@@ -187,6 +187,10 @@ uv run --project server godot-2d-mcp --transport http --host 127.0.0.1 --port 80
 ```
 
 Connect compatible MCP clients to `http://127.0.0.1:8000/mcp`.
+
+## Run Scenes
+
+Use `editor_run(mode="current")` to start the saved scene currently open in the editor, `mode="main"` to start the project main scene, or `editor_run(mode="custom", scene_file="res://scenes/game.tscn")` for an existing project `PackedScene`. The command only accepts the request; poll `editor_get_state` until `play_state` becomes `playing` before treating the game as started. Call `editor_stop` to stop the running game, then wait until `editor_get_state` reports `play_state: "stopped"` and `readiness: "ready"` before editing the scene again. `editor_stop` is safe when nothing is running.
 
 ## Development
 

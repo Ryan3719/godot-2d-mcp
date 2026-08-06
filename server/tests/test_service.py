@@ -46,6 +46,40 @@ async def test_hierarchy_params_are_forwarded() -> None:
 
 
 @pytest.mark.asyncio
+async def test_editor_run_and_stop_forward_validated_modes() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+
+    await service.editor_run(
+        mode=" custom ",
+        scene_file="res://scenes/game.tscn",
+        session_id="project@a1b2",
+    )
+    await service.editor_stop(session_id="project@a1b2")
+
+    assert bridge.calls == [
+        (
+            "editor_run",
+            {"mode": "custom", "scene_file": "res://scenes/game.tscn"},
+            "project@a1b2",
+        ),
+        ("editor_stop", {}, "project@a1b2"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_editor_run_rejects_invalid_modes_and_scene_paths() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="mode"):
+        await service.editor_run(mode="remote")
+    with pytest.raises(ValueError, match="only accepted"):
+        await service.editor_run(mode="main", scene_file="res://scenes/game.tscn")
+    with pytest.raises(ValueError, match="res://"):
+        await service.editor_run(mode="custom", scene_file="../game.tscn")
+
+
+@pytest.mark.asyncio
 async def test_hierarchy_rejects_unbounded_page() -> None:
     service = GodotService(SessionRegistry(), FakeBridge())
 

@@ -102,6 +102,8 @@ func _register_handlers() -> void:
 	])
 
 	_dispatcher.register("editor_get_state", editor_handler.get_state)
+	_dispatcher.register("editor_run", editor_handler.run)
+	_dispatcher.register("editor_stop", editor_handler.stop)
 	_dispatcher.register("scene_get_hierarchy", scene_handler.get_hierarchy)
 	_dispatcher.register("scene_save", scene_handler.save_scene)
 	_dispatcher.register("scene_undo", scene_handler.undo_scene)

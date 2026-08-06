@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：阶段 0 已完成；阶段 1 已交付首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式与嵌入式 Theme 资源能力；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力；阶段 4 已交付 TileMapLayer、内嵌 TileSet Atlas、TileSet 语义能力与 Atlas TileData 碰撞/导航/遮挡几何；阶段 5 已交付 PointLight2D、DirectionalLight2D、LightOccluder2D、CanvasItemMaterial、带运行时 uniform 发现与 copy-on-write 配置的 2D ShaderMaterial、Camera2D、Parallax2D、CanvasLayer、Path2D、Curve2D、Skeleton2D、Bone2D、AudioStreamPlayer2D、GPUParticles2D、ParticleProcessMaterial 及其 CurveTexture/GradientTexture1D 和包含 Curve/Gradient 资源的 CPUParticles2D 安全语义编辑（v0.29.0）
+状态：阶段 0 已完成；阶段 1 已交付首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式与嵌入式 Theme 资源能力；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力；阶段 4 已交付 TileMapLayer、内嵌 TileSet Atlas、TileSet 语义能力与 Atlas TileData 碰撞/导航/遮挡几何；阶段 5 已交付 PointLight2D、DirectionalLight2D、LightOccluder2D、CanvasItemMaterial、带运行时 uniform 发现与 copy-on-write 配置的 2D ShaderMaterial、Camera2D、Parallax2D、CanvasLayer、Path2D、Curve2D、Skeleton2D、Bone2D、AudioStreamPlayer2D、GPUParticles2D、ParticleProcessMaterial 及其 CurveTexture/GradientTexture1D 和包含 Curve/Gradient 资源的 CPUParticles2D 安全语义编辑；阶段 6 已交付当前/主/自定义项目场景的启动与安全停止控制（v0.30.0）
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -290,6 +290,8 @@ godot-2d-mcp/
 ### 阶段 6：运行反馈
 
 - 运行/停止、编辑器和游戏日志、截图、输入模拟和测试运行。
+- 已交付：`editor_run` 支持安全启动当前、主场景或现有 `res://` 自定义 `PackedScene`；`editor_stop` 可幂等停止运行中的场景。Agent 必须通过 `editor_get_state` 轮询启动和停止完成状态。
+- 待交付：由独立运行时桥接承载的游戏日志、帧截图、输入模拟与视觉断言；这些能力不能错误地实现为编辑器进程内的伪输入或编辑器窗口截图。
 
 ### 阶段 7：完整性审计
 

@@ -15,6 +15,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "session_list",
         "session_activate",
         "editor_get_state",
+        "editor_run",
+        "editor_stop",
         "scene_get_hierarchy",
         "class_search",
         "node_get_properties",
@@ -162,6 +164,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     ]
     assert all(tool.annotations is not None for tool in tools)
     annotations = {tool.name: tool.annotations for tool in tools}
+    assert annotations["editor_run"].readOnlyHint is False
+    assert annotations["editor_stop"].idempotentHint is True
     assert annotations["node_get_properties"].readOnlyHint is True
     assert annotations["node_get_signals"].readOnlyHint is True
     assert annotations["animation_list"].readOnlyHint is True
