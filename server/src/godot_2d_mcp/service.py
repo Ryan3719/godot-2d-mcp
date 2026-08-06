@@ -211,6 +211,7 @@ class GodotService:
         parent_path: str = "",
         session_id: str | None = None,
         scene_file: str = "",
+        script_path: str = "",
     ) -> dict[str, Any]:
         if not type_name or len(type_name) > 256:
             raise ValueError("type must contain between 1 and 256 characters")
@@ -218,14 +219,49 @@ class GodotService:
             raise ValueError("name cannot exceed 256 characters")
         if parent_path:
             _validate_node_path(parent_path)
+        _validate_optional_project_resource_path(script_path, "script_path")
+        params = _scene_params(
+            scene_file,
+            type=type_name,
+            name=name,
+            parent_path=parent_path,
+        )
+        if script_path:
+            params["script_path"] = script_path
+        return await self.bridge.call("node_create", params, session_id=session_id)
+
+    async def node_script_bind(
+        self,
+        path: str,
+        script_path: str,
+        replace_existing: bool = False,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_project_resource_path(script_path, "script_path")
+        _validate_boolean(replace_existing, "replace_existing")
         return await self.bridge.call(
-            "node_create",
+            "node_script_bind",
             _scene_params(
                 scene_file,
-                type=type_name,
-                name=name,
-                parent_path=parent_path,
+                path=path,
+                script_path=script_path,
+                replace_existing=replace_existing,
             ),
+            session_id=session_id,
+        )
+
+    async def node_script_clear(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "node_script_clear",
+            _scene_params(scene_file, path=path),
             session_id=session_id,
         )
 

@@ -84,6 +84,12 @@ func create_node(params: Dictionary) -> Dictionary:
 			false,
 			"Use class_search to select a supported 2D node type."
 		)
+	var script_result := _load_supported_node_script(
+		str(params.get("script_path", "")).strip_edges(), StringName(type_name)
+	)
+	if script_result.has("_error"):
+		return script_result
+	var script: Script = script_result["script"]
 
 	var parent_path := str(params.get("parent_path", ""))
 	var parent := ScenePath.resolve(parent_path, scene_root)
@@ -132,6 +138,9 @@ func create_node(params: Dictionary) -> Dictionary:
 	)
 	_undo_redo.add_do_method(parent, "add_child", created_node, true)
 	_undo_redo.add_do_method(created_node, "set_owner", scene_root)
+	if script != null:
+		_undo_redo.add_do_property(created_node, "script", script)
+		_undo_redo.add_undo_property(created_node, "script", null)
 	_undo_redo.add_do_reference(created_node)
 	_undo_redo.add_undo_method(parent, "remove_child", created_node)
 	_undo_redo.commit_action()
@@ -141,6 +150,88 @@ func create_node(params: Dictionary) -> Dictionary:
 		"parent_path": ScenePath.from_node(parent, scene_root),
 		"name": String(created_node.name),
 		"type": created_node.get_class(),
+		"script": _serialize_script(created_node.get_script()),
+		"undoable": true,
+		"_scene_mutated": true,
+	}
+
+
+func bind_script(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_node(params)
+	if resolved.has("_error"):
+		return resolved
+	var node: Node = resolved["node"]
+	var scene_root: Node = resolved["scene_root"]
+	var editability := _require_locally_owned(node, scene_root, "bind a script to")
+	if editability != null:
+		return editability
+	var script_result := _load_supported_node_script(
+		str(params.get("script_path", "")).strip_edges(), node.get_class()
+	)
+	if script_result.has("_error"):
+		return script_result
+	var replacement: Script = script_result["script"]
+	var current: Script = node.get_script()
+	if current == replacement:
+		return {
+			"path": ScenePath.from_node(node, scene_root),
+			"script": _serialize_script(current),
+			"changed": false,
+			"undoable": false,
+		}
+	if current != null and not bool(params.get("replace_existing", false)):
+		return Errors.make(
+			"SCRIPT_ALREADY_ATTACHED",
+			"Node '%s' already has a script attached" % node.name,
+			false,
+			"Set replace_existing to true after inspecting the current script, or call node_script_clear."
+		)
+	_undo_redo.create_action(
+		"Godot 2D MCP: Bind script to %s" % node.name,
+		UndoRedo.MERGE_DISABLE,
+		scene_root
+	)
+	_undo_redo.add_do_property(node, "script", replacement)
+	_undo_redo.add_undo_property(node, "script", current)
+	_undo_redo.commit_action()
+	return {
+		"path": ScenePath.from_node(node, scene_root),
+		"script": _serialize_script(node.get_script()),
+		"previous_script": _serialize_script(current),
+		"changed": true,
+		"undoable": true,
+		"_scene_mutated": true,
+	}
+
+
+func clear_script(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_node(params)
+	if resolved.has("_error"):
+		return resolved
+	var node: Node = resolved["node"]
+	var scene_root: Node = resolved["scene_root"]
+	var editability := _require_locally_owned(node, scene_root, "clear the script from")
+	if editability != null:
+		return editability
+	var current: Script = node.get_script()
+	if current == null:
+		return {
+			"path": ScenePath.from_node(node, scene_root),
+			"cleared": false,
+			"undoable": false,
+		}
+	_undo_redo.create_action(
+		"Godot 2D MCP: Clear script from %s" % node.name,
+		UndoRedo.MERGE_DISABLE,
+		scene_root
+	)
+	_undo_redo.add_do_property(node, "script", null)
+	_undo_redo.add_undo_property(node, "script", current)
+	_undo_redo.commit_action()
+	return {
+		"path": ScenePath.from_node(node, scene_root),
+		"previous_script": _serialize_script(current),
+		"cleared": true,
 		"undoable": true,
 		"_scene_mutated": true,
 	}
@@ -699,6 +790,81 @@ func _resolve_node(params: Dictionary, require_writable: bool = true) -> Diction
 			"Node is outside the supported 2D policy: %s" % node.get_class()
 		)
 	return {"node": node, "scene_root": scene_root}
+
+
+func _load_supported_node_script(script_path: String, node_type: StringName) -> Dictionary:
+	if script_path.is_empty():
+		return {"script": null}
+	if (
+		script_path.length() > 4096
+		or not script_path.begins_with("res://")
+		or script_path.contains("/../")
+		or script_path.ends_with("/..")
+		or script_path.contains("\\")
+	):
+		return Errors.make(
+			"INVALID_SCRIPT_PATH",
+			"script_path must be a bounded project-local res:// path",
+			false,
+			"Pass an existing script path such as res://scripts/player.gd."
+		)
+	if not ResourceLoader.exists(script_path):
+		return Errors.make(
+			"SCRIPT_NOT_FOUND",
+			"Script path does not exist: %s" % script_path,
+			false,
+			"Pass an existing project-local Script resource."
+		)
+	var resource := ResourceLoader.load(script_path)
+	if not resource is Script:
+		return Errors.make(
+			"SCRIPT_TYPE_MISMATCH",
+			"script_path does not load a Script resource: %s" % script_path,
+			false,
+			"Pass a project-local GDScript, C# script, or another Script resource."
+		)
+	var script := resource as Script
+	if script.is_tool():
+		return Errors.make(
+			"TOOL_SCRIPT_NOT_SUPPORTED",
+			"Refusing to attach editor-running @tool script: %s" % script_path,
+			false,
+			"Attach non-tool gameplay scripts through MCP; attach @tool scripts manually in Godot."
+		)
+	var base_type := script.get_instance_base_type()
+	if base_type.is_empty() or not ClassDB.class_exists(base_type):
+		return Errors.make(
+			"SCRIPT_BASE_TYPE_UNAVAILABLE",
+			"Script does not expose a valid native node base type: %s" % script_path,
+			false,
+			"Fix script parse errors and make it extend a built-in supported 2D or UI node type."
+		)
+	if not TypePolicy.is_supported_node_class(base_type):
+		return Errors.make(
+			"UNSUPPORTED_2D_TYPE",
+			"Script '%s' extends unsupported node type %s" % [script_path, base_type],
+			false,
+			"Use scripts that extend supported 2D or UI node types."
+		)
+	if node_type != base_type and not ClassDB.is_parent_class(node_type, base_type):
+		return Errors.make(
+			"SCRIPT_BASE_TYPE_MISMATCH",
+			"Script base type %s cannot be attached to %s" % [base_type, node_type],
+			false,
+			"Create or target a node whose native type inherits the script base type."
+		)
+	return {"script": script}
+
+
+func _serialize_script(script: Script) -> Dictionary:
+	if script == null:
+		return {}
+	return {
+		"resource_path": script.resource_path,
+		"base_type": String(script.get_instance_base_type()),
+		"global_name": String(script.get_global_name()),
+		"is_tool": script.is_tool(),
+	}
 
 
 func _serialize_property(node: Node, property_info: Dictionary) -> Dictionary:

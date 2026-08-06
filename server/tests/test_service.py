@@ -167,6 +167,7 @@ async def test_node_create_forwards_scene_guard_and_session() -> None:
         type_name="Button",
         name="ConfirmButton",
         parent_path="/Main/UI",
+        script_path="res://scripts/confirm_button.gd",
         scene_file="res://main.tscn",
         session_id="project@a1b2",
     )
@@ -179,11 +180,49 @@ async def test_node_create_forwards_scene_guard_and_session() -> None:
                 "type": "Button",
                 "name": "ConfirmButton",
                 "parent_path": "/Main/UI",
+                "script_path": "res://scripts/confirm_button.gd",
                 "scene_file": "res://main.tscn",
             },
             "project@a1b2",
         )
     ]
+
+
+@pytest.mark.asyncio
+async def test_node_script_tools_forward_scene_guard_and_validate_paths() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+
+    await service.node_script_bind(
+        path="/Main/Player",
+        script_path="res://scripts/player.gd",
+        replace_existing=True,
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
+    await service.node_script_clear(
+        path="/Main/Player",
+        scene_file="res://main.tscn",
+    )
+
+    assert bridge.calls == [
+        (
+            "node_script_bind",
+            {
+                "path": "/Main/Player",
+                "script_path": "res://scripts/player.gd",
+                "replace_existing": True,
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        ),
+        ("node_script_clear", {"path": "/Main/Player", "scene_file": "res://main.tscn"}, None),
+    ]
+
+    with pytest.raises(ValueError, match="res://"):
+        await service.node_script_bind("/Main/Player", "../player.gd")
+    with pytest.raises(ValueError, match="replace_existing"):
+        await service.node_script_bind("/Main/Player", "res://scripts/player.gd", 1)  # type: ignore[arg-type]
 
 
 @pytest.mark.asyncio

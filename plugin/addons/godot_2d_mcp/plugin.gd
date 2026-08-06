@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.34.0"
+const PLUGIN_VERSION := "0.35.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 const RUNTIME_AUTOLOAD_NAME := "Godot2DMcpRuntime"
 const RUNTIME_AUTOLOAD_PATH := "res://addons/godot_2d_mcp/runtime/runtime_bridge.gd"
@@ -175,6 +175,8 @@ func _register_handlers() -> void:
 	_dispatcher.register("tile_set_layers_get", tile_map_handler.get_tile_set_layers)
 	_dispatcher.register("tile_set_atlas_tile_get", tile_map_handler.get_tile_set_atlas_tile)
 	_dispatcher.register("node_create", node_handler.create_node)
+	_dispatcher.register("node_script_bind", node_handler.bind_script)
+	_dispatcher.register("node_script_clear", node_handler.clear_script)
 	_dispatcher.register("node_instance_scene", node_handler.instance_packed_scene)
 	_dispatcher.register("node_set_properties", node_handler.set_properties)
 	_dispatcher.register("node_delete", node_handler.delete_node)
