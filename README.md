@@ -2,7 +2,7 @@
 
 Godot 2D MCP connects Codex, Claude Code, and other MCP clients to a live Godot editor. The project is designed for comprehensive Godot 2D authoring while keeping editor mutations on Godot's main thread and inside its undo/redo system.
 
-The current `0.33.0` preview adds safe project `PackedScene` instantiation alongside typed project-resource binding through generic node properties, game-process logs, viewport screenshots, input simulation, editor run and stop control, `canvas_item` `ShaderMaterial` uniform authoring, source, `CanvasItemMaterial`, `ParticleProcessMaterial` CurveTexture/GradientTexture1D, and `CPUParticles2D` Curve/Gradient resources for scene, signal, animation, UI, Theme, collision, query, navigation, lighting, TileMap, viewport composition, path, skeleton, audio, and particle-node editing. Agents can compose existing 2D scenes, configure project-owned textures, fonts, and other declared resource fields, run a scene, inspect real game output, and verify rendered pixels while retaining Godot-native undo and save behavior.
+The current `0.34.0` preview adds safe project-local 2D/UI scene creation and audited scene opening alongside `PackedScene` instantiation, typed project-resource binding through generic node properties, game-process logs, viewport screenshots, input simulation, editor run and stop control, `canvas_item` `ShaderMaterial` uniform authoring, source, `CanvasItemMaterial`, `ParticleProcessMaterial` CurveTexture/GradientTexture1D, and `CPUParticles2D` Curve/Gradient resources for scene, signal, animation, UI, Theme, collision, query, navigation, lighting, TileMap, viewport composition, path, skeleton, audio, and particle-node editing. Agents can start a new 2D scene from scratch, compose existing 2D scenes, configure project-owned textures, fonts, and other declared resource fields, run a scene, inspect real game output, and verify rendered pixels while retaining Godot-native undo and save behavior.
 
 ## Current capabilities
 
@@ -55,6 +55,7 @@ The current `0.33.0` preview adds safe project `PackedScene` instantiation along
 - Scene-local `NodePath` property and built-in `AnimationPlayer` track migration during rename and reparent.
 - Reparenting preserves global placement for `Node2D` and `Control` by default.
 - `scene_undo`, `scene_redo`, and `scene_save` through Godot editor APIs.
+- `scene_create` creates and opens a previously absent project-local `.tscn` with a supported built-in 2D/UI root; `scene_open` audits an existing project `PackedScene` before opening it and rejects any unsupported or 3D subtree.
 - Atomic multi-property updates registered with `EditorUndoRedoManager`.
 - Strict 2D Variant conversion for `Vector2`, `Vector2i`, `Rect2`, `Rect2i`, `Transform2D`, `Color`, arrays, dictionaries, and common packed arrays.
 - Real Godot 4.7 smoke coverage for create, update, signals, animation authoring and binding, Control layout, StyleBoxFlat overrides, cameras, parallax, canvas layers, viewport bindings, rename, duplicate, reparent, reorder, undo, redo, delete, restore, animation-track migration, and save.
@@ -83,6 +84,8 @@ The Python process owns MCP, validation, session routing, and request correlatio
 ## Editing workflow
 
 Call `editor_get_state` and `scene_get_hierarchy` before editing. Pass the returned `current_scene` as `scene_file` when calling write tools to reject commands if the user switches scenes between inspection and mutation.
+
+Use `scene_create(scene_path="res://scenes/main.tscn", root_type="Node2D", root_name="Main")` to start a scene from scratch. Creation never overwrites an existing path and only writes a project-local `.tscn`; missing parent folders are created under `res://`. `scene_open` accepts only existing project `.tscn` or `.scn` resources after checking that their complete instantiated tree satisfies the 2D policy. Both operations leave the selected scene open for subsequent node edits.
 
 Compound property values use JSON shapes inferred from the target Godot property:
 

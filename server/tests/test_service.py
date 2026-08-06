@@ -256,15 +256,48 @@ async def test_scene_commands_forward_to_godot() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)
 
+    await service.scene_create(
+        scene_path="res://scenes/agent_ui.tscn",
+        root_type="Control",
+        root_name="AgentUI",
+        session_id="project@a1b2",
+    )
+    await service.scene_open("res://scenes/main.tscn", session_id="project@a1b2")
     await service.scene_undo(scene_file="res://main.tscn")
     await service.scene_redo(scene_file="res://main.tscn")
     await service.scene_save(scene_file="res://main.tscn")
 
     assert bridge.calls == [
+        (
+            "scene_create",
+            {
+                "scene_path": "res://scenes/agent_ui.tscn",
+                "root_type": "Control",
+                "root_name": "AgentUI",
+            },
+            "project@a1b2",
+        ),
+        ("scene_open", {"scene_path": "res://scenes/main.tscn"}, "project@a1b2"),
         ("scene_undo", {"scene_file": "res://main.tscn"}, None),
         ("scene_redo", {"scene_file": "res://main.tscn"}, None),
         ("scene_save", {"scene_file": "res://main.tscn"}, None),
     ]
+
+
+@pytest.mark.asyncio
+async def test_scene_create_and_open_reject_invalid_client_parameters() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match=".tscn"):
+        await service.scene_create("res://scenes/agent_ui.scn")
+    with pytest.raises(ValueError, match="res://"):
+        await service.scene_create("../agent_ui.tscn")
+    with pytest.raises(ValueError, match="root_type"):
+        await service.scene_create("res://scenes/agent_ui.tscn", root_type=" ")
+    with pytest.raises(ValueError, match=".tscn or .scn"):
+        await service.scene_open("res://assets/icon.svg")
+    with pytest.raises(ValueError, match="res://"):
+        await service.scene_open("user://save.tscn")
 
 
 @pytest.mark.asyncio

@@ -2,6 +2,7 @@
 extends RefCounted
 
 const Errors := preload("res://addons/godot_2d_mcp/utils/errors.gd")
+const EditorState := preload("res://addons/godot_2d_mcp/utils/editor_state.gd")
 const MutationGuard := preload("res://addons/godot_2d_mcp/utils/mutation_guard.gd")
 const ScenePath := preload("res://addons/godot_2d_mcp/utils/scene_path.gd")
 const TypePolicy := preload("res://addons/godot_2d_mcp/utils/type_policy.gd")
@@ -65,6 +66,93 @@ func get_hierarchy(params: Dictionary) -> Dictionary:
 		"has_more": end < items.size(),
 		"scan_truncated": not stack.is_empty(),
 	}
+
+
+func create_scene(params: Dictionary) -> Dictionary:
+	var writable := _require_scene_switchable()
+	if writable != null:
+		return writable
+	var scene_path := str(params.get("scene_path", "")).strip_edges()
+	var path_error := _validate_new_scene_path(scene_path)
+	if path_error != null:
+		return path_error
+	if FileAccess.file_exists(scene_path) or ResourceLoader.exists(scene_path):
+		return Errors.make(
+			"SCENE_PATH_EXISTS",
+			"Refusing to overwrite existing scene: %s" % scene_path,
+			false,
+			"Choose a new project-local .tscn path."
+		)
+
+	var root_type := str(params.get("root_type", "Node2D")).strip_edges()
+	if not TypePolicy.is_supported_node_class(StringName(root_type)):
+		return Errors.make(
+			"UNSUPPORTED_2D_TYPE",
+			"Scene root type is not allowed by the 2D policy: %s" % root_type,
+			false,
+			"Use class_search to select a supported 2D or UI node type."
+		)
+	var root_object := ClassDB.instantiate(StringName(root_type))
+	if not root_object is Node:
+		if root_object != null:
+			root_object.free()
+		return Errors.make("INSTANTIATION_FAILED", "Failed to instantiate scene root type: %s" % root_type)
+	var root: Node = root_object
+	var root_name := str(params.get("root_name", "")).strip_edges()
+	if root_name.is_empty():
+		root_name = root_type
+	if root_name.length() > 256 or root_name.validate_node_name() != root_name:
+		root.free()
+		return Errors.make("INVALID_NODE_NAME", "Invalid scene root name: %s" % root_name)
+	root.name = root_name
+
+	var directory_error := DirAccess.make_dir_recursive_absolute(
+		ProjectSettings.globalize_path(scene_path.get_base_dir())
+	)
+	if directory_error != OK:
+		root.free()
+		return Errors.make(
+			"SCENE_DIRECTORY_CREATE_FAILED",
+			"Godot could not create the scene directory: %s" % scene_path.get_base_dir(),
+			false,
+			"Check project directory permissions.",
+			{"error": directory_error, "error_name": error_string(directory_error)}
+		)
+	var packed_scene := PackedScene.new()
+	var pack_error := packed_scene.pack(root)
+	root.free()
+	if pack_error != OK:
+		return Errors.make(
+			"SCENE_PACK_FAILED",
+			"Godot could not pack the new scene: %s" % error_string(pack_error),
+			false,
+			"Choose a supported built-in 2D or UI root type.",
+			{"error": pack_error, "error_name": error_string(pack_error)}
+		)
+	var save_error := ResourceSaver.save(packed_scene, scene_path)
+	if save_error != OK:
+		return Errors.make(
+			"SCENE_CREATE_FAILED",
+			"Godot could not save the new scene: %s" % error_string(save_error),
+			false,
+			"Check project directory permissions and choose a valid .tscn path.",
+			{"error": save_error, "error_name": error_string(save_error)}
+		)
+	return _open_scene_path(scene_path, true)
+
+
+func open_scene(params: Dictionary) -> Dictionary:
+	var writable := _require_scene_switchable()
+	if writable != null:
+		return writable
+	var scene_path := str(params.get("scene_path", "")).strip_edges()
+	var path_error := _validate_existing_scene_path(scene_path)
+	if path_error != null:
+		return path_error
+	var audited := _load_supported_scene(scene_path)
+	if audited.has("_error"):
+		return audited
+	return _open_scene_path(scene_path, false)
 
 
 func save_scene(params: Dictionary) -> Dictionary:
@@ -146,6 +234,129 @@ func _history_response(history: UndoRedo, changed: bool, action_name: String) ->
 		"has_redo": history.has_redo(),
 		"version": history.get_version(),
 	}
+
+
+func _require_scene_switchable() -> Variant:
+	var readiness := EditorState.readiness()
+	if readiness == "importing" or readiness == "playing":
+		return Errors.make(
+			"EDITOR_NOT_WRITABLE",
+			"The editor cannot switch scenes while its state is '%s'" % readiness,
+			readiness == "importing",
+			"Wait for imports to finish and stop the running scene before switching scenes.",
+			{"readiness": readiness}
+		)
+	return null
+
+
+func _validate_new_scene_path(scene_path: String) -> Variant:
+	var path_error := _validate_scene_path(scene_path)
+	if path_error != null:
+		return path_error
+	if not scene_path.ends_with(".tscn"):
+		return Errors.make(
+			"INVALID_SCENE_PATH",
+			"New scenes must use a .tscn path: %s" % scene_path,
+			false,
+			"Pass a project-local path such as res://scenes/main.tscn."
+		)
+	return null
+
+
+func _validate_existing_scene_path(scene_path: String) -> Variant:
+	var path_error := _validate_scene_path(scene_path)
+	if path_error != null:
+		return path_error
+	if not ResourceLoader.exists(scene_path):
+		return Errors.make(
+			"SCENE_NOT_FOUND",
+			"Scene path does not exist: %s" % scene_path,
+			false,
+			"Pass an existing project-local .tscn or .scn path."
+		)
+	return null
+
+
+func _validate_scene_path(scene_path: String) -> Variant:
+	if (
+		scene_path.is_empty()
+		or scene_path.length() > 4096
+		or not scene_path.begins_with("res://")
+		or scene_path.contains("/../")
+		or scene_path.ends_with("/..")
+		or scene_path.contains("\\")
+	):
+		return Errors.make(
+			"INVALID_SCENE_PATH",
+			"scene_path must be a bounded project-local res:// path",
+			false,
+			"Pass a path such as res://scenes/main.tscn."
+		)
+	return null
+
+
+func _load_supported_scene(scene_path: String) -> Dictionary:
+	var resource := ResourceLoader.load(scene_path)
+	if not resource is PackedScene:
+		return Errors.make(
+			"SCENE_TYPE_MISMATCH",
+			"scene_path does not load a PackedScene: %s" % scene_path,
+			false,
+			"Pass a .tscn or .scn resource whose complete tree uses supported 2D and UI nodes."
+		)
+	var instance := (resource as PackedScene).instantiate()
+	if instance == null:
+		return Errors.make("SCENE_INSTANTIATION_FAILED", "Godot could not open scene: %s" % scene_path)
+	var unsupported_type := ""
+	for descendant in _collect_subtree(instance):
+		if not TypePolicy.is_supported_node_class(descendant.get_class()):
+			unsupported_type = descendant.get_class()
+			break
+	instance.free()
+	if not unsupported_type.is_empty():
+		return Errors.make(
+			"UNSUPPORTED_2D_TYPE",
+			"Scene '%s' contains unsupported node type %s" % [scene_path, unsupported_type],
+			false,
+			"Open scenes whose complete tree uses supported 2D and UI node types."
+		)
+	return {}
+
+
+func _open_scene_path(scene_path: String, created: bool) -> Dictionary:
+	EditorInterface.open_scene_from_path(scene_path)
+	var scene_root := EditorInterface.get_edited_scene_root()
+	if scene_root == null or scene_root.scene_file_path != scene_path:
+		return Errors.make(
+			"SCENE_OPEN_FAILED",
+			"Godot did not switch to scene: %s" % scene_path,
+			true,
+			"Wait for the editor to become ready, then retry scene_open.",
+			{
+				"expected": scene_path,
+				"actual": "" if scene_root == null else scene_root.scene_file_path,
+			}
+		)
+	return {
+		"scene_file": scene_path,
+		"root_path": ScenePath.from_node(scene_root, scene_root),
+		"root_name": String(scene_root.name),
+		"root_type": scene_root.get_class(),
+		"created": created,
+		"opened": true,
+		"undoable": false,
+	}
+
+
+func _collect_subtree(root: Node) -> Array[Node]:
+	var nodes: Array[Node] = []
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var node := stack.pop_back()
+		nodes.append(node)
+		for child in node.get_children(false):
+			stack.append(child)
+	return nodes
 
 
 func _serialize_node(node: Node, scene_root: Node, depth: int) -> Dictionary:

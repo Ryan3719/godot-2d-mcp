@@ -253,6 +253,39 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def scene_create(
+        self,
+        scene_path: str,
+        root_type: str = "Node2D",
+        root_name: str = "",
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        _validate_new_scene_path(scene_path)
+        _validate_scene_root_type(root_type)
+        if root_name:
+            _validate_node_name(root_name)
+        return await self.bridge.call(
+            "scene_create",
+            {
+                "scene_path": scene_path,
+                "root_type": root_type,
+                "root_name": root_name,
+            },
+            session_id=session_id,
+        )
+
+    async def scene_open(
+        self,
+        scene_path: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        _validate_existing_scene_path(scene_path)
+        return await self.bridge.call(
+            "scene_open",
+            {"scene_path": scene_path},
+            session_id=session_id,
+        )
+
     async def node_set_properties(
         self,
         path: str,
@@ -2879,6 +2912,23 @@ def _validate_runtime_position(value: Any, label: str) -> None:
 def _validate_node_name(name: str) -> None:
     if not name or len(name) > 256:
         raise ValueError("name must contain between 1 and 256 characters")
+
+
+def _validate_scene_root_type(value: str) -> None:
+    if not isinstance(value, str) or not value.strip() or len(value) > 256:
+        raise ValueError("root_type must contain between 1 and 256 characters")
+
+
+def _validate_new_scene_path(value: str) -> None:
+    _validate_project_resource_path(value, "scene_path")
+    if not value.endswith(".tscn"):
+        raise ValueError("new scene_path must end with .tscn")
+
+
+def _validate_existing_scene_path(value: str) -> None:
+    _validate_project_resource_path(value, "scene_path")
+    if not value.endswith((".tscn", ".scn")):
+        raise ValueError("scene_path must end with .tscn or .scn")
 
 
 def _validate_signal_member(value: str, label: str) -> None:

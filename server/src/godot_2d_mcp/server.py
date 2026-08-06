@@ -219,6 +219,29 @@ def create_application(
             limit=limit,
         )
 
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def scene_create(
+        scene_path: str,
+        root_type: str = "Node2D",
+        root_name: str = "",
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Create and open a new project-local .tscn scene with a supported 2D or UI root."""
+        return await service.scene_create(
+            scene_path=scene_path,
+            root_type=root_type,
+            root_name=root_name,
+            session_id=session_id,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def scene_open(
+        scene_path: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Audit and open an existing project-local 2D or UI PackedScene in the editor."""
+        return await service.scene_open(scene_path=scene_path, session_id=session_id)
+
     @mcp.tool(annotations=READ_ONLY)
     async def class_search(
         query: str = "",
