@@ -2,7 +2,7 @@
 
 Godot 2D MCP connects Codex, Claude Code, and other MCP clients to a live Godot editor. The project is designed for comprehensive Godot 2D authoring while keeping editor mutations on Godot's main thread and inside its undo/redo system.
 
-The current `0.31.0` preview adds game-process logs, viewport screenshots, and input simulation alongside safe editor run and stop control, `canvas_item` `ShaderMaterial` uniform authoring, source, `CanvasItemMaterial`, `ParticleProcessMaterial` CurveTexture/GradientTexture1D, and `CPUParticles2D` Curve/Gradient resources for scene, signal, animation, UI, Theme, collision, query, navigation, lighting, TileMap, viewport composition, path, skeleton, audio, and particle-node editing. Agents can configure 2D rendering, run a scene, inspect real game output, and verify rendered pixels while retaining Godot-native undo and save behavior.
+The current `0.32.0` preview adds safe project-resource binding through generic node properties alongside game-process logs, viewport screenshots, input simulation, editor run and stop control, `canvas_item` `ShaderMaterial` uniform authoring, source, `CanvasItemMaterial`, `ParticleProcessMaterial` CurveTexture/GradientTexture1D, and `CPUParticles2D` Curve/Gradient resources for scene, signal, animation, UI, Theme, collision, query, navigation, lighting, TileMap, viewport composition, path, skeleton, audio, and particle-node editing. Agents can configure 2D rendering and project-owned textures, fonts, and other declared resource fields, run a scene, inspect real game output, and verify rendered pixels while retaining Godot-native undo and save behavior.
 
 ## Current capabilities
 
@@ -49,7 +49,7 @@ The current `0.31.0` preview adds game-process logs, viewport screenshots, and i
 - `light_2d_get` and `light_2d_set` for semantic `PointLight2D` and `DirectionalLight2D` configuration, including colors, blend modes, shadows, cull-mask layer arrays, normal-map height, PointLight textures, and DirectionalLight shadow distance.
 - `light_occluder_2d_get` and `light_occluder_2d_set` for independent `LightOccluder2D` masks, SDF collision, and embedded `OccluderPolygon2D` replacement or clearing.
 - `tile_map_layer_get`, `tile_map_layer_cells_get`, `tile_set_get`, `tile_set_layers_get`, `tile_set_atlas_tile_get`, `tile_set_create`, `tile_set_clear`, `tile_set_atlas_source_create`, `tile_set_atlas_tile_create`, `tile_set_physics_layer_create`, `tile_set_navigation_layer_create`, `tile_set_occlusion_layer_create`, `tile_set_custom_data_layer_create`, `tile_set_terrain_set_create`, `tile_set_terrain_create`, `tile_set_atlas_alternative_create`, `tile_set_atlas_tile_terrain_set`, `tile_set_atlas_tile_custom_data_set`, `tile_set_atlas_tile_collision_set`, `tile_set_atlas_tile_navigation_set`, `tile_set_atlas_tile_occlusion_set`, `tile_map_layer_cells_set`, and `tile_map_layer_cells_clear` for embedded `TileSet` and `TileSetAtlasSource` authoring on `TileMapLayer`.
-- `node_create`, `node_set_properties`, `node_delete`, `node_rename`, `node_duplicate`, `node_reparent`, and `node_move` with scene-file guards.
+- `node_create`, `node_set_properties`, `node_delete`, `node_rename`, `node_duplicate`, `node_reparent`, and `node_move` with scene-file guards; generic property writes safely bind project resources through typed `resource_path` references.
 - `signal_connect` and `signal_disconnect` for persistent local-node connections, including bounded JSON binding arguments, deferred, and one-shot options.
 - `animation_create`, `animation_delete`, `animation_track_upsert`, `animation_track_delete`, `animation_key_upsert`, and `animation_key_delete` for scene-embedded 2D/UI property animation.
 - Scene-local `NodePath` property and built-in `AnimationPlayer` track migration during rename and reparent.
@@ -90,6 +90,14 @@ Compound property values use JSON shapes inferred from the target Godot property
 {
   "position": {"x": 120, "y": 64},
   "modulate": {"r": 1, "g": 0.5, "b": 0.25, "a": 1}
+}
+```
+
+For any public property Godot declares as a `Resource`, `node_set_properties` also accepts a project-local reference. The plugin loads it through Godot, verifies the declared resource class, and only binds the result; it never modifies the external resource. Use `null` to clear an optional resource assignment.
+
+```json
+{
+  "texture": {"resource_path": "res://art/player.svg"}
 }
 ```
 

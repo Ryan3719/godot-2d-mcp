@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：阶段 0 已完成；阶段 1 已交付首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式与嵌入式 Theme 资源能力；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力；阶段 4 已交付 TileMapLayer、内嵌 TileSet Atlas、TileSet 语义能力与 Atlas TileData 碰撞/导航/遮挡几何；阶段 5 已交付 PointLight2D、DirectionalLight2D、LightOccluder2D、CanvasItemMaterial、带运行时 uniform 发现与 copy-on-write 配置的 2D ShaderMaterial、Camera2D、Parallax2D、CanvasLayer、Path2D、Curve2D、Skeleton2D、Bone2D、AudioStreamPlayer2D、GPUParticles2D、ParticleProcessMaterial 及其 CurveTexture/GradientTexture1D 和包含 Curve/Gradient 资源的 CPUParticles2D 安全语义编辑；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图和游戏输入模拟（v0.31.0）
+状态：阶段 0 已完成；阶段 1 已交付首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式、嵌入式 Theme 资源能力和通用公开 Resource 属性的安全项目路径绑定；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力；阶段 4 已交付 TileMapLayer、内嵌 TileSet Atlas、TileSet 语义能力与 Atlas TileData 碰撞/导航/遮挡几何；阶段 5 已交付 PointLight2D、DirectionalLight2D、LightOccluder2D、CanvasItemMaterial、带运行时 uniform 发现与 copy-on-write 配置的 2D ShaderMaterial、Camera2D、Parallax2D、CanvasLayer、Path2D、Curve2D、Skeleton2D、Bone2D、AudioStreamPlayer2D、GPUParticles2D、ParticleProcessMaterial 及其 CurveTexture/GradientTexture1D 和包含 Curve/Gradient 资源的 CPUParticles2D 安全语义编辑；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图和游戏输入模拟（v0.32.0）
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -119,7 +119,7 @@ Codex / Claude Code / MCP Client
 ### 当前已交付
 
 - 会话选择、编辑器状态、2D 类型检索、场景树和节点属性读取。
-- 内置 `ClassDB` 2D/UI 节点创建、原子属性修改、删除、撤销/重做和显式保存。
+- 内置 `ClassDB` 2D/UI 节点创建、原子属性修改、删除、撤销/重做和显式保存；对 Godot 声明为 `Resource` 的公开属性，可通过严格类型检查的 `{ "resource_path": "res://..." }` 引用安全绑定项目资源，且不会修改外部资源。
 - `node_rename`、`node_duplicate`、`node_reparent` 和 `node_move`。
 - `node_get_signals`、`signal_connect` 和 `signal_disconnect`，支持连接已有节点方法、绑定 JSON 参数、deferred 与 one-shot 选项。
 - `animation_list`、`animation_get`、`animation_create`、`animation_delete`、属性轨道 upsert/delete 和关键帧 upsert/delete；支持场景内嵌动画库、撤销/重做与保存。
