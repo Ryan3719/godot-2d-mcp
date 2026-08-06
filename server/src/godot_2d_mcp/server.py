@@ -537,6 +537,19 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def canvas_item_material_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Inspect a CanvasItem material and semantic CanvasItemMaterial configuration."""
+        return await service.canvas_item_material_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def light_2d_get(
         path: str,
         session_id: str | None = None,
@@ -1811,6 +1824,64 @@ def create_application(
         return await service.particle_process_material_2d_gradient_clear(
             path=path,
             gradient=gradient,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def canvas_item_material_create(
+        path: str,
+        replace_existing: bool = False,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Attach a new embedded CanvasItemMaterial to a local CanvasItem node."""
+        return await service.canvas_item_material_create(
+            path=path,
+            replace_existing=replace_existing,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def canvas_item_material_bind(
+        path: str,
+        resource_path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Bind an existing project CanvasItemMaterial without modifying the resource."""
+        return await service.canvas_item_material_bind(
+            path=path,
+            resource_path=resource_path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def canvas_item_material_set(
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Copy, configure, and rebind a CanvasItemMaterial atomically."""
+        return await service.canvas_item_material_set(
+            path=path,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def canvas_item_material_clear(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Detach a CanvasItem material while retaining editor undo support."""
+        return await service.canvas_item_material_clear(
+            path=path,
             session_id=session_id,
             scene_file=scene_file,
         )

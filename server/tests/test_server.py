@@ -47,6 +47,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "particle_process_material_2d_get",
         "particle_process_material_2d_curve_get",
         "particle_process_material_2d_gradient_get",
+        "canvas_item_material_get",
         "light_2d_get",
         "light_occluder_2d_get",
         "tile_map_layer_get",
@@ -124,6 +125,10 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "particle_process_material_2d_gradient_bind",
         "particle_process_material_2d_gradient_set",
         "particle_process_material_2d_gradient_clear",
+        "canvas_item_material_create",
+        "canvas_item_material_bind",
+        "canvas_item_material_set",
+        "canvas_item_material_clear",
         "light_2d_set",
         "light_occluder_2d_set",
         "tile_set_create",
@@ -180,6 +185,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["particle_process_material_2d_get"].readOnlyHint is True
     assert annotations["particle_process_material_2d_curve_get"].readOnlyHint is True
     assert annotations["particle_process_material_2d_gradient_get"].readOnlyHint is True
+    assert annotations["canvas_item_material_get"].readOnlyHint is True
     assert annotations["light_2d_get"].readOnlyHint is True
     assert annotations["light_occluder_2d_get"].readOnlyHint is True
     assert annotations["tile_map_layer_get"].readOnlyHint is True
@@ -256,6 +262,10 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["particle_process_material_2d_gradient_bind"].readOnlyHint is False
     assert annotations["particle_process_material_2d_gradient_set"].readOnlyHint is False
     assert annotations["particle_process_material_2d_gradient_clear"].destructiveHint is True
+    assert annotations["canvas_item_material_create"].destructiveHint is True
+    assert annotations["canvas_item_material_bind"].readOnlyHint is False
+    assert annotations["canvas_item_material_set"].readOnlyHint is False
+    assert annotations["canvas_item_material_clear"].destructiveHint is True
     assert annotations["light_2d_set"].readOnlyHint is False
     assert annotations["light_occluder_2d_set"].readOnlyHint is False
     assert annotations["tile_set_create"].readOnlyHint is False
