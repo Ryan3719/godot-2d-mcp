@@ -328,6 +328,25 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
                 )
 
         scene_file = state.get("current_scene", "")
+        coverage_snapshot = await app.service.class_2d_coverage_snapshot()
+        coverage_diff = await app.service.class_2d_coverage_diff(coverage_snapshot)
+        if (
+            coverage_snapshot.get("snapshot_version") != 1
+            or coverage_snapshot.get("total", 0) < 40
+            or coverage_snapshot.get("total") != len(coverage_snapshot.get("entries", []))
+            or coverage_diff.get("summary") != {
+                "added": 0,
+                "removed": 0,
+                "changed": 0,
+                "breaking": 0,
+            }
+        ):
+            raise RuntimeError(
+                "2D coverage snapshot or same-build diff was incomplete: "
+                f"snapshot={coverage_snapshot}, diff={coverage_diff}"
+            )
+        await _smoke_generic_2d_node_lifecycle(app, scene_file, coverage_snapshot)
+
         created_scene_file = "res://generated/agent_created_ui.tscn"
         await _expect_godot_error(
             app.service.scene_create(
@@ -6448,6 +6467,112 @@ def _signal_process_group(
         os.killpg(process.pid, signal_number)
     except ProcessLookupError:
         pass
+
+
+async def _smoke_generic_2d_node_lifecycle(
+    app: object, original_scene_file: str, coverage_snapshot: dict
+) -> None:
+    """Exercise every node that the live ClassDB audit claims generic support for."""
+    entries = coverage_snapshot.get("entries")
+    if not isinstance(entries, list):
+        raise TypeError("2D coverage snapshot did not contain node entries")
+    node_entries = [
+        entry
+        for entry in entries
+        if isinstance(entry, dict)
+        and entry.get("kind") == "node"
+        and entry.get("base_support", {}).get("create") is True
+    ]
+    if not node_entries:
+        raise RuntimeError("2D coverage snapshot did not contain creatable node entries")
+
+    _trace_smoke(f"starting generic lifecycle smoke for {len(node_entries)} 2D nodes")
+    coverage_scene_file = "res://generated/class_2d_coverage_smoke.tscn"
+    coverage_root_name = "Class2DCoverage"
+    coverage_root_path = f"/{coverage_root_name}"
+    created: list[tuple[str, str, str]] = []
+    failures: list[str] = []
+    try:
+        created_scene = await app.service.scene_create(
+            scene_path=coverage_scene_file,
+            root_type="Node2D",
+            root_name=coverage_root_name,
+        )
+        if not created_scene.get("created") or created_scene.get("scene_file") != coverage_scene_file:
+            raise RuntimeError("Generic 2D coverage scene was not created")
+        for index, entry in enumerate(node_entries):
+            type_name = str(entry["name"])
+            name = f"CoverageNode{index:03d}"
+            try:
+                result = await app.service.node_create(
+                    type_name=type_name,
+                    name=name,
+                    parent_path=coverage_root_path,
+                    scene_file=coverage_scene_file,
+                )
+                path = str(result.get("path", ""))
+                if result.get("type") != type_name or not path:
+                    failures.append(f"{type_name}: create returned {result}")
+                    continue
+                properties = await app.service.node_get_properties(
+                    path, scene_file=coverage_scene_file
+                )
+                if properties.get("type") != type_name or not isinstance(
+                    properties.get("properties"), list
+                ):
+                    failures.append(f"{type_name}: property inspection returned {properties}")
+                    continue
+                created.append((path, type_name, name))
+            except GodotCommandError as error:
+                failures.append(f"{type_name}: {error.code}")
+        if failures:
+            raise RuntimeError(
+                "ClassDB nodes advertised as generically supported failed lifecycle smoke: "
+                + ", ".join(failures)
+            )
+
+        saved = await app.service.scene_save(scene_file=coverage_scene_file)
+        if not saved.get("saved"):
+            raise RuntimeError("Generic 2D coverage scene could not be saved")
+        reopened = await app.service.scene_open(coverage_scene_file)
+        if not reopened.get("opened"):
+            raise RuntimeError("Generic 2D coverage scene could not be reopened")
+        hierarchy = await app.service.scene_get_hierarchy(max_depth=1, limit=500)
+        nodes_by_path = {str(node.get("path", "")): node for node in hierarchy.get("nodes", [])}
+        missing_or_changed = [
+            type_name
+            for path, type_name, _name in created
+            if nodes_by_path.get(path, {}).get("type") != type_name
+        ]
+        if missing_or_changed:
+            raise RuntimeError(
+                "Generic 2D coverage nodes were not preserved after save/reopen: "
+                + ", ".join(missing_or_changed)
+            )
+
+        last_path = created[0][0]
+        for path, _type_name, _name in reversed(created):
+            deleted = await app.service.node_delete(path, scene_file=coverage_scene_file)
+            if not deleted.get("deleted"):
+                raise RuntimeError(f"Generic 2D coverage node was not deleted: {path}")
+        undone = await app.service.scene_undo(scene_file=coverage_scene_file)
+        if not undone.get("changed"):
+            raise RuntimeError("Generic 2D coverage deletion was not undoable")
+        restored = await app.service.node_get_properties(last_path, scene_file=coverage_scene_file)
+        if not isinstance(restored.get("properties"), list):
+            raise TypeError("Generic 2D coverage undo did not restore the deleted node")
+        redone = await app.service.scene_redo(scene_file=coverage_scene_file)
+        if not redone.get("changed"):
+            raise RuntimeError("Generic 2D coverage deletion was not redoable")
+        after_redo = await app.service.scene_get_hierarchy(max_depth=1, limit=500)
+        if any(node.get("path") == last_path for node in after_redo.get("nodes", [])):
+            raise RuntimeError("Generic 2D coverage redo did not remove the restored node")
+        if not (await app.service.scene_save(scene_file=coverage_scene_file)).get("saved"):
+            raise RuntimeError("Generic 2D coverage cleanup could not be saved")
+    finally:
+        reopened_original = await app.service.scene_open(original_scene_file)
+        if not reopened_original.get("opened"):
+            raise RuntimeError("Generic 2D coverage smoke could not restore the original scene")
 
 
 async def _wait_for_editor_ready(app: object, timeout_seconds: float = 30.0) -> dict:
