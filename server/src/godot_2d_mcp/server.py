@@ -486,6 +486,23 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def tab_container_items_get(
+        path: str,
+        item_offset: int = 0,
+        item_limit: int = 100,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read paginated per-tab metadata from a local TabContainer."""
+        return await service.tab_container_items_get(
+            path=path,
+            item_offset=item_offset,
+            item_limit=item_limit,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def control_get_styleboxes(
         path: str,
         session_id: str | None = None,
@@ -1474,6 +1491,23 @@ def create_application(
         """Atomically configure one local Container's supported layout behavior."""
         return await service.container_2d_set(
             path=path,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def tab_container_item_set(
+        path: str,
+        child_path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically update one direct TabContainer child's tab metadata."""
+        return await service.tab_container_item_set(
+            path=path,
+            child_path=child_path,
             properties=properties,
             session_id=session_id,
             scene_file=scene_file,

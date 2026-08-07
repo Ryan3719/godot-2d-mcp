@@ -232,6 +232,10 @@ const NODE_SEMANTIC_CATALOG := [
 		"tools": ["container_2d_get", "container_2d_set", "container_child_layout_set"],
 	},
 	{
+		"base_type": "TabContainer",
+		"tools": ["tab_container_items_get", "tab_container_item_set"],
+	},
+	{
 		"base_type": "BaseButton",
 		"tools": ["button_2d_get", "button_2d_set"],
 	},

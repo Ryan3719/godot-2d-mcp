@@ -9,6 +9,8 @@ const VariantCodec := preload("res://addons/godot_2d_mcp/utils/variant_codec.gd"
 const MAX_PROPERTIES := 32
 const MAX_CHILDREN := 256
 const MAX_LAYOUT_MAGNITUDE := 1000000.0
+const MAX_PATH_LENGTH := 4096
+const MAX_TAB_ITEM_TEXT_LENGTH := 4096
 const BASE_PROPERTIES := ["accessibility_region"]
 const BOX_PROPERTIES := ["alignment"]
 const GRID_PROPERTIES := ["columns"]
@@ -35,6 +37,23 @@ const SUBVIEWPORT_PROPERTIES := ["stretch", "stretch_shrink", "mouse_target"]
 const CHILD_LAYOUT_PROPERTIES := [
 	"custom_minimum_size", "size_flags_horizontal", "size_flags_vertical", "size_flags_stretch_ratio",
 ]
+const TAB_ITEM_PROPERTIES := [
+	"title", "tooltip", "icon_path", "icon_max_width", "disabled", "hidden", "metadata",
+	"button_icon_path",
+]
+const TAB_ITEM_PROPERTY_ORDER := [
+	"title", "tooltip", "icon", "icon_max_width", "disabled", "hidden", "metadata", "button_icon",
+]
+const TAB_ITEM_SETTERS := {
+	"title": "set_tab_title",
+	"tooltip": "set_tab_tooltip",
+	"icon": "set_tab_icon",
+	"icon_max_width": "set_tab_icon_max_width",
+	"disabled": "set_tab_disabled",
+	"hidden": "set_tab_hidden",
+	"metadata": "set_tab_metadata",
+	"button_icon": "set_tab_button_icon",
+}
 const PROPERTY_ORDER := [
 	"accessibility_region", "alignment", "columns", "use_top_left", "ratio", "stretch_mode",
 	"alignment_horizontal", "alignment_vertical", "last_wrap_alignment", "reverse_fill", "split_offsets",
@@ -144,6 +163,52 @@ func set_child_layout(params: Dictionary) -> Dictionary:
 	}
 
 
+func get_tab_items(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tab_container(params, false)
+	if resolved.has("_error"):
+		return resolved
+	var page := _parse_tab_item_page(params)
+	if page.has("_error"):
+		return page
+	return _tab_items_response(
+		resolved["tab_container"], resolved["scene_root"], page["offset"], page["limit"]
+	)
+
+
+func set_tab_item(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tab_container(params)
+	if resolved.has("_error"):
+		return resolved
+	var item_result := _resolve_tab_item(params, resolved)
+	if item_result.has("_error"):
+		return item_result
+	var parsed := _parse_tab_item_updates(params)
+	if parsed.has("_error"):
+		return parsed
+	var tab_container: TabContainer = resolved["tab_container"]
+	var tab_index: int = item_result["tab_index"]
+	var changed := _changed_tab_item_properties(tab_container, tab_index, parsed["updates"])
+	if changed.is_empty():
+		return {
+			"path": ScenePath.from_node(tab_container, resolved["scene_root"]),
+			"item": _serialize_tab_item(
+				tab_container, tab_index, item_result["child"], resolved["scene_root"]
+			),
+			"changed": false,
+			"undoable": false,
+		}
+	_commit_tab_item_updates(tab_container, tab_index, item_result["child"], resolved["scene_root"], changed)
+	return {
+		"path": ScenePath.from_node(tab_container, resolved["scene_root"]),
+		"item": _serialize_tab_item(
+			tab_container, tab_index, item_result["child"], resolved["scene_root"]
+		),
+		"changed": true,
+		"undoable": true,
+		"_scene_mutated": true,
+	}
+
+
 func _resolve_container(params: Dictionary, require_writable: bool = true) -> Dictionary:
 	var guarded := MutationGuard.require_scene(params, require_writable)
 	if guarded.has("_error"):
@@ -170,6 +235,22 @@ func _resolve_container(params: Dictionary, require_writable: bool = true) -> Di
 			false, "Edit the source PackedScene or target a locally owned Container."
 		)
 	return {"container": node as Container, "scene_root": scene_root}
+
+
+func _resolve_tab_container(params: Dictionary, require_writable: bool = true) -> Dictionary:
+	var resolved := _resolve_container(params, require_writable)
+	if resolved.has("_error"):
+		return resolved
+	var container: Container = resolved["container"]
+	if not container is TabContainer:
+		return Errors.make(
+			"TAB_CONTAINER_REQUIRED",
+			"Node '%s' is %s, not a TabContainer" % [container.name, container.get_class()],
+			false,
+			"Target a TabContainer with locally owned Control children."
+		)
+	resolved["tab_container"] = container as TabContainer
+	return resolved
 
 
 func _resolve_direct_child(params: Dictionary, resolved: Dictionary) -> Dictionary:
@@ -203,11 +284,38 @@ func _resolve_direct_child(params: Dictionary, resolved: Dictionary) -> Dictiona
 	return {"child": child as Control}
 
 
+func _resolve_tab_item(params: Dictionary, resolved: Dictionary) -> Dictionary:
+	var child_result := _resolve_direct_child(params, resolved)
+	if child_result.has("_error"):
+		return child_result
+	var tab_container: TabContainer = resolved["tab_container"]
+	var child: Control = child_result["child"]
+	var tab_index := tab_container.get_tab_idx_from_control(child)
+	if tab_index < 0:
+		return Errors.make(
+			"TAB_ITEM_NOT_FOUND",
+			"Control '%s' is not represented by a TabContainer tab" % child.name,
+			false,
+			"Use tab_container_items_get to inspect the current tab order."
+		)
+	return {"child": child, "tab_index": tab_index}
+
+
 func _parse_child_page(params: Dictionary) -> Dictionary:
 	var offset_result := _parse_integer(params.get("child_offset", 0), "child_offset", 0, MAX_CHILDREN)
 	if offset_result.has("_error"):
 		return offset_result
 	var limit_result := _parse_integer(params.get("child_limit", 100), "child_limit", 1, MAX_CHILDREN)
+	if limit_result.has("_error"):
+		return limit_result
+	return {"offset": offset_result["value"], "limit": limit_result["value"]}
+
+
+func _parse_tab_item_page(params: Dictionary) -> Dictionary:
+	var offset_result := _parse_integer(params.get("item_offset", 0), "item_offset", 0, MAX_CHILDREN)
+	if offset_result.has("_error"):
+		return offset_result
+	var limit_result := _parse_integer(params.get("item_limit", 100), "item_limit", 1, MAX_CHILDREN)
 	if limit_result.has("_error"):
 		return limit_result
 	return {"offset": offset_result["value"], "limit": limit_result["value"]}
@@ -230,6 +338,72 @@ func _parse_container_updates(params: Dictionary, container: Container) -> Dicti
 			return value_result
 		updates[value_result["property_name"]] = value_result["value"]
 	return {"updates": updates}
+
+
+func _parse_tab_item_updates(params: Dictionary) -> Dictionary:
+	var raw_properties: Variant = params.get("properties", null)
+	if not raw_properties is Dictionary or raw_properties.is_empty() \
+		or raw_properties.size() > TAB_ITEM_PROPERTIES.size():
+		return _invalid_tab_item_configuration("properties must be a non-empty tab item object")
+	var updates := {}
+	for raw_name in raw_properties:
+		if not raw_name is String or not TAB_ITEM_PROPERTIES.has(raw_name):
+			return _invalid_tab_item_configuration("Unsupported TabContainer item property: %s" % str(raw_name))
+		var parsed := _parse_tab_item_property(str(raw_name), raw_properties[raw_name])
+		if parsed.has("_error"):
+			return parsed
+		updates[parsed["property_name"]] = parsed["value"]
+	return {"updates": updates}
+
+
+func _parse_tab_item_property(name: String, raw_value: Variant) -> Dictionary:
+	match name:
+		"title", "tooltip":
+			return _parse_tab_item_string(raw_value, name)
+		"icon_path":
+			return _load_optional_tab_texture(raw_value, name, "icon")
+		"button_icon_path":
+			return _load_optional_tab_texture(raw_value, name, "button_icon")
+		"icon_max_width":
+			return _parse_integer(raw_value, name, 0, 4096)
+		"disabled", "hidden":
+			return _parse_bool(raw_value, name)
+		"metadata":
+			var decoded := VariantCodec.decode_json_value(raw_value)
+			if decoded.has("_error"):
+				return _invalid_tab_item_configuration("metadata must be JSON-compatible")
+			return {"property_name": name, "value": decoded["value"]}
+	return _invalid_tab_item_configuration("Unsupported TabContainer item property: %s" % name)
+
+
+func _parse_tab_item_string(raw_value: Variant, property_name: String) -> Dictionary:
+	if not raw_value is String or raw_value.length() > MAX_TAB_ITEM_TEXT_LENGTH:
+		return _invalid_tab_item_configuration(
+			"%s must be a string up to %d characters" % [property_name, MAX_TAB_ITEM_TEXT_LENGTH]
+		)
+	return {"property_name": property_name, "value": raw_value}
+
+
+func _load_optional_tab_texture(
+	raw_value: Variant, input_name: String, property_name: String
+) -> Dictionary:
+	if not raw_value is String:
+		return _invalid_tab_item_configuration("%s must be a res:// string or an empty string" % input_name)
+	var resource_path: String = raw_value.strip_edges()
+	if resource_path.is_empty():
+		return {"property_name": property_name, "value": null}
+	if resource_path.length() > MAX_PATH_LENGTH or not resource_path.begins_with("res://") \
+		or resource_path.contains("/../") or resource_path.ends_with("/.."):
+		return _invalid_tab_item_configuration("%s must remain inside the project res:// directory" % input_name)
+	if not ResourceLoader.exists(resource_path):
+		return Errors.make("RESOURCE_NOT_FOUND", "Resource does not exist: %s" % resource_path)
+	var resource := ResourceLoader.load(resource_path)
+	if resource == null or not resource.is_class("Texture2D"):
+		return Errors.make(
+			"RESOURCE_TYPE_MISMATCH", "%s must load Texture2D" % input_name, false,
+			"Use an existing project Texture2D resource."
+		)
+	return {"property_name": property_name, "value": resource as Texture2D}
 
 
 func _parse_container_property(name: String, raw_value: Variant, container: Container) -> Dictionary:
@@ -408,6 +582,38 @@ func _changed_child_layout_properties(child: Control, updates: Dictionary) -> Di
 	return changed
 
 
+func _changed_tab_item_properties(
+	tab_container: TabContainer, tab_index: int, updates: Dictionary
+) -> Dictionary:
+	var changed := {}
+	for property_name in TAB_ITEM_PROPERTY_ORDER:
+		if updates.has(property_name) and _tab_item_value(tab_container, tab_index, property_name) \
+			!= updates[property_name]:
+			changed[property_name] = updates[property_name]
+	return changed
+
+
+func _tab_item_value(tab_container: TabContainer, tab_index: int, property_name: String) -> Variant:
+	match property_name:
+		"title":
+			return tab_container.get_tab_title(tab_index)
+		"tooltip":
+			return tab_container.get_tab_tooltip(tab_index)
+		"icon":
+			return tab_container.get_tab_icon(tab_index)
+		"icon_max_width":
+			return tab_container.get_tab_icon_max_width(tab_index)
+		"disabled":
+			return tab_container.is_tab_disabled(tab_index)
+		"hidden":
+			return tab_container.is_tab_hidden(tab_index)
+		"metadata":
+			return tab_container.get_tab_metadata(tab_index)
+		"button_icon":
+			return tab_container.get_tab_button_icon(tab_index)
+	return null
+
+
 func _commit_container_updates(container: Container, scene_root: Node, updates: Dictionary) -> void:
 	_undo_redo.create_action(
 		"Godot 2D MCP: Update %s %s" % [container.get_class(), container.name],
@@ -434,6 +640,24 @@ func _commit_child_layout_updates(child: Control, scene_root: Node, updates: Dic
 	_undo_redo.commit_action()
 
 
+func _commit_tab_item_updates(
+	tab_container: TabContainer, tab_index: int, child: Control, scene_root: Node, updates: Dictionary
+) -> void:
+	_undo_redo.create_action(
+		"Godot 2D MCP: Update TabContainer item %s" % child.name,
+		UndoRedo.MERGE_DISABLE, scene_root, true
+	)
+	for property_name in TAB_ITEM_PROPERTY_ORDER:
+		if not updates.has(property_name):
+			continue
+		var setter: String = TAB_ITEM_SETTERS[property_name]
+		_undo_redo.add_do_method(tab_container, setter, tab_index, updates[property_name])
+		_undo_redo.add_undo_method(
+			tab_container, setter, tab_index, _tab_item_value(tab_container, tab_index, property_name)
+		)
+	_undo_redo.commit_action()
+
+
 func _container_response(container: Container, scene_root: Node, offset: int, limit: int) -> Dictionary:
 	var children := _direct_control_children(container)
 	var start := mini(offset, children.size())
@@ -451,6 +675,28 @@ func _container_response(container: Container, scene_root: Node, offset: int, li
 		"children": serialized_children,
 		"children_truncated": end < children.size(),
 		"supported_child_layout_properties": CHILD_LAYOUT_PROPERTIES.duplicate(),
+	}
+
+
+func _tab_items_response(
+	tab_container: TabContainer, scene_root: Node, offset: int, limit: int
+) -> Dictionary:
+	var total := tab_container.get_tab_count()
+	var start := mini(offset, total)
+	var end := mini(start + limit, total)
+	var items: Array = []
+	for tab_index in range(start, end):
+		items.append(_serialize_tab_item(
+			tab_container, tab_index, tab_container.get_tab_control(tab_index), scene_root
+		))
+	return {
+		"path": ScenePath.from_node(tab_container, scene_root),
+		"type": "TabContainer",
+		"items_total": total,
+		"item_offset": start,
+		"items": items,
+		"items_truncated": end < total,
+		"supported_item_properties": TAB_ITEM_PROPERTIES.duplicate(),
 	}
 
 
@@ -544,6 +790,35 @@ func _serialize_child_layout(child: Control, scene_root: Node) -> Dictionary:
 	}
 
 
+func _serialize_tab_item(
+	tab_container: TabContainer, tab_index: int, child: Control, scene_root: Node
+) -> Dictionary:
+	return {
+		"index": tab_index,
+		"path": ScenePath.from_node(child, scene_root),
+		"type": child.get_class(),
+		"title": tab_container.get_tab_title(tab_index),
+		"tooltip": tab_container.get_tab_tooltip(tab_index),
+		"icon": _tab_texture_descriptor(tab_container.get_tab_icon(tab_index)),
+		"icon_max_width": tab_container.get_tab_icon_max_width(tab_index),
+		"disabled": tab_container.is_tab_disabled(tab_index),
+		"hidden": tab_container.is_tab_hidden(tab_index),
+		"metadata": VariantCodec.serialize(tab_container.get_tab_metadata(tab_index)),
+		"button_icon": _tab_texture_descriptor(tab_container.get_tab_button_icon(tab_index)),
+	}
+
+
+func _tab_texture_descriptor(texture: Texture2D) -> Dictionary:
+	if texture == null:
+		return {"assigned": false, "origin": "none", "resource_path": "", "resource_type": ""}
+	return {
+		"assigned": true,
+		"origin": "external" if not texture.resource_path.is_empty() else "embedded",
+		"resource_path": texture.resource_path,
+		"resource_type": texture.get_class(),
+	}
+
+
 func _direct_control_children(container: Container) -> Array:
 	var controls: Array = []
 	for child in container.get_children(false):
@@ -610,3 +885,7 @@ func _enum_options(values: Dictionary) -> String:
 
 func _invalid_configuration(message: String) -> Dictionary:
 	return Errors.make("INVALID_CONTAINER_CONFIGURATION", message)
+
+
+func _invalid_tab_item_configuration(message: String) -> Dictionary:
+	return Errors.make("INVALID_TAB_CONTAINER_ITEM_CONFIGURATION", message)
