@@ -174,6 +174,9 @@ async def test_button_2d_tools_forward_validated_payloads() -> None:
         "icon_path": "res://ui/launch.svg",
         "alignment": "left",
         "autowrap_trim_flags": ["trim_start"],
+        "uri": "https://godotengine.org",
+        "underline": "on_hover",
+        "ellipsis_char": ">",
         "texture_normal_path": "res://ui/normal.svg",
         "stretch_mode": "keep_aspect_centered",
     }
@@ -220,6 +223,12 @@ async def test_button_2d_tools_reject_invalid_payloads() -> None:
         await service.button_2d_set("/Main/Launch", {"alignment": "fill"})
     with pytest.raises(ValueError, match="click_mask_path"):
         await service.button_2d_set("/Main/Launch", {"click_mask_path": "../mask.tres"})
+    with pytest.raises(ValueError, match="underline"):
+        await service.button_2d_set("/Main/Launch", {"underline": "sometimes"})
+    with pytest.raises(ValueError, match="uri"):
+        await service.button_2d_set("/Main/Launch", {"uri": "x" * 4097})
+    with pytest.raises(ValueError, match="ellipsis_char"):
+        await service.button_2d_set("/Main/Launch", {"ellipsis_char": "..."})
     with pytest.raises(ValueError, match="unsupported BaseButton property"):
         await service.button_2d_set("/Main/Launch", {"unknown": True})
 

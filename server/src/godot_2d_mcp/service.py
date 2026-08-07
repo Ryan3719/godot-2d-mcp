@@ -3818,6 +3818,9 @@ def _validate_button_2d_properties(properties: dict[str, Any]) -> None:
         "expand_icon",
         "text_direction",
         "language",
+        "uri",
+        "underline",
+        "ellipsis_char",
         "texture_normal_path",
         "texture_pressed_path",
         "texture_hover_path",
@@ -3878,6 +3881,7 @@ def _validate_button_2d_properties(properties: dict[str, Any]) -> None:
     )
     _validate_button_enum(properties, "autowrap_mode", {"off", "arbitrary", "word", "smart_word"})
     _validate_button_enum(properties, "text_direction", {"auto", "ltr", "rtl", "inherited"})
+    _validate_button_enum(properties, "underline", {"always", "on_hover", "never"})
     _validate_button_enum(
         properties,
         "stretch_mode",
@@ -3893,11 +3897,19 @@ def _validate_button_2d_properties(properties: dict[str, Any]) -> None:
     )
     _validate_button_name_list(properties, "button_mask", {"left", "right", "middle"})
     _validate_button_name_list(properties, "autowrap_trim_flags", {"trim_start", "trim_end"})
-    for name, maximum in (("text", 4096), ("language", 128)):
+    for name, maximum in (
+        ("text", 4096),
+        ("language", 128),
+        ("uri", 4096),
+    ):
         if name in properties and (
             not isinstance(properties[name], str) or len(properties[name]) > maximum
         ):
             raise ValueError(f"{name} must be a string up to {maximum} characters")
+    if "ellipsis_char" in properties and (
+        not isinstance(properties["ellipsis_char"], str) or len(properties["ellipsis_char"]) != 1
+    ):
+        raise ValueError("ellipsis_char must contain exactly one character")
 
 
 def _validate_button_menu_page(offset: int, limit: int) -> None:

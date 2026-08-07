@@ -378,6 +378,7 @@ const NODE_SEMANTIC_CATALOG := [
 const SEMANTIC_SMOKE_COVERED_CLASSES := {
 	"Button": true,
 	"TextureButton": true,
+	"LinkButton": true,
 	"OptionButton": true,
 	"MenuButton": true,
 	"Area2D": true,
