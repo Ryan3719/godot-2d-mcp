@@ -176,6 +176,16 @@ const RESOURCE_COVERAGE_CATALOG := [
 		"tools": [
 			"node_set_properties", "control_theme_item_upsert", "sprite_2d_get", "sprite_2d_set",
 			"line_2d_get", "line_2d_set", "polygon_2d_get", "polygon_2d_set",
+			"sprite_frames_get", "sprite_frames_animation_upsert",
+		],
+	},
+	{
+		"base_type": "SpriteFrames",
+		"category": "visual",
+		"tools": [
+			"animated_sprite_2d_get", "animated_sprite_2d_set", "sprite_frames_get",
+			"sprite_frames_animation_upsert", "sprite_frames_animation_rename",
+			"sprite_frames_animation_remove",
 		],
 	},
 	{
@@ -306,6 +316,14 @@ const NODE_SEMANTIC_CATALOG := [
 		"tools": ["sprite_2d_get", "sprite_2d_set"],
 	},
 	{
+		"base_type": "AnimatedSprite2D",
+		"tools": [
+			"animated_sprite_2d_get", "animated_sprite_2d_set", "sprite_frames_get",
+			"sprite_frames_animation_upsert", "sprite_frames_animation_rename",
+			"sprite_frames_animation_remove",
+		],
+	},
+	{
 		"base_type": "Line2D",
 		"tools": ["line_2d_get", "line_2d_set"],
 	},
@@ -364,6 +382,7 @@ const SEMANTIC_SMOKE_COVERED_CLASSES := {
 	"DirectionalLight2D": true,
 	"LightOccluder2D": true,
 	"Sprite2D": true,
+	"AnimatedSprite2D": true,
 	"Line2D": true,
 	"Polygon2D": true,
 	"TileMapLayer": true,

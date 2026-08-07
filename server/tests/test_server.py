@@ -36,6 +36,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "sprite_2d_get",
         "line_2d_get",
         "polygon_2d_get",
+        "animated_sprite_2d_get",
+        "sprite_frames_get",
         "animation_list",
         "animation_get",
         "control_get_layout",
@@ -81,6 +83,10 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "sprite_2d_set",
         "line_2d_set",
         "polygon_2d_set",
+        "animated_sprite_2d_set",
+        "sprite_frames_animation_upsert",
+        "sprite_frames_animation_rename",
+        "sprite_frames_animation_remove",
         "node_delete",
         "node_rename",
         "node_duplicate",
@@ -202,6 +208,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["sprite_2d_get"].readOnlyHint is True
     assert annotations["line_2d_get"].readOnlyHint is True
     assert annotations["polygon_2d_get"].readOnlyHint is True
+    assert annotations["animated_sprite_2d_get"].readOnlyHint is True
+    assert annotations["sprite_frames_get"].readOnlyHint is True
     assert annotations["animation_list"].readOnlyHint is True
     assert annotations["animation_get"].readOnlyHint is True
     assert annotations["control_get_layout"].readOnlyHint is True
@@ -346,6 +354,10 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["sprite_2d_set"].readOnlyHint is False
     assert annotations["line_2d_set"].readOnlyHint is False
     assert annotations["polygon_2d_set"].readOnlyHint is False
+    assert annotations["animated_sprite_2d_set"].readOnlyHint is False
+    assert annotations["sprite_frames_animation_upsert"].readOnlyHint is False
+    assert annotations["sprite_frames_animation_rename"].readOnlyHint is False
+    assert annotations["sprite_frames_animation_remove"].destructiveHint is True
     assert annotations["scene_save"].idempotentHint is True
 
 
