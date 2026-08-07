@@ -379,6 +379,56 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def button_menu_items_get(
+        self,
+        path: str,
+        offset: int = 0,
+        limit: int = 100,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_button_menu_page(offset, limit)
+        return await self.bridge.call(
+            "button_menu_items_get",
+            _scene_params(scene_file, path=path, offset=offset, limit=limit),
+            session_id=session_id,
+        )
+
+    async def button_menu_items_set(
+        self,
+        path: str,
+        items: list[dict[str, Any]],
+        selected_index: int | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_button_menu_items(items)
+        if selected_index is not None and (
+            isinstance(selected_index, bool)
+            or not isinstance(selected_index, int)
+            or not -1 <= selected_index < len(items)
+        ):
+            raise ValueError("selected_index must be -1 or an item index")
+        params = _scene_params(scene_file, path=path, items=items)
+        if selected_index is not None:
+            params["selected_index"] = selected_index
+        return await self.bridge.call("button_menu_items_set", params, session_id=session_id)
+
+    async def button_menu_items_clear(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "button_menu_items_clear",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def sprite_frames_animation_upsert(
         self,
         path: str,
@@ -3848,6 +3898,128 @@ def _validate_button_2d_properties(properties: dict[str, Any]) -> None:
             not isinstance(properties[name], str) or len(properties[name]) > maximum
         ):
             raise ValueError(f"{name} must be a string up to {maximum} characters")
+
+
+def _validate_button_menu_page(offset: int, limit: int) -> None:
+    if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset <= 256:
+        raise ValueError("offset must be an integer between 0 and 256")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 256:
+        raise ValueError("limit must be an integer between 1 and 256")
+
+
+def _validate_button_menu_items(items: list[dict[str, Any]]) -> None:
+    if not isinstance(items, list) or not 1 <= len(items) <= 256:
+        raise ValueError("items must contain between 1 and 256 entries")
+    for index, item in enumerate(items):
+        label = f"items[{index}]"
+        if not isinstance(item, dict):
+            raise ValueError(f"{label} must be an object")
+        kind = item.get("kind", "normal")
+        if not isinstance(kind, str) or kind.strip().lower() not in {
+            "normal",
+            "check",
+            "radio",
+            "multistate",
+            "separator",
+        }:
+            raise ValueError(f"{label}.kind must be normal, check, radio, multistate, or separator")
+        normalized_kind = kind.strip().lower()
+        allowed = {"kind", "text", "id"}
+        if normalized_kind != "separator":
+            allowed |= {"icon_path", "metadata", "disabled", "tooltip"}
+            if normalized_kind in {"check", "radio"}:
+                allowed.add("checked")
+            if normalized_kind == "multistate":
+                allowed |= {"max_states", "state"}
+            allowed |= {
+                "accelerator",
+                "indent",
+                "text_direction",
+                "language",
+                "auto_translate_mode",
+                "icon_max_width",
+                "icon_modulate",
+            }
+        if any(not isinstance(name, str) or name not in allowed for name in item):
+            raise ValueError(f"{label} contains an unsupported menu item field")
+        text = item.get("text", "")
+        if not isinstance(text, str) or len(text) > 4096:
+            raise ValueError(f"{label}.text must be a string up to 4096 characters")
+        _validate_button_menu_integer(
+            item.get("id", index), f"{label}.id", -2_147_483_648, 2_147_483_647
+        )
+        if normalized_kind == "separator":
+            continue
+        for name in ("icon_path",):
+            if name in item:
+                _validate_optional_project_resource_path(item[name], f"{label}.{name}")
+        for name in ("disabled", "checked"):
+            if name in item:
+                _validate_boolean(item[name], f"{label}.{name}")
+        if "tooltip" in item and (
+            not isinstance(item["tooltip"], str) or len(item["tooltip"]) > 1024
+        ):
+            raise ValueError(f"{label}.tooltip must be a string up to 1024 characters")
+        if "metadata" in item:
+            _validate_button_menu_json(item["metadata"], f"{label}.metadata")
+        if "accelerator" in item:
+            _validate_button_menu_integer(
+                item["accelerator"], f"{label}.accelerator", 0, 2_147_483_647
+            )
+        if "indent" in item:
+            _validate_button_menu_integer(item["indent"], f"{label}.indent", 0, 64)
+        if "icon_max_width" in item:
+            _validate_button_menu_integer(
+                item["icon_max_width"], f"{label}.icon_max_width", 0, 4096
+            )
+        for name, choices in {
+            "text_direction": {"auto", "ltr", "rtl", "inherited"},
+            "auto_translate_mode": {"inherit", "always", "disabled"},
+        }.items():
+            if name in item and (
+                not isinstance(item[name], str) or item[name].strip().lower() not in choices
+            ):
+                raise ValueError(f"{label}.{name} must be one of: {', '.join(sorted(choices))}")
+        if "language" in item and (
+            not isinstance(item["language"], str) or len(item["language"]) > 128
+        ):
+            raise ValueError(f"{label}.language must be a string up to 128 characters")
+        if "icon_modulate" in item:
+            _validate_light_color(item["icon_modulate"], f"{label}.icon_modulate")
+        if normalized_kind == "multistate":
+            _validate_button_menu_integer(item.get("max_states"), f"{label}.max_states", 2, 256)
+            _validate_button_menu_integer(
+                item.get("state", 0), f"{label}.state", 0, int(item["max_states"]) - 1
+            )
+
+
+def _validate_button_menu_integer(value: Any, label: str, minimum: int, maximum: int) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+        raise ValueError(f"{label} must be an integer between {minimum} and {maximum}")
+
+
+def _validate_button_menu_json(value: Any, label: str, depth: int = 0) -> None:
+    if depth > 8:
+        raise ValueError(f"{label} nesting exceeds 8 levels")
+    if value is None or isinstance(value, (bool, str, int)):
+        return
+    if isinstance(value, float):
+        if math.isfinite(value):
+            return
+        raise ValueError(f"{label} must contain only finite numbers")
+    if isinstance(value, list):
+        if len(value) > 512:
+            raise ValueError(f"{label} arrays can contain at most 512 values")
+        for entry in value:
+            _validate_button_menu_json(entry, label, depth + 1)
+        return
+    if isinstance(value, dict):
+        if len(value) > 512 or any(not isinstance(key, str) for key in value):
+            raise ValueError(f"{label} objects require at most 512 string keys")
+        for entry in value.values():
+            _validate_button_menu_json(entry, label, depth + 1)
+        return
+    raise ValueError(f"{label} must contain only JSON-compatible values")
 
 
 def _validate_button_enum(properties: dict[str, Any], name: str, allowed: set[str]) -> None:

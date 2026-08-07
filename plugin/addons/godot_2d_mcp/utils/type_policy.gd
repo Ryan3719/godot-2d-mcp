@@ -232,6 +232,14 @@ const NODE_SEMANTIC_CATALOG := [
 		"tools": ["button_2d_get", "button_2d_set"],
 	},
 	{
+		"base_type": "OptionButton",
+		"tools": ["button_menu_items_get", "button_menu_items_set", "button_menu_items_clear"],
+	},
+	{
+		"base_type": "MenuButton",
+		"tools": ["button_menu_items_get", "button_menu_items_set", "button_menu_items_clear"],
+	},
+	{
 		"base_type": "AnimationPlayer",
 		"tools": [
 			"animation_list", "animation_get", "animation_create", "animation_delete",
@@ -370,6 +378,8 @@ const NODE_SEMANTIC_CATALOG := [
 const SEMANTIC_SMOKE_COVERED_CLASSES := {
 	"Button": true,
 	"TextureButton": true,
+	"OptionButton": true,
+	"MenuButton": true,
 	"Area2D": true,
 	"StaticBody2D": true,
 	"AnimatableBody2D": true,
