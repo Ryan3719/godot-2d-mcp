@@ -102,6 +102,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         texture_button_coverage = await app.service.class_2d_coverage(
             query="TextureButton", scope="node", limit=20
         )
+        link_button_coverage = await app.service.class_2d_coverage(
+            query="LinkButton", scope="node", limit=20
+        )
 
         if hierarchy.get("total") != 5:
             raise RuntimeError(f"Unexpected scene node count: {hierarchy.get('total')}")
@@ -216,6 +219,14 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             ),
             None,
         )
+        link_button_entry = next(
+            (
+                entry
+                for entry in link_button_coverage.get("entries", [])
+                if entry.get("name") == "LinkButton"
+            ),
+            None,
+        )
         if (
             sprite_coverage is None
             or {"sprite_2d_get", "sprite_2d_set"}
@@ -235,6 +246,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or {"button_2d_get", "button_2d_set"}
             - set(texture_button_entry.get("semantic_tools", []))
             or texture_button_entry.get("test_status") != "semantic_smoke"
+            or link_button_entry is None
+            or {"button_2d_get", "button_2d_set"}
+            - set(link_button_entry.get("semantic_tools", []))
+            or link_button_entry.get("test_status") != "semantic_smoke"
         ):
             raise RuntimeError("2D drawing coverage audit was incomplete")
 
@@ -3581,6 +3596,47 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not clear TextureButton textures")
         if not (await app.service.scene_redo(scene_file=scene_file)).get("changed"):
             raise RuntimeError("TextureButton semantic configuration was not redoable")
+
+        semantic_link_button = await app.service.node_create(
+            type_name="LinkButton",
+            name="AgentLinkButton",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        semantic_link_button_path = semantic_link_button["path"]
+        link_button_configuration = await app.service.button_2d_set(
+            semantic_link_button_path,
+            {
+                "text": "Godot Docs",
+                "uri": "https://docs.godotengine.org/en/latest/",
+                "underline": "on_hover",
+                "text_overrun_behavior": "ellipsis_force",
+                "ellipsis_char": ">",
+                "text_direction": "ltr",
+                "language": "en",
+            },
+            scene_file=scene_file,
+        )
+        link_button_state = link_button_configuration["configuration"]["link_button"]
+        if (
+            not link_button_configuration.get("changed")
+            or link_button_state["uri"] != "https://docs.godotengine.org/en/latest/"
+            or link_button_state["underline"] != "on_hover"
+            or link_button_state["text_overrun_behavior"] != "ellipsis_force"
+            or link_button_state["ellipsis_char"] != ">"
+            or link_button_state["text_direction"] != "ltr"
+            or link_button_state["language"] != "en"
+        ):
+            raise RuntimeError("LinkButton semantic configuration was not applied")
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("LinkButton semantic configuration was not undoable")
+        restored_link_button = await app.service.button_2d_get(
+            semantic_link_button_path, scene_file=scene_file
+        )
+        if restored_link_button["configuration"]["link_button"]["uri"]:
+            raise RuntimeError("Undo did not restore LinkButton URI")
+        if not (await app.service.scene_redo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("LinkButton semantic configuration was not redoable")
         await _expect_godot_error(
             app.service.button_2d_get(semantic_line_path, scene_file=scene_file),
             "BASE_BUTTON_REQUIRED",
@@ -5289,7 +5345,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 57 or _has_node(
+        if final_hierarchy.get("total") != 58 or _has_node(
             final_hierarchy, marker_path
         ):
             raise RuntimeError("Unexpected final hierarchy after write operations")
@@ -5310,6 +5366,8 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentAnimatedSprite" not in saved_scene
             or "AgentSemanticButton" not in saved_scene
             or "AgentTextureButton" not in saved_scene
+            or "AgentLinkButton" not in saved_scene
+            or "https://docs.godotengine.org/en/latest/" not in saved_scene
             or "AgentOptionMenu" not in saved_scene
             or "AgentMenuButton" not in saved_scene
             or "Easy" not in saved_scene

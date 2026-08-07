@@ -9,6 +9,7 @@ const VariantCodec := preload("res://addons/godot_2d_mcp/utils/variant_codec.gd"
 const MAX_PROPERTIES := 32
 const MAX_TEXT_LENGTH := 4096
 const MAX_LANGUAGE_LENGTH := 128
+const MAX_URI_LENGTH := 4096
 const MAX_PATH_LENGTH := 4096
 const MAX_MENU_ITEMS := 256
 const MAX_MENU_ITEM_TOOLTIP_LENGTH := 1024
@@ -26,6 +27,9 @@ const BUTTON_PROPERTIES := [
 	"autowrap_trim_flags", "clip_text", "icon_alignment", "vertical_icon_alignment", "expand_icon",
 	"text_direction", "language",
 ]
+const LINK_BUTTON_PROPERTIES := [
+	"text", "uri", "underline", "text_overrun_behavior", "ellipsis_char", "text_direction", "language",
+]
 const TEXTURE_BUTTON_PROPERTIES := [
 	"texture_normal_path", "texture_pressed_path", "texture_hover_path", "texture_disabled_path",
 	"texture_focused_path", "click_mask_path", "ignore_texture_size", "stretch_mode", "flip_h", "flip_v",
@@ -35,6 +39,7 @@ const PROPERTY_ORDER := [
 	"keep_pressed_outside", "shortcut_feedback", "shortcut_in_tooltip", "shortcut", "text", "icon", "flat",
 	"alignment", "text_overrun_behavior", "autowrap_mode", "autowrap_trim_flags", "clip_text",
 	"icon_alignment", "vertical_icon_alignment", "expand_icon", "text_direction", "language",
+	"uri", "underline", "ellipsis_char",
 	"texture_normal", "texture_pressed", "texture_hover", "texture_disabled", "texture_focused",
 	"texture_click_mask", "ignore_texture_size", "stretch_mode", "flip_h", "flip_v",
 ]
@@ -65,6 +70,7 @@ const TEXT_OVERRUN_BEHAVIORS := {
 const AUTOWRAP_MODES := {"off": 0, "arbitrary": 1, "word": 2, "smart_word": 3}
 const AUTOWRAP_TRIM_FLAGS := {"trim_start": 64, "trim_end": 128}
 const TEXT_DIRECTIONS := {"auto": 0, "ltr": 1, "rtl": 2, "inherited": 3}
+const LINK_UNDERLINE_MODES := {"always": 0, "on_hover": 1, "never": 2}
 const AUTO_TRANSLATE_MODES := {"inherit": 0, "always": 1, "disabled": 2}
 const TEXTURE_STRETCH_MODES := {
 	"scale": 0,
@@ -723,6 +729,12 @@ func _parse_property_value(name: String, raw_value: Variant) -> Dictionary:
 			return _load_optional_resource(raw_value, "Shortcut", name, "shortcut")
 		"text":
 			return _parse_string(raw_value, name, MAX_TEXT_LENGTH)
+		"uri":
+			return _parse_string(raw_value, name, MAX_URI_LENGTH)
+		"underline":
+			return _parse_enum(raw_value, name, LINK_UNDERLINE_MODES)
+		"ellipsis_char":
+			return _parse_ellipsis_char(raw_value)
 		"icon_path":
 			return _load_optional_resource(raw_value, "Texture2D", name, "icon")
 		"alignment", "icon_alignment":
@@ -774,6 +786,12 @@ func _parse_string(raw_value: Variant, property_name: String, maximum_length: in
 	if not raw_value is String or raw_value.length() > maximum_length:
 		return _invalid_configuration("%s must be a string up to %d characters" % [property_name, maximum_length])
 	return {"property_name": property_name, "value": raw_value}
+
+
+func _parse_ellipsis_char(raw_value: Variant) -> Dictionary:
+	if not raw_value is String or raw_value.length() != 1:
+		return _invalid_configuration("ellipsis_char must contain exactly one character")
+	return {"property_name": "ellipsis_char", "value": raw_value}
 
 
 func _parse_enum(raw_value: Variant, property_name: String, values: Dictionary) -> Dictionary:
@@ -885,6 +903,8 @@ func _button_response(button: BaseButton, scene_root: Node) -> Dictionary:
 		configuration["button"] = _serialize_text_button(button as Button)
 	if button is TextureButton:
 		configuration["texture_button"] = _serialize_texture_button(button as TextureButton)
+	if button is LinkButton:
+		configuration["link_button"] = _serialize_link_button(button as LinkButton)
 	return {
 		"path": ScenePath.from_node(button, scene_root),
 		"type": button.get_class(),
@@ -930,6 +950,20 @@ func _serialize_texture_button(button: TextureButton) -> Dictionary:
 	}
 
 
+func _serialize_link_button(button: LinkButton) -> Dictionary:
+	return {
+		"text": button.get_text(),
+		"uri": button.get_uri(),
+		"underline": _enum_name(int(button.get_underline_mode()), LINK_UNDERLINE_MODES),
+		"text_overrun_behavior": _enum_name(
+			int(button.get_text_overrun_behavior()), TEXT_OVERRUN_BEHAVIORS
+		),
+		"ellipsis_char": button.get_ellipsis_char(),
+		"text_direction": _enum_name(int(button.get_text_direction()), TEXT_DIRECTIONS),
+		"language": button.get_language(),
+	}
+
+
 func _resource_descriptor(resource: Resource) -> Dictionary:
 	if resource == null:
 		return {"assigned": false, "origin": "none", "resource_path": "", "resource_type": ""}
@@ -947,6 +981,8 @@ func _supported_properties(button: BaseButton) -> Array:
 		properties.append_array(BUTTON_PROPERTIES)
 	if button is TextureButton:
 		properties.append_array(TEXTURE_BUTTON_PROPERTIES)
+	if button is LinkButton:
+		properties.append_array(LINK_BUTTON_PROPERTIES)
 	return properties
 
 

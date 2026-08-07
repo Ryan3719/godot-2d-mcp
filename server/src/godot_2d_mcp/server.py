@@ -401,7 +401,7 @@ def create_application(
         session_id: str | None = None,
         scene_file: str = "",
     ) -> dict[str, Any]:
-        """Read persistent BaseButton interaction state and Button or TextureButton presentation."""
+        """Read persistent BaseButton state and matching visual button presentation."""
         return await service.button_2d_get(
             path=path,
             session_id=session_id,
