@@ -2,7 +2,7 @@
 
 Godot 2D MCP connects Codex, Claude Code, and other MCP clients to a live Godot editor. The project is designed for comprehensive Godot 2D authoring while keeping editor mutations on Godot's main thread and inside its undo/redo system.
 
-The current `0.38.0` preview adds runtime `AudioStreamPlayer2D` state, play, stop, and seek control alongside strict `TypedArray` and `TypedDictionary` property editing, safe PackedScene instance-root duplication and reparenting, custom 2D/UI script-node creation and binding, project-local scene creation, audited scene opening, `PackedScene` instantiation, typed project-resource binding through generic node properties, game-process logs, viewport screenshots, input simulation, editor run and stop control, `canvas_item` `ShaderMaterial` uniform authoring, source, `CanvasItemMaterial`, `ParticleProcessMaterial` CurveTexture/GradientTexture1D, and `CPUParticles2D` Curve/Gradient resources for scene, signal, animation, UI, Theme, collision, query, navigation, lighting, TileMap, viewport composition, path, skeleton, audio, and particle-node editing. Agents can start a new 2D scene from scratch, attach existing gameplay scripts without editor-side execution, compose existing 2D scenes, configure project-owned textures, fonts, and other declared resource fields, run a scene, inspect real game output, and verify rendered pixels while retaining Godot-native undo and save behavior.
+The current `0.39.0` preview adds a live Godot `ClassDB` 2D node and resource coverage audit alongside runtime `AudioStreamPlayer2D` state, play, stop, and seek control, strict `TypedArray` and `TypedDictionary` property editing, safe PackedScene instance-root duplication and reparenting, custom 2D/UI script-node creation and binding, project-local scene creation, audited scene opening, `PackedScene` instantiation, typed project-resource binding through generic node properties, game-process logs, viewport screenshots, input simulation, editor run and stop control, `canvas_item` `ShaderMaterial` uniform authoring, source, `CanvasItemMaterial`, `ParticleProcessMaterial` CurveTexture/GradientTexture1D, and `CPUParticles2D` Curve/Gradient resources for scene, signal, animation, UI, Theme, collision, query, navigation, lighting, TileMap, viewport composition, path, skeleton, audio, and particle-node editing. Agents can start a new 2D scene from scratch, attach existing gameplay scripts without editor-side execution, compose existing 2D scenes, configure project-owned textures, fonts, and other declared resource fields, run a scene, inspect real game output, and verify rendered pixels while retaining Godot-native undo and save behavior.
 
 ## Current capabilities
 
@@ -14,6 +14,7 @@ The current `0.38.0` preview adds runtime `AudioStreamPlayer2D` state, play, sto
 - `editor_get_state`.
 - Paginated `scene_get_hierarchy`.
 - Runtime `class_search` filtered by the centralized 2D type policy.
+- `class_2d_coverage` derives a paginated 2D node/resource inventory from the running Godot `ClassDB`, separating generic support, semantic tools, and direct smoke-test status.
 - `node_get_properties` with property metadata and JSON-safe values.
 - `node_get_signals` with typed signal arguments and scene connection metadata.
 - `animation_list` and `animation_get` for animation-library, track, keyframe, and target inspection.
@@ -81,6 +82,10 @@ EditorInterface / ClassDB / scene tree
 ```
 
 The Python process owns MCP, validation, session routing, and request correlation. The Godot plugin owns editor API calls and drains commands from `_process()` with a bounded frame budget.
+
+## Coverage Audit
+
+Call `class_2d_coverage` before choosing a new 2D implementation batch. It accepts `scope` (`all`, `node`, or `resource`), a case-insensitive `query`, and standard pagination. Every entry states whether the current engine can instantiate it, which generic baseline is available, its specialized MCP tools, and whether that exact class has direct semantic smoke coverage. `semantic` means a dedicated workflow exists, not that every public Godot property is exposed; `generic` means only the controlled node read/write and scene-structure workflow is available. Resource entries are an intentionally scoped 2D inventory and `project_resource_reference` only means an existing project resource can be type-checked and bound to a compatible property.
 
 ## Editing workflow
 

@@ -282,6 +282,23 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def class_2d_coverage(
+        query: str = "",
+        scope: str = "all",
+        session_id: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Audit the current Godot build's supported 2D node and resource coverage."""
+        return await service.class_2d_coverage(
+            query=query,
+            scope=scope,
+            session_id=session_id,
+            offset=offset,
+            limit=limit,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def node_get_properties(
         path: str,
         fields: list[str] | None = None,
