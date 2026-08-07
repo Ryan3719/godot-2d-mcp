@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：阶段 0 已完成；阶段 1 已交付项目内 2D/UI 场景创建与安全打开、自定义非工具脚本节点创建/绑定/解绑、完整 2D PackedScene 实例根的插入/删除/复制/重新挂载/撤销重做、首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式、嵌入式 Theme 资源能力、通用公开 Resource 属性的安全项目路径绑定，以及 TypedArray/TypedDictionary 的严格编解码；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力；阶段 4 已交付 TileMapLayer、内嵌 TileSet Atlas、TileSet 语义能力与 Atlas TileData 碰撞/导航/遮挡几何；阶段 5 已交付 PointLight2D、DirectionalLight2D、LightOccluder2D、CanvasItemMaterial、带运行时 uniform 发现与 copy-on-write 配置的 2D ShaderMaterial、Camera2D、Parallax2D、CanvasLayer、Path2D、Curve2D、Skeleton2D、Bone2D、AudioStreamPlayer2D、GPUParticles2D、ParticleProcessMaterial 及其 CurveTexture/GradientTexture1D 和包含 Curve/Gradient 资源的 CPUParticles2D 安全语义编辑；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图、游戏输入模拟，以及 `AudioStreamPlayer2D` 运行时状态/播放/停止/定位控制（v0.38.0）
+状态：阶段 0 已完成；阶段 1 已交付项目内 2D/UI 场景创建与安全打开、自定义非工具脚本节点创建/绑定/解绑、完整 2D PackedScene 实例根的插入/删除/复制/重新挂载/撤销重做、首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式、嵌入式 Theme 资源能力、通用公开 Resource 属性的安全项目路径绑定，以及 TypedArray/TypedDictionary 的严格编解码；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力；阶段 4 已交付 TileMapLayer、内嵌 TileSet Atlas、TileSet 语义能力与 Atlas TileData 碰撞/导航/遮挡几何；阶段 5 已交付 PointLight2D、DirectionalLight2D、LightOccluder2D、CanvasItemMaterial、带运行时 uniform 发现与 copy-on-write 配置的 2D ShaderMaterial、Camera2D、Parallax2D、CanvasLayer、Path2D、Curve2D、Skeleton2D、Bone2D、AudioStreamPlayer2D、GPUParticles2D、ParticleProcessMaterial 及其 CurveTexture/GradientTexture1D 和包含 Curve/Gradient 资源的 CPUParticles2D 安全语义编辑；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图、游戏输入模拟，以及 `AudioStreamPlayer2D` 运行时状态/播放/停止/定位控制；阶段 7 已交付首批运行时 `ClassDB` 2D 节点和资源覆盖审计（v0.39.0）
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -298,8 +298,7 @@ godot-2d-mcp/
 
 ### 阶段 7：完整性审计
 
-- 从 Godot 4.7 `ClassDB` 生成 2D 类型与资源清单。
-- 为每个类型记录基础支持、语义支持和测试状态。
+- 已交付：`class_2d_coverage` 从运行中 Godot 的 `ClassDB` 生成分页的 2D 节点和资源清单。每个条目记录基础支持、专用语义工具、可实例化状态和直接语义烟测状态；资源范围显式限定为当前 2D 工作流涉及的 Shape2D、导航、TileSet、Path、光照、音频、粒子、材质、Shader、Theme、StyleBox、Font、Texture2D 和 LabelSettings 家族。
 - 对 Godot 新版本执行能力差异检测。
 
 ## 12. 测试与验收

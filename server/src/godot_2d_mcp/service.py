@@ -205,6 +205,29 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def class_2d_coverage(
+        self,
+        query: str = "",
+        scope: str = "all",
+        session_id: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        if not isinstance(query, str) or len(query) > 256:
+            raise ValueError("query must be a string no longer than 256 characters")
+        normalized_scope = scope.strip().lower() if isinstance(scope, str) else ""
+        if normalized_scope not in {"all", "node", "resource"}:
+            raise ValueError("scope must be all, node, or resource")
+        if offset < 0:
+            raise ValueError("offset must be non-negative")
+        if not 1 <= limit <= 500:
+            raise ValueError("limit must be between 1 and 500")
+        return await self.bridge.call(
+            "class_2d_coverage",
+            {"query": query, "scope": normalized_scope, "offset": offset, "limit": limit},
+            session_id=session_id,
+        )
+
     async def node_get_properties(
         self,
         path: str,

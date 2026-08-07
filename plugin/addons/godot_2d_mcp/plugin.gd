@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.38.0"
+const PLUGIN_VERSION := "0.39.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 const RUNTIME_AUTOLOAD_NAME := "Godot2DMcpRuntime"
 const RUNTIME_AUTOLOAD_PATH := "res://addons/godot_2d_mcp/runtime/runtime_bridge.gd"
@@ -286,6 +286,7 @@ func _register_handlers() -> void:
 	_dispatcher.register("tile_set_atlas_tile_navigation_set", tile_map_handler.set_tile_set_atlas_tile_navigation)
 	_dispatcher.register("tile_set_atlas_tile_occlusion_set", tile_map_handler.set_tile_set_atlas_tile_occlusion)
 	_dispatcher.register("class_search", class_handler.search)
+	_dispatcher.register("class_2d_coverage", class_handler.coverage)
 
 
 func _ensure_ws_port_setting() -> int:

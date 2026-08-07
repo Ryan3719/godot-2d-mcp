@@ -18,6 +18,9 @@ from pathlib import Path
 from godot_2d_mcp.bridge import GodotCommandError
 from godot_2d_mcp.server import create_application
 
+EDITOR_CONNECTION_TIMEOUT_SECONDS = 30.0
+EDITOR_CONNECTION_POLL_INTERVAL_SECONDS = 0.1
+
 
 def free_port() -> int:
     with socket.socket() as sock:
@@ -59,24 +62,55 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
     output = b""
     failure: BaseException | None = None
     try:
-        for _ in range(100):
+        for _ in range(int(EDITOR_CONNECTION_TIMEOUT_SECONDS / EDITOR_CONNECTION_POLL_INTERVAL_SECONDS)):
             sessions = await app.registry.list_sessions()
             if sessions:
                 break
             if process.returncode is not None:
                 raise RuntimeError("Godot exited before the plugin connected")
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(EDITOR_CONNECTION_POLL_INTERVAL_SECONDS)
         else:
-            raise RuntimeError("Godot plugin did not connect within 10 seconds")
+            raise RuntimeError(
+                "Godot plugin did not connect within "
+                f"{EDITOR_CONNECTION_TIMEOUT_SECONDS:.0f} seconds"
+            )
 
         state = await _wait_for_editor_ready(app)
         hierarchy = await app.service.scene_get_hierarchy(limit=20)
         classes = await app.service.class_search(query="Button", limit=20)
+        coverage = await app.service.class_2d_coverage(query="Button", scope="node", limit=20)
+        resource_coverage = await app.service.class_2d_coverage(
+            query="TileSet", scope="resource", limit=20
+        )
 
         if hierarchy.get("total") != 5:
             raise RuntimeError(f"Unexpected scene node count: {hierarchy.get('total')}")
         if classes.get("total", 0) < 4:
             raise RuntimeError("2D class search returned too few Button types")
+        button_coverage = next(
+            (entry for entry in coverage.get("entries", []) if entry.get("name") == "Button"), None
+        )
+        if (
+            coverage.get("audit_version") != 1
+            or coverage.get("scope") != "node"
+            or button_coverage is None
+            or button_coverage.get("kind") != "node"
+            or button_coverage.get("base_support", {}).get("create") is not True
+            or "control_get_layout" not in button_coverage.get("semantic_tools", [])
+            or button_coverage.get("test_status") != "semantic_smoke"
+        ):
+            raise RuntimeError(f"Button coverage audit was incomplete: {coverage}")
+        tile_set_coverage = next(
+            (entry for entry in resource_coverage.get("entries", []) if entry.get("name") == "TileSet"), None
+        )
+        if (
+            resource_coverage.get("scope") != "resource"
+            or tile_set_coverage is None
+            or tile_set_coverage.get("kind") != "resource"
+            or tile_set_coverage.get("category") != "tile_map"
+            or "tile_set_create" not in tile_set_coverage.get("semantic_tools", [])
+        ):
+            raise RuntimeError(f"TileSet coverage audit was incomplete: {resource_coverage}")
 
         scene_file = state.get("current_scene", "")
         created_scene_file = "res://generated/agent_created_ui.tscn"

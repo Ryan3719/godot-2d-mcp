@@ -30,6 +30,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "scene_create",
         "scene_open",
         "class_search",
+        "class_2d_coverage",
         "node_get_properties",
         "node_get_signals",
         "animation_list",
@@ -189,6 +190,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["runtime_input_result_get"].readOnlyHint is True
     assert annotations["runtime_audio_stream_player_2d_control"].readOnlyHint is False
     assert annotations["runtime_audio_stream_player_2d_control_result_get"].readOnlyHint is True
+    assert annotations["class_2d_coverage"].readOnlyHint is True
     assert annotations["node_get_properties"].readOnlyHint is True
     assert annotations["node_get_signals"].readOnlyHint is True
     assert annotations["animation_list"].readOnlyHint is True

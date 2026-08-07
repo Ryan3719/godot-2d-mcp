@@ -196,6 +196,43 @@ async def test_hierarchy_rejects_unbounded_page() -> None:
 
 
 @pytest.mark.asyncio
+async def test_class_2d_coverage_forwards_a_bounded_audit_request() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+
+    result = await service.class_2d_coverage(
+        query="Audio",
+        scope=" RESOURCE ",
+        offset=4,
+        limit=20,
+        session_id="project@a1b2",
+    )
+
+    assert result == {"command": "class_2d_coverage"}
+    assert bridge.calls == [
+        (
+            "class_2d_coverage",
+            {"query": "Audio", "scope": "resource", "offset": 4, "limit": 20},
+            "project@a1b2",
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_class_2d_coverage_rejects_invalid_filters() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="query"):
+        await service.class_2d_coverage(query="x" * 257)
+    with pytest.raises(ValueError, match="scope"):
+        await service.class_2d_coverage(scope="scene")
+    with pytest.raises(ValueError, match="offset"):
+        await service.class_2d_coverage(offset=-1)
+    with pytest.raises(ValueError, match="limit"):
+        await service.class_2d_coverage(limit=501)
+
+
+@pytest.mark.asyncio
 async def test_node_create_forwards_scene_guard_and_session() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)
