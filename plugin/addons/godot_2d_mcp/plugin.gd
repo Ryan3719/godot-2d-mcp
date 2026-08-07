@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.54.0"
+const PLUGIN_VERSION := "0.55.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 const RUNTIME_AUTOLOAD_NAME := "Godot2DMcpRuntime"
 const RUNTIME_AUTOLOAD_PATH := "res://addons/godot_2d_mcp/runtime/runtime_bridge.gd"
@@ -233,6 +233,7 @@ func _register_handlers() -> void:
 	_dispatcher.register("animation_delete", animation_handler.delete_animation)
 	_dispatcher.register("animation_track_upsert", animation_handler.upsert_value_track)
 	_dispatcher.register("animation_audio_track_upsert", animation_handler.upsert_audio_track)
+	_dispatcher.register("animation_bezier_track_upsert", animation_handler.upsert_bezier_track)
 	_dispatcher.register("animation_track_delete", animation_handler.delete_track)
 	_dispatcher.register("animation_key_upsert", animation_handler.upsert_key)
 	_dispatcher.register("animation_key_delete", animation_handler.delete_key)

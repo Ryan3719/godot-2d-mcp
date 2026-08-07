@@ -2945,6 +2945,116 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         restore_audio_track_delete = await app.service.scene_undo(scene_file=scene_file)
         if not restore_audio_track_delete.get("changed"):
             raise RuntimeError("Undo did not restore the deleted audio animation track")
+        await _expect_godot_error(
+            app.service.animation_bezier_track_upsert(
+                player_path="/Main/ButtonAnimations",
+                animation="button_hover",
+                target_path=reparented_button_path,
+                property="scale:z",
+                keys=[{"time": 0.0, "value": 1.0}],
+                scene_file=scene_file,
+            ),
+            "BEZIER_PROPERTY_TYPE_UNSUPPORTED",
+        )
+        bezier_track_create = await app.service.animation_bezier_track_upsert(
+            player_path="/Main/ButtonAnimations",
+            animation="button_hover",
+            target_path=reparented_button_path,
+            property="modulate:a",
+            keys=[
+                {
+                    "time": 0.0,
+                    "value": 1.0,
+                    "in_handle": {"x": 0.0, "y": 0.0},
+                    "out_handle": {"x": 0.05, "y": -0.1},
+                },
+                {
+                    "time": 0.2,
+                    "value": 0.4,
+                    "in_handle": {"x": -0.05, "y": 0.1},
+                    "out_handle": {"x": 0.0, "y": 0.0},
+                },
+            ],
+            scene_file=scene_file,
+        )
+        bezier_track_index = bezier_track_create["track"]["index"]
+        if (
+            bezier_track_create["replaced_existing"]
+            or bezier_track_create["track"]["type"] != "bezier"
+            or bezier_track_create["track"]["target_path"] != reparented_button_path
+            or bezier_track_create["track"]["property"] != "modulate:a"
+            or bezier_track_create["track"]["key_count"] != 2
+        ):
+            raise RuntimeError("Bezier animation track creation returned an unexpected result")
+        bezier_animation = await app.service.animation_get(
+            "/Main/ButtonAnimations", "button_hover", scene_file=scene_file
+        )
+        bezier_track = _bezier_animation_track(
+            bezier_animation["animation"], reparented_button_path, "modulate:a"
+        )
+        if (
+            not _is_close(bezier_track["keys"][0].get("value"), 1.0)
+            or not _vector2_match(
+                bezier_track["keys"][0].get("out_handle"), {"x": 0.05, "y": -0.1}
+            )
+            or not _vector2_match(
+                bezier_track["keys"][1].get("in_handle"), {"x": -0.05, "y": 0.1}
+            )
+        ):
+            raise RuntimeError("Bezier animation key data was not serialized correctly")
+        bezier_track_update = await app.service.animation_bezier_track_upsert(
+            player_path="/Main/ButtonAnimations",
+            animation="button_hover",
+            target_path=reparented_button_path,
+            property="modulate:a",
+            keys=[
+                {
+                    "time": 0.1,
+                    "value": 0.75,
+                    "in_handle": {"x": -0.02, "y": 0.0},
+                    "out_handle": {"x": 0.02, "y": 0.0},
+                }
+            ],
+            enabled=False,
+            scene_file=scene_file,
+        )
+        if (
+            bezier_track_update["replaced_existing"] is not True
+            or bezier_track_update["track"]["enabled"] is not False
+            or bezier_track_update["track"]["key_count"] != 1
+        ):
+            raise RuntimeError("Bezier animation track replacement was incomplete")
+        undo_bezier_track_update = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_bezier_track_update.get("changed"):
+            raise RuntimeError("Bezier animation track replacement was not undoable")
+        restored_bezier_animation = await app.service.animation_get(
+            "/Main/ButtonAnimations", "button_hover", scene_file=scene_file
+        )
+        restored_bezier_track = _bezier_animation_track(
+            restored_bezier_animation["animation"], reparented_button_path, "modulate:a"
+        )
+        if restored_bezier_track["key_count"] != 2 or restored_bezier_track["enabled"] is not True:
+            raise RuntimeError("Undo did not restore the Bezier animation track")
+        redo_bezier_track_update = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_bezier_track_update.get("changed"):
+            raise RuntimeError("Bezier animation track replacement was not redoable")
+        bezier_track_delete = await app.service.animation_track_delete(
+            player_path="/Main/ButtonAnimations",
+            animation="button_hover",
+            track_index=bezier_track_index,
+            scene_file=scene_file,
+        )
+        if bezier_track_delete["track_index"] != bezier_track_index:
+            raise RuntimeError("Bezier animation track delete returned an unexpected index")
+        undo_bezier_track_delete = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_bezier_track_delete.get("changed"):
+            raise RuntimeError("Bezier animation track delete was not undoable")
+        redo_bezier_track_delete = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_bezier_track_delete.get("changed"):
+            raise RuntimeError("Bezier animation track delete was not redoable")
+        restore_bezier_track_delete = await app.service.scene_undo(scene_file=scene_file)
+        if not restore_bezier_track_delete.get("changed"):
+            raise RuntimeError("Undo did not restore the deleted Bezier animation track")
 
         sparks = await app.service.node_create(
             type_name="GPUParticles2D",
@@ -6486,6 +6596,15 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or reopened_audio_track["keys"][0].get("stream_path") != "res://test_audio.tres"
         ):
             raise RuntimeError("Saved audio animation track did not survive reopening")
+        reopened_bezier_track = _bezier_animation_track(
+            reopened_audio_animation["animation"], reparented_button_path, "modulate:a"
+        )
+        if (
+            reopened_bezier_track["key_count"] != 1
+            or reopened_bezier_track["enabled"] is not False
+            or not _is_close(reopened_bezier_track["keys"][0].get("value"), 0.75)
+        ):
+            raise RuntimeError("Saved Bezier animation track did not survive reopening")
 
         await _expect_godot_error(
             app.service.editor_run(
@@ -7149,6 +7268,29 @@ def _audio_animation_track(animation: dict, target_path: str) -> dict:
         if track.get("type") == "audio" and track.get("target_path") == target_path:
             return track
     raise RuntimeError(f"Audio animation track was not returned: {target_path}")
+
+
+def _bezier_animation_track(animation: dict, target_path: str, property_name: str) -> dict:
+    for track in animation.get("tracks", []):
+        if (
+            track.get("type") == "bezier"
+            and track.get("target_path") == target_path
+            and track.get("property") == property_name
+        ):
+            return track
+    raise RuntimeError(
+        f"Bezier animation track was not returned: {target_path}:{property_name}"
+    )
+
+
+def _vector2_match(actual: object, expected: dict[str, float]) -> bool:
+    return (
+        isinstance(actual, dict)
+        and all(
+            axis in actual and _is_close(actual[axis], value)
+            for axis, value in expected.items()
+        )
+    )
 
 
 def _layout_sides_match(actual: object, expected: dict[str, float]) -> bool:

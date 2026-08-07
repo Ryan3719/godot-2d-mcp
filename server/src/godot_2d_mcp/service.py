@@ -1508,6 +1508,40 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def animation_bezier_track_upsert(
+        self,
+        player_path: str,
+        animation: str,
+        target_path: str,
+        property: str,
+        keys: list[dict[str, Any]],
+        enabled: bool = True,
+        library: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(player_path)
+        _validate_animation_name(animation)
+        _validate_node_path(target_path)
+        _validate_animation_bezier_property(property)
+        _validate_animation_bezier_track_keys(keys)
+        _validate_boolean(enabled, "enabled")
+        _validate_animation_library(library)
+        return await self.bridge.call(
+            "animation_bezier_track_upsert",
+            _scene_params(
+                scene_file,
+                player_path=player_path,
+                animation=animation,
+                target_path=target_path,
+                property=property,
+                keys=keys,
+                enabled=enabled,
+                library=library,
+            ),
+            session_id=session_id,
+        )
+
     async def animation_track_delete(
         self,
         player_path: str,
@@ -4600,6 +4634,14 @@ def _validate_animation_property(value: str) -> None:
         raise ValueError("property must be a single name between 1 and 256 characters")
 
 
+def _validate_animation_bezier_property(value: str) -> None:
+    if not isinstance(value, str) or not 1 <= len(value) <= 256:
+        raise ValueError("property must contain between 1 and 256 characters")
+    parts = value.split(":")
+    if len(parts) > 2 or any(not part or len(part) > 128 for part in parts):
+        raise ValueError("Bezier property must be a property or one property component")
+
+
 def _validate_animation_keys(keys: list[dict[str, Any]]) -> None:
     if not isinstance(keys, list) or not keys:
         raise ValueError("keys must be a non-empty array")
@@ -4648,6 +4690,48 @@ def _validate_animation_audio_track_keys(keys: list[dict[str, Any]]) -> None:
         if any(math.isclose(time, existing, rel_tol=1e-9, abs_tol=1e-9) for existing in times):
             raise ValueError("keys cannot contain duplicate times")
         times.append(time)
+
+
+def _validate_animation_bezier_track_keys(keys: list[dict[str, Any]]) -> None:
+    if not isinstance(keys, list) or not keys:
+        raise ValueError("keys must be a non-empty array")
+    if len(keys) > 512:
+        raise ValueError("keys can contain at most 512 entries")
+    allowed = {"time", "value", "in_handle", "out_handle"}
+    times: list[float] = []
+    for key in keys:
+        if not isinstance(key, dict) or set(key) - allowed:
+            raise ValueError(
+                "each Bezier key allows only time, value, in_handle, and out_handle"
+            )
+        if "time" not in key or "value" not in key:
+            raise ValueError("each Bezier key requires time and value")
+        _validate_key_time(key["time"])
+        if not _is_finite_number(key["value"]) or abs(float(key["value"])) > 1_000_000:
+            raise ValueError("Bezier value must be a finite number between -1000000 and 1000000")
+        if "in_handle" in key:
+            _validate_animation_bezier_handle(key["in_handle"], "in_handle", is_in_handle=True)
+        if "out_handle" in key:
+            _validate_animation_bezier_handle(key["out_handle"], "out_handle", is_in_handle=False)
+        time = float(key["time"])
+        if any(math.isclose(time, existing, rel_tol=1e-9, abs_tol=1e-9) for existing in times):
+            raise ValueError("keys cannot contain duplicate times")
+        times.append(time)
+
+
+def _validate_animation_bezier_handle(value: Any, label: str, *, is_in_handle: bool) -> None:
+    if not isinstance(value, dict) or set(value) != {"x", "y"}:
+        raise ValueError(f"{label} must contain exactly x and y")
+    if any(
+        not _is_finite_number(value[axis])
+        or abs(float(value[axis])) > (3600 if axis == "x" else 1_000_000)
+        for axis in ("x", "y")
+    ):
+        raise ValueError(f"{label} values exceed the supported Bezier handle bounds")
+    x = float(value["x"])
+    if (is_in_handle and x > 0) or (not is_in_handle and x < 0):
+        direction = "at most" if is_in_handle else "at least"
+        raise ValueError(f"{label}.x must be {direction} 0")
 
 
 def _validate_track_index(value: int) -> None:

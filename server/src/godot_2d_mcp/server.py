@@ -1578,6 +1578,31 @@ def create_application(
             scene_file=scene_file,
         )
 
+    @mcp.tool(annotations=WRITE)
+    async def animation_bezier_track_upsert(
+        player_path: str,
+        animation: str,
+        target_path: str,
+        property: str,
+        keys: list[dict[str, Any]],
+        enabled: bool = True,
+        library: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Create or replace a local float, Vector2, or Color Bezier track atomically."""
+        return await service.animation_bezier_track_upsert(
+            player_path=player_path,
+            animation=animation,
+            target_path=target_path,
+            property=property,
+            keys=keys,
+            enabled=enabled,
+            library=library,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
     @mcp.tool(annotations=DESTRUCTIVE_WRITE)
     async def animation_track_delete(
         player_path: str,
