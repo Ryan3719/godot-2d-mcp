@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.48.0"
+const PLUGIN_VERSION := "0.49.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 const RUNTIME_AUTOLOAD_NAME := "Godot2DMcpRuntime"
 const RUNTIME_AUTOLOAD_PATH := "res://addons/godot_2d_mcp/runtime/runtime_bridge.gd"
@@ -147,6 +147,11 @@ func _register_handlers() -> void:
 	_dispatcher.register(
 		"runtime_audio_stream_player_2d_control_result_get",
 		runtime_handler.get_runtime_audio_stream_player_2d_control_result
+	)
+	_dispatcher.register("runtime_performance_sample_request", runtime_handler.request_runtime_performance_sample)
+	_dispatcher.register(
+		"runtime_performance_sample_result_get",
+		runtime_handler.get_runtime_performance_sample_result
 	)
 	_dispatcher.register("scene_get_hierarchy", scene_handler.get_hierarchy)
 	_dispatcher.register("scene_create", scene_handler.create_scene)

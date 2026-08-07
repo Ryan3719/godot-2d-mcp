@@ -2,10 +2,22 @@
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import math
+from collections.abc import Awaitable, Callable
 from typing import Any, Protocol
 
+from godot_2d_mcp.screenshot_assertions import (
+    ScreenshotAssertionError,
+    assert_png_screenshot,
+    validate_screenshot_assertions,
+)
 from godot_2d_mcp.sessions import SessionRegistry
+
+
+class _RuntimeTestTimeout(RuntimeError):
+    """A test orchestration phase exceeded its bounded total duration."""
 
 
 class CommandBridge(Protocol):
@@ -114,6 +126,67 @@ class GodotService:
             "runtime_screenshot_get", {"request_id": request_id}, session_id=session_id
         )
 
+    async def runtime_screenshot_assert(
+        self,
+        request_id: str,
+        assertions: list[dict[str, Any]],
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Evaluate a completed PNG screenshot locally without exposing game-side execution."""
+        _validate_runtime_request_id(request_id)
+        normalized_assertions = validate_screenshot_assertions(assertions)
+        screenshot = await self.runtime_screenshot_get(request_id=request_id, session_id=session_id)
+        status = str(screenshot.get("status", ""))
+        if status == "pending":
+            return {"request_id": request_id, "status": "pending", "passed": None, "assertions": []}
+        result = screenshot.get("result", {})
+        if status != "ready" or not isinstance(result, dict) or result.get("ok") is not True:
+            return {
+                "request_id": request_id,
+                "status": "error",
+                "passed": False,
+                "error": {
+                    "code": str(result.get("code", "SCREENSHOT_NOT_READY")),
+                    "message": str(result.get("message", "Runtime screenshot is not available")),
+                },
+                "assertions": [],
+            }
+        if result.get("mime_type") != "image/png":
+            return {
+                "request_id": request_id,
+                "status": "error",
+                "passed": False,
+                "error": {
+                    "code": "SCREENSHOT_ASSERT_PNG_REQUIRED",
+                    "message": "runtime_screenshot_assert only supports PNG screenshots",
+                },
+                "assertions": [],
+            }
+        encoded = result.get("data_base64")
+        if not isinstance(encoded, str):
+            return {
+                "request_id": request_id,
+                "status": "error",
+                "passed": False,
+                "error": {
+                    "code": "SCREENSHOT_DATA_INVALID",
+                    "message": "Runtime screenshot did not include base64 image data",
+                },
+                "assertions": [],
+            }
+        try:
+            image_bytes = base64.b64decode(encoded, validate=True)
+            evaluation = assert_png_screenshot(image_bytes, normalized_assertions)
+        except (ValueError, ScreenshotAssertionError) as exc:
+            return {
+                "request_id": request_id,
+                "status": "error",
+                "passed": False,
+                "error": {"code": "SCREENSHOT_ASSERT_DECODE_FAILED", "message": str(exc)},
+                "assertions": [],
+            }
+        return {"request_id": request_id, "status": "ready", **evaluation}
+
     async def runtime_input_send(
         self, events: list[dict[str, Any]], session_id: str | None = None
     ) -> dict[str, Any]:
@@ -162,6 +235,240 @@ class GodotService:
             {"request_id": request_id},
             session_id=session_id,
         )
+
+    async def runtime_performance_sample_request(
+        self, duration_seconds: float, session_id: str | None = None
+    ) -> dict[str, Any]:
+        _validate_runtime_performance_sample_duration(duration_seconds)
+        return await self.bridge.call(
+            "runtime_performance_sample_request",
+            {"duration_seconds": float(duration_seconds)},
+            session_id=session_id,
+        )
+
+    async def runtime_performance_sample_result_get(
+        self, request_id: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        _validate_runtime_request_id(request_id)
+        return await self.bridge.call(
+            "runtime_performance_sample_result_get",
+            {"request_id": request_id},
+            session_id=session_id,
+        )
+
+    async def runtime_test_run(
+        self,
+        mode: str = "current",
+        scene_file: str = "",
+        inputs: list[dict[str, Any]] | None = None,
+        settle_seconds: float = 0.25,
+        performance_sample_seconds: float | None = None,
+        screenshot: dict[str, Any] | None = None,
+        screenshot_assertions: list[dict[str, Any]] | None = None,
+        stop_when_finished: bool = True,
+        timeout_seconds: float = 20.0,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Run one bounded 2D test workflow using only existing runtime controls."""
+        normalized_mode = _validate_runtime_test_mode(mode, scene_file)
+        normalized_inputs = _validate_runtime_test_inputs(inputs)
+        normalized_screenshot = _validate_runtime_test_screenshot(screenshot)
+        normalized_assertions = _validate_runtime_test_assertions(
+            screenshot_assertions, normalized_screenshot
+        )
+        _validate_runtime_test_seconds(settle_seconds, "settle_seconds", 0.0, 10.0)
+        _validate_runtime_test_seconds(timeout_seconds, "timeout_seconds", 3.0, 60.0)
+        _validate_boolean(stop_when_finished, "stop_when_finished")
+        if performance_sample_seconds is not None:
+            _validate_runtime_performance_sample_duration(performance_sample_seconds)
+
+        loop = asyncio.get_running_loop()
+        total_deadline = loop.time() + float(timeout_seconds)
+        cleanup_reserve = min(2.0, float(timeout_seconds) / 4.0) if stop_when_finished else 0.0
+        work_deadline = total_deadline - cleanup_reserve
+        launched = False
+        response: dict[str, Any] = {
+            "status": "error",
+            "passed": False,
+            "error": {"code": "RUNTIME_TEST_NOT_STARTED", "message": "Runtime test did not start"},
+        }
+        try:
+            run = await self._runtime_test_call(
+                self.editor_run(
+                    mode=normalized_mode, scene_file=scene_file, session_id=session_id
+                ),
+                work_deadline,
+            )
+            launched = bool(run.get("requested", False))
+            if not launched:
+                response = {
+                    "status": "error",
+                    "passed": False,
+                    "run": run,
+                    "error": {
+                        "code": "RUNTIME_TEST_START_REJECTED",
+                        "message": "Godot did not accept the runtime test launch request",
+                    },
+                }
+                return response
+            editor_state = await self._runtime_test_wait_for_play_state(
+                "playing", session_id, work_deadline
+            )
+            runtime_state = await self._runtime_test_wait_for_runtime_connected(
+                session_id, work_deadline
+            )
+            await self._runtime_test_sleep(float(settle_seconds), work_deadline)
+
+            failures: list[dict[str, Any]] = []
+            phases: dict[str, Any] = {
+                "run": run,
+                "editor_state": editor_state,
+                "runtime_state": runtime_state,
+            }
+            if normalized_inputs is not None:
+                input_request = await self._runtime_test_call(
+                    self.runtime_input_send(normalized_inputs, session_id=session_id), work_deadline
+                )
+                input_result = await self._runtime_test_wait_for_request(
+                    lambda: self.runtime_input_result_get(input_request["request_id"], session_id),
+                    work_deadline,
+                )
+                phases["input"] = input_result
+                if not _runtime_request_succeeded(input_result):
+                    failures.append({"phase": "input", "result": input_result})
+            if performance_sample_seconds is not None:
+                performance_request = await self._runtime_test_call(
+                    self.runtime_performance_sample_request(
+                        performance_sample_seconds, session_id=session_id
+                    ),
+                    work_deadline,
+                )
+                performance_result = await self._runtime_test_wait_for_request(
+                    lambda: self.runtime_performance_sample_result_get(
+                        performance_request["request_id"], session_id
+                    ),
+                    work_deadline,
+                )
+                phases["performance"] = performance_result
+                if not _runtime_request_succeeded(performance_result):
+                    failures.append({"phase": "performance", "result": performance_result})
+            if normalized_screenshot is not None:
+                screenshot_request = await self._runtime_test_call(
+                    self.runtime_screenshot_request(session_id=session_id, **normalized_screenshot),
+                    work_deadline,
+                )
+                screenshot_result = await self._runtime_test_wait_for_request(
+                    lambda: self.runtime_screenshot_get(
+                        screenshot_request["request_id"], session_id
+                    ),
+                    work_deadline,
+                )
+                phases["screenshot"] = _runtime_test_screenshot_summary(screenshot_result)
+                if not _runtime_request_succeeded(screenshot_result):
+                    failures.append({"phase": "screenshot", "result": phases["screenshot"]})
+                elif normalized_assertions is not None:
+                    assertion_result = await self._runtime_test_call(
+                        self.runtime_screenshot_assert(
+                            screenshot_request["request_id"], normalized_assertions, session_id
+                        ),
+                        work_deadline,
+                    )
+                    phases["screenshot_assertions"] = assertion_result
+                    if assertion_result.get("passed") is not True:
+                        failures.append(
+                            {"phase": "screenshot_assertions", "result": assertion_result}
+                        )
+
+            response = {
+                "status": "passed" if not failures else "failed",
+                "passed": not failures,
+                **phases,
+            }
+            if failures:
+                response["failures"] = failures
+        except _RuntimeTestTimeout as exc:
+            response = {
+                "status": "error",
+                "passed": False,
+                "error": {"code": "RUNTIME_TEST_TIMEOUT", "message": str(exc)},
+            }
+        except Exception as exc:
+            response = {
+                "status": "error",
+                "passed": False,
+                "error": {"code": "RUNTIME_TEST_EXECUTION_FAILED", "message": str(exc)},
+            }
+        finally:
+            if launched and stop_when_finished:
+                try:
+                    stop = await self._runtime_test_call(
+                        self.editor_stop(session_id), total_deadline
+                    )
+                    stopped_state = await self._runtime_test_wait_for_play_state(
+                        "stopped", session_id, total_deadline
+                    )
+                    response["cleanup"] = {"stop": stop, "editor_state": stopped_state}
+                except Exception as exc:
+                    response["cleanup"] = {
+                        "error": {"code": "RUNTIME_TEST_CLEANUP_FAILED", "message": str(exc)}
+                    }
+                    if response.get("status") == "passed":
+                        response["status"] = "error"
+                        response["passed"] = False
+                        response["error"] = response["cleanup"]["error"]
+        return response
+
+    async def _runtime_test_call(
+        self, awaitable: Awaitable[dict[str, Any]], deadline: float
+    ) -> dict[str, Any]:
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            raise _RuntimeTestTimeout("Runtime test exceeded its total timeout")
+        try:
+            return await asyncio.wait_for(awaitable, timeout=remaining)
+        except TimeoutError as exc:
+            raise _RuntimeTestTimeout("Runtime test exceeded its total timeout") from exc
+
+    async def _runtime_test_sleep(self, seconds: float, deadline: float) -> None:
+        if seconds <= 0:
+            return
+        remaining = deadline - asyncio.get_running_loop().time()
+        if remaining <= 0:
+            raise _RuntimeTestTimeout("Runtime test exceeded its total timeout")
+        if seconds > remaining:
+            await asyncio.sleep(remaining)
+            raise _RuntimeTestTimeout("Runtime test exceeded its total timeout")
+        await asyncio.sleep(seconds)
+
+    async def _runtime_test_wait_for_play_state(
+        self, expected: str, session_id: str | None, deadline: float
+    ) -> dict[str, Any]:
+        last_state: dict[str, Any] = {}
+        while True:
+            last_state = await self._runtime_test_call(self.editor_get_state(session_id), deadline)
+            if last_state.get("play_state") == expected:
+                return last_state
+            await self._runtime_test_sleep(0.1, deadline)
+
+    async def _runtime_test_wait_for_runtime_connected(
+        self, session_id: str | None, deadline: float
+    ) -> dict[str, Any]:
+        while True:
+            state = await self._runtime_test_call(self.runtime_get_state(session_id), deadline)
+            if state.get("connected") is True:
+                return state
+            await self._runtime_test_sleep(0.1, deadline)
+
+    async def _runtime_test_wait_for_request(
+        self,
+        get_result: Callable[[], Awaitable[dict[str, Any]]],
+        deadline: float,
+    ) -> dict[str, Any]:
+        while True:
+            result = await self._runtime_test_call(get_result(), deadline)
+            if result.get("status") != "pending":
+                return result
+            await self._runtime_test_sleep(0.1, deadline)
 
     async def scene_get_hierarchy(
         self,
@@ -3448,6 +3755,95 @@ def _validate_runtime_screenshot_dimension(value: int, label: str) -> None:
 def _validate_runtime_request_id(value: str) -> None:
     if not isinstance(value, str) or not 1 <= len(value) <= 128:
         raise ValueError("request_id must contain between 1 and 128 characters")
+
+
+def _validate_runtime_performance_sample_duration(value: float) -> None:
+    if not _is_finite_number(value) or not 0.1 <= float(value) <= 30.0:
+        raise ValueError("duration_seconds must be a finite number between 0.1 and 30.0")
+
+
+def _validate_runtime_test_mode(mode: str, scene_file: str) -> str:
+    normalized_mode = mode.strip().lower() if isinstance(mode, str) else ""
+    if normalized_mode not in {"current", "main", "custom"}:
+        raise ValueError("mode must be current, main, or custom")
+    if normalized_mode == "custom":
+        _validate_project_resource_path(scene_file, "scene_file")
+    elif scene_file:
+        raise ValueError("scene_file is only accepted when mode is custom")
+    return normalized_mode
+
+
+def _validate_runtime_test_inputs(
+    inputs: list[dict[str, Any]] | None,
+) -> list[dict[str, Any]] | None:
+    if inputs is None:
+        return None
+    _validate_runtime_input_events(inputs)
+    return inputs
+
+
+def _validate_runtime_test_screenshot(
+    screenshot: dict[str, Any] | None,
+) -> dict[str, Any] | None:
+    if screenshot is None:
+        return None
+    if not isinstance(screenshot, dict):
+        raise ValueError("screenshot must be an object when supplied")
+    allowed = {"format", "max_width", "max_height", "quality"}
+    unknown = sorted(set(screenshot) - allowed)
+    if unknown:
+        raise ValueError(f"screenshot contains unsupported fields: {', '.join(unknown)}")
+    format_value = screenshot.get("format", "png")
+    normalized_format = format_value.strip().lower() if isinstance(format_value, str) else ""
+    if normalized_format not in {"png", "jpeg"}:
+        raise ValueError("screenshot.format must be png or jpeg")
+    max_width = screenshot.get("max_width", 640)
+    max_height = screenshot.get("max_height", 640)
+    quality = screenshot.get("quality", 0.85)
+    _validate_runtime_screenshot_dimension(max_width, "screenshot.max_width")
+    _validate_runtime_screenshot_dimension(max_height, "screenshot.max_height")
+    if not _is_finite_number(quality) or not 0.1 <= float(quality) <= 1.0:
+        raise ValueError("screenshot.quality must be a finite number between 0.1 and 1.0")
+    return {
+        "format": normalized_format,
+        "max_width": max_width,
+        "max_height": max_height,
+        "quality": float(quality),
+    }
+
+
+def _validate_runtime_test_assertions(
+    assertions: list[dict[str, Any]] | None, screenshot: dict[str, Any] | None
+) -> list[dict[str, Any]] | None:
+    if assertions is None:
+        return None
+    if screenshot is None:
+        raise ValueError("screenshot_assertions requires a screenshot configuration")
+    if screenshot["format"] != "png":
+        raise ValueError("screenshot_assertions requires screenshot.format to be png")
+    return validate_screenshot_assertions(assertions)
+
+
+def _validate_runtime_test_seconds(
+    value: float, label: str, minimum: float, maximum: float
+) -> None:
+    if not _is_finite_number(value) or not minimum <= float(value) <= maximum:
+        raise ValueError(f"{label} must be a finite number between {minimum:.1f} and {maximum:.1f}")
+
+
+def _runtime_request_succeeded(result: dict[str, Any]) -> bool:
+    return result.get("status") == "ready" and result.get("result", {}).get("ok") is True
+
+
+def _runtime_test_screenshot_summary(result: dict[str, Any]) -> dict[str, Any]:
+    summary = {"status": result.get("status", "")}
+    payload = result.get("result", {})
+    if not isinstance(payload, dict):
+        return summary
+    for key in ("ok", "code", "message", "mime_type", "width", "height", "byte_size"):
+        if key in payload:
+            summary[key] = payload[key]
+    return summary
 
 
 def _validate_runtime_audio_action(value: str) -> str:

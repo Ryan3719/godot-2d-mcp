@@ -39,3 +39,11 @@ func request_runtime_audio_stream_player_2d_control(params: Dictionary) -> Dicti
 
 func get_runtime_audio_stream_player_2d_control_result(params: Dictionary) -> Dictionary:
 	return _runtime_bridge.get_audio_stream_player_2d_control_result(params)
+
+
+func request_runtime_performance_sample(params: Dictionary) -> Dictionary:
+	return _runtime_bridge.request_performance_sample(params)
+
+
+func get_runtime_performance_sample_result(params: Dictionary) -> Dictionary:
+	return _runtime_bridge.get_performance_sample_result(params)

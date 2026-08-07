@@ -9,11 +9,15 @@ const MAX_INPUT_EVENTS := 64
 const MAX_COORDINATE := 100_000.0
 const MAX_RUNTIME_NODE_PATH_LENGTH := 4096
 const MAX_AUDIO_POSITION_SECONDS := 3600.0
+const MIN_PERFORMANCE_SAMPLE_SECONDS := 0.1
+const MAX_PERFORMANCE_SAMPLE_SECONDS := 30.0
+const MAX_PENDING_PERFORMANCE_SAMPLES := 4
 
 var _logger: Logger
 var _pending_logs: Array[Dictionary] = []
 var _pending_log_mutex := Mutex.new()
 var _pending_screenshots: Array[Dictionary] = []
+var _pending_performance_samples: Array[Dictionary] = []
 var _debugger_active := false
 
 
@@ -38,7 +42,12 @@ func _ready() -> void:
 	OS.add_logger(_logger)
 	_send_message(
 		"ready",
-		[{"protocol_version": 1, "capabilities": ["logs", "screenshot", "input", "audio_stream_player_2d"]}]
+		[
+			{
+				"protocol_version": 1,
+				"capabilities": ["logs", "screenshot", "input", "audio_stream_player_2d", "performance_sample"],
+			}
+		]
 	)
 
 
@@ -50,8 +59,9 @@ func _exit_tree() -> void:
 		EngineDebugger.unregister_message_capture(CAPTURE_NAME)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	_flush_logs()
+	_update_performance_samples(delta)
 	if _pending_screenshots.is_empty():
 		return
 	var request: Dictionary = _pending_screenshots.pop_front()
@@ -106,7 +116,108 @@ func _capture_debugger_message(message: String, data: Array) -> bool:
 				return true
 			_handle_audio_control(audio_request_id, data[1])
 			return true
+		"performance_sample":
+			if data.size() != 2 or not data[1] is Dictionary:
+				return true
+			var performance_request_id := str(data[0]).strip_edges()
+			if performance_request_id.is_empty() or performance_request_id.length() > 128:
+				return true
+			_request_performance_sample(performance_request_id, data[1])
+			return true
 	return false
+
+
+func _request_performance_sample(request_id: String, options: Dictionary) -> void:
+	for field in options:
+		if field != "duration_seconds":
+			_send_performance_sample_error(
+				request_id,
+				"INVALID_PERFORMANCE_SAMPLE_REQUEST",
+				"performance sampling only accepts duration_seconds"
+			)
+			return
+	var raw_duration: Variant = options.get("duration_seconds", null)
+	if not (raw_duration is int or raw_duration is float) or not is_finite(float(raw_duration)) \
+		or float(raw_duration) < MIN_PERFORMANCE_SAMPLE_SECONDS \
+		or float(raw_duration) > MAX_PERFORMANCE_SAMPLE_SECONDS:
+		_send_performance_sample_error(
+			request_id,
+			"INVALID_PERFORMANCE_SAMPLE_DURATION",
+			"duration_seconds must be a finite number between %.1f and %.1f" \
+				% [MIN_PERFORMANCE_SAMPLE_SECONDS, MAX_PERFORMANCE_SAMPLE_SECONDS]
+		)
+		return
+	if _pending_performance_samples.size() >= MAX_PENDING_PERFORMANCE_SAMPLES:
+		_send_performance_sample_error(
+			request_id,
+			"PERFORMANCE_SAMPLE_QUEUE_FULL",
+			"At most %d performance samples may run at once" % MAX_PENDING_PERFORMANCE_SAMPLES
+		)
+		return
+	_pending_performance_samples.append(
+		{
+			"request_id": request_id,
+			"duration_seconds": float(raw_duration),
+			"elapsed_seconds": 0.0,
+			"frame_count": 0,
+			"delta_total_msec": 0.0,
+			"delta_min_msec": INF,
+			"delta_max_msec": 0.0,
+		}
+	)
+
+
+func _update_performance_samples(delta: float) -> void:
+	if _pending_performance_samples.is_empty():
+		return
+	var delta_msec := maxf(0.0, _safe_runtime_number(delta) * 1000.0)
+	for index in range(_pending_performance_samples.size() - 1, -1, -1):
+		var sample: Dictionary = _pending_performance_samples[index]
+		sample["elapsed_seconds"] = float(sample["elapsed_seconds"]) + delta_msec / 1000.0
+		sample["frame_count"] = int(sample["frame_count"]) + 1
+		sample["delta_total_msec"] = float(sample["delta_total_msec"]) + delta_msec
+		sample["delta_min_msec"] = minf(float(sample["delta_min_msec"]), delta_msec)
+		sample["delta_max_msec"] = maxf(float(sample["delta_max_msec"]), delta_msec)
+		if float(sample["elapsed_seconds"]) < float(sample["duration_seconds"]):
+			_pending_performance_samples[index] = sample
+			continue
+		_pending_performance_samples.remove_at(index)
+		var actual_duration := maxf(float(sample["elapsed_seconds"]), 0.000001)
+		var frame_count := int(sample["frame_count"])
+		_send_message(
+			"performance_sample_result",
+			[
+				sample["request_id"],
+				{
+					"ok": true,
+					"requested_duration_seconds": sample["duration_seconds"],
+					"actual_duration_seconds": actual_duration,
+					"frame_count": frame_count,
+					"estimated_fps": frame_count / actual_duration,
+					"process_frame_delta_msec": {
+						"min": _safe_runtime_number(float(sample["delta_min_msec"])),
+						"mean": _safe_runtime_number(float(sample["delta_total_msec"]) / frame_count),
+						"max": _safe_runtime_number(float(sample["delta_max_msec"])),
+					},
+					"monitors": {
+						"time_fps": _safe_performance_monitor(Performance.TIME_FPS),
+						"memory_static_bytes": _safe_performance_monitor(Performance.MEMORY_STATIC),
+						"object_count": _safe_performance_monitor(Performance.OBJECT_COUNT),
+						"draw_calls_in_frame": _safe_performance_monitor(
+							Performance.RENDER_TOTAL_DRAW_CALLS_IN_FRAME
+						),
+					},
+				},
+			]
+		)
+
+
+func _safe_performance_monitor(monitor: Performance.Monitor) -> float:
+	return _safe_runtime_number(Performance.get_monitor(monitor))
+
+
+func _send_performance_sample_error(request_id: String, code: String, message: String) -> void:
+	_send_message("performance_sample_result", [request_id, {"ok": false, "code": code, "message": message}])
 
 
 func _capture_screenshot(request_id: String, options: Dictionary) -> void:

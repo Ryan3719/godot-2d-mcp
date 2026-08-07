@@ -548,6 +548,10 @@ async def test_runtime_feedback_tools_forward_validated_payloads() -> None:
     await service.runtime_audio_stream_player_2d_control_result_get(
         "audio-123", session_id="project@a1b2"
     )
+    await service.runtime_performance_sample_request(1.5, session_id="project@a1b2")
+    await service.runtime_performance_sample_result_get(
+        "performance-123", session_id="project@a1b2"
+    )
 
     assert bridge.calls == [
         ("runtime_get_state", {}, "project@a1b2"),
@@ -572,6 +576,16 @@ async def test_runtime_feedback_tools_forward_validated_payloads() -> None:
         (
             "runtime_audio_stream_player_2d_control_result_get",
             {"request_id": "audio-123"},
+            "project@a1b2",
+        ),
+        (
+            "runtime_performance_sample_request",
+            {"duration_seconds": 1.5},
+            "project@a1b2",
+        ),
+        (
+            "runtime_performance_sample_result_get",
+            {"request_id": "performance-123"},
             "project@a1b2",
         ),
     ]
@@ -613,6 +627,96 @@ async def test_runtime_feedback_tools_reject_invalid_payloads() -> None:
         )
     with pytest.raises(ValueError, match="request_id"):
         await service.runtime_audio_stream_player_2d_control_result_get("")
+    with pytest.raises(ValueError, match="duration_seconds"):
+        await service.runtime_performance_sample_request(0.01)
+    with pytest.raises(ValueError, match="request_id"):
+        await service.runtime_performance_sample_result_get("")
+    with pytest.raises(ValueError, match="requires a screenshot"):
+        await service.runtime_test_run(
+            screenshot_assertions=[{"kind": "dimensions", "width": 1, "height": 1}]
+        )
+
+
+@pytest.mark.asyncio
+async def test_runtime_screenshot_assert_reports_pending_without_decoding() -> None:
+    class PendingScreenshotBridge(FakeBridge):
+        async def call(
+            self,
+            command: str,
+            params: dict[str, Any] | None = None,
+            session_id: str | None = None,
+        ) -> dict[str, Any]:
+            self.calls.append((command, params or {}, session_id))
+            assert command == "runtime_screenshot_get"
+            return {"status": "pending"}
+
+    bridge = PendingScreenshotBridge()
+    service = GodotService(SessionRegistry(), bridge)
+
+    result = await service.runtime_screenshot_assert(
+        "screenshot-123",
+        [{"kind": "dimensions", "width": 1, "height": 1}],
+        session_id="project@a1b2",
+    )
+
+    assert result == {
+        "request_id": "screenshot-123",
+        "status": "pending",
+        "passed": None,
+        "assertions": [],
+    }
+    assert bridge.calls == [
+        ("runtime_screenshot_get", {"request_id": "screenshot-123"}, "project@a1b2")
+    ]
+
+
+class RuntimeTestBridge(FakeBridge):
+    def __init__(self) -> None:
+        super().__init__()
+        self.stopped = False
+
+    async def call(
+        self,
+        command: str,
+        params: dict[str, Any] | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        self.calls.append((command, params or {}, session_id))
+        if command == "editor_run":
+            return {"requested": True, "requested_scene": "res://runtime_smoke.tscn"}
+        if command == "editor_get_state":
+            return {"play_state": "stopped" if self.stopped else "playing"}
+        if command == "runtime_get_state":
+            return {"connected": True}
+        if command == "editor_stop":
+            self.stopped = True
+            return {"requested": True, "was_playing": True}
+        raise AssertionError(f"Unexpected runtime test command: {command}")
+
+
+@pytest.mark.asyncio
+async def test_runtime_test_run_orchestrates_bounded_launch_and_cleanup() -> None:
+    bridge = RuntimeTestBridge()
+    service = GodotService(SessionRegistry(), bridge)
+
+    result = await service.runtime_test_run(
+        mode="custom",
+        scene_file="res://runtime_smoke.tscn",
+        settle_seconds=0.0,
+        timeout_seconds=3.0,
+        session_id="project@a1b2",
+    )
+
+    assert result["status"] == "passed"
+    assert result["passed"] is True
+    assert result["cleanup"]["editor_state"]["play_state"] == "stopped"
+    assert [call[0] for call in bridge.calls] == [
+        "editor_run",
+        "editor_get_state",
+        "runtime_get_state",
+        "editor_stop",
+        "editor_get_state",
+    ]
 
 
 @pytest.mark.asyncio

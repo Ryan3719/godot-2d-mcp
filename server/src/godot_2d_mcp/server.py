@@ -186,6 +186,17 @@ def create_application(
             structured_content=metadata,
         )
 
+    @mcp.tool(annotations=READ_ONLY)
+    async def runtime_screenshot_assert(
+        request_id: str,
+        assertions: list[dict[str, Any]],
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Evaluate bounded pixel assertions against a completed PNG runtime screenshot locally."""
+        return await service.runtime_screenshot_assert(
+            request_id=request_id, assertions=assertions, session_id=session_id
+        )
+
     @mcp.tool(annotations=WRITE)
     async def runtime_input_send(
         events: list[dict[str, Any]], session_id: str | None = None
@@ -222,6 +233,51 @@ def create_application(
         """Poll a runtime AudioStreamPlayer2D request for state or a structured error."""
         return await service.runtime_audio_stream_player_2d_control_result_get(
             request_id=request_id, session_id=session_id
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def runtime_performance_sample_request(
+        duration_seconds: float, session_id: str | None = None
+    ) -> dict[str, Any]:
+        """Start a bounded game-process performance sample; poll the paired result tool."""
+        return await service.runtime_performance_sample_request(
+            duration_seconds=duration_seconds, session_id=session_id
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def runtime_performance_sample_result_get(
+        request_id: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        """Poll FPS, process delta, memory, object, and draw-call measurements from a sample."""
+        return await service.runtime_performance_sample_result_get(
+            request_id=request_id, session_id=session_id
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def runtime_test_run(
+        mode: str = "current",
+        scene_file: str = "",
+        inputs: list[dict[str, Any]] | None = None,
+        settle_seconds: float = 0.25,
+        performance_sample_seconds: float | None = None,
+        screenshot: dict[str, Any] | None = None,
+        screenshot_assertions: list[dict[str, Any]] | None = None,
+        stop_when_finished: bool = True,
+        timeout_seconds: float = 20.0,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Run a bounded scene test with optional input, metrics, PNG assertions, and cleanup."""
+        return await service.runtime_test_run(
+            mode=mode,
+            scene_file=scene_file,
+            inputs=inputs,
+            settle_seconds=settle_seconds,
+            performance_sample_seconds=performance_sample_seconds,
+            screenshot=screenshot,
+            screenshot_assertions=screenshot_assertions,
+            stop_when_finished=stop_when_finished,
+            timeout_seconds=timeout_seconds,
+            session_id=session_id,
         )
 
     @mcp.tool(annotations=READ_ONLY)

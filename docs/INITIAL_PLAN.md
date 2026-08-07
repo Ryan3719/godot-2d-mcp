@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：阶段 0 已完成；阶段 1 已交付项目内 2D/UI 场景创建与安全打开、自定义非工具脚本节点创建/绑定/解绑、完整 2D PackedScene 实例根的插入/删除/复制/重新挂载/撤销重做、首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式、嵌入式 Theme 资源能力、通用公开 Resource 属性的安全项目路径绑定，以及 TypedArray/TypedDictionary 的严格编解码；阶段 2 已交付 Container 容器级布局配置、直接子 Control 尺寸约束和 TabContainer 单项元数据编辑；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力，以及安全的异步场景源几何 Bake；阶段 4 已交付 TileMapLayer、内嵌 TileSet Atlas、TileSet 层定义编辑/删除、terrain 定义删除、connect/path terrain 绘制，以及 Atlas TileData 碰撞/导航/遮挡几何；阶段 5 已交付 PointLight2D、DirectionalLight2D、LightOccluder2D、CanvasItemMaterial、带运行时 uniform 发现与 copy-on-write 配置的 2D ShaderMaterial、Camera2D、Parallax2D、CanvasLayer、Path2D、Curve2D、Skeleton2D、Bone2D、AudioStreamPlayer2D、GPUParticles2D、ParticleProcessMaterial 及其 CurveTexture/GradientTexture1D 和包含 Curve/Gradient 资源的 CPUParticles2D 安全语义编辑，以及 Sprite2D、Line2D、Polygon2D、AnimatedSprite2D/SpriteFrames、BaseButton/Button/TextureButton/LinkButton 和 OptionButton/MenuButton 平面菜单的高频绘制、帧动画与交互语义编辑；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图、游戏输入模拟，以及 `AudioStreamPlayer2D` 运行时状态/播放/停止/定位控制；阶段 7 已交付首批运行时 `ClassDB` 2D 节点和资源覆盖审计（v0.48.0）
+状态：阶段 0 至阶段 7 已完成。阶段 1 至阶段 5 已交付完整 2D/UI 场景、动画、物理、导航、TileMap、视觉、粒子与控件语义能力；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图、输入模拟、`AudioStreamPlayer2D` 运行时状态/播放/停止/定位控制、受限性能采样、客户端 PNG 内容断言和有总超时/自动清理边界的游戏测试编排；阶段 7 已交付首批运行时 `ClassDB` 2D 节点和资源覆盖审计（v0.49.0）
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -295,8 +295,10 @@ godot-2d-mcp/
 ### 阶段 6：运行反馈
 
 - 运行/停止、编辑器和游戏日志、截图、输入模拟和测试运行。
-- 已交付：`editor_run` 支持安全启动当前、主场景或现有 `res://` 自定义 `PackedScene`；`editor_stop` 可幂等停止运行中的场景。`runtime_get_state`、`runtime_logs_get`、`runtime_screenshot_request/get` 与 `runtime_input_send/result_get` 通过插件托管的 autoload 和 `EditorDebuggerPlugin` 连接真实游戏进程，支持带序号的日志、受 1024 像素/1 MB 上限约束的根视口 PNG/JPEG 截图、以及 action/键盘/鼠标事件注入回执。`runtime_audio_stream_player_2d_control/result_get` 采用相同的请求 ID 轮询模型，限制为活动场景树内的 `AudioStreamPlayer2D` 及 `get`、`play`、`stop`、`seek` 四个动作，结果带回播放状态和 stream 元数据。Agent 必须轮询状态确认启动、停止和异步反馈完成。
-- 待交付：游戏测试编排、性能采样和客户端侧截图内容断言助手；编辑器输出与游戏输出需要保持为独立来源，不能将编辑器界面截图冒充为游戏画面。
+- 已交付：`editor_run` 支持安全启动当前、主场景或现有 `res://` 自定义 `PackedScene`；`editor_stop` 可幂等停止运行中的场景。`runtime_get_state`、`runtime_logs_get`、`runtime_screenshot_request/get` 与 `runtime_input_send/result_get` 通过插件托管的 autoload 和 `EditorDebuggerPlugin` 连接真实游戏进程，支持带序号的日志、受 1024 像素/1 MB 上限约束的根视口 PNG/JPEG 截图、以及 action/键盘/鼠标事件注入回执。`runtime_audio_stream_player_2d_control/result_get` 采用相同的请求 ID 轮询模型，限制为活动场景树内的 `AudioStreamPlayer2D` 及 `get`、`play`、`stop`、`seek` 四个动作，结果带回播放状态和 stream 元数据。
+- 已交付：`runtime_performance_sample_request/result_get` 以 0.1 至 30 秒的有界采样窗口返回实际时长、帧数、估算 FPS、process delta min/mean/max，以及 `Performance.TIME_FPS`、静态内存、对象数量和当帧 draw calls。游戏进程只接受固定 `performance_sample` 调试消息，最多四个并发样本，编辑器仅保存有界轮询结果。
+- 已交付：`runtime_screenshot_assert` 只在 MCP Python 进程中解码已完成的 PNG 截图，不向游戏开放表达式或脚本执行。解析器限制为 1 MB、1024 像素、非交错 8-bit RGB/RGBA PNG，验证 chunk CRC 并支持 PNG filter 0-4；断言限定为 `dimensions`、`pixel`、`region_mean` 与 `color_presence` 四类，每次最多 32 条。
+- 已交付：`runtime_test_run` 将现有受限启动、等待、输入、性能和截图接口编排成一次有总时限的测试。它只能启动 current/main/项目内 custom 场景，等待编辑器运行和 runtime bridge 连接，返回结构化 `passed`/`failed`/`error`，默认停止测试场景。编辑器输出与游戏输出保持独立，绝不将编辑器界面截图冒充为游戏画面。
 
 ### 阶段 7：完整性审计
 
