@@ -161,6 +161,70 @@ async def test_sprite_frames_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_button_2d_tools_forward_validated_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    properties = {
+        "toggle_mode": True,
+        "button_pressed": True,
+        "action_mode": " PRESS ",
+        "button_mask": ["left", "right"],
+        "button_group_path": "res://ui/group.tres",
+        "text": "Launch",
+        "icon_path": "res://ui/launch.svg",
+        "alignment": "left",
+        "autowrap_trim_flags": ["trim_start"],
+        "texture_normal_path": "res://ui/normal.svg",
+        "stretch_mode": "keep_aspect_centered",
+    }
+
+    await service.button_2d_get(
+        "/Main/Launch", scene_file="res://main.tscn", session_id="project@a1b2"
+    )
+    await service.button_2d_set(
+        "/Main/Launch",
+        properties,
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
+
+    assert bridge.calls == [
+        (
+            "button_2d_get",
+            {"path": "/Main/Launch", "scene_file": "res://main.tscn"},
+            "project@a1b2",
+        ),
+        (
+            "button_2d_set",
+            {
+                "path": "/Main/Launch",
+                "properties": properties,
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_button_2d_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="toggle_mode"):
+        await service.button_2d_set(
+            "/Main/Launch", {"toggle_mode": False, "button_pressed": True}
+        )
+    with pytest.raises(ValueError, match="button_mask"):
+        await service.button_2d_set("/Main/Launch", {"button_mask": ["left", "left"]})
+    with pytest.raises(ValueError, match="alignment"):
+        await service.button_2d_set("/Main/Launch", {"alignment": "fill"})
+    with pytest.raises(ValueError, match="click_mask_path"):
+        await service.button_2d_set("/Main/Launch", {"click_mask_path": "../mask.tres"})
+    with pytest.raises(ValueError, match="unsupported BaseButton property"):
+        await service.button_2d_set("/Main/Launch", {"unknown": True})
+
+
+@pytest.mark.asyncio
 async def test_editor_run_and_stop_forward_validated_modes() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

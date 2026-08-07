@@ -99,6 +99,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         sprite_frames_coverage = await app.service.class_2d_coverage(
             query="SpriteFrames", scope="resource", limit=20
         )
+        texture_button_coverage = await app.service.class_2d_coverage(
+            query="TextureButton", scope="node", limit=20
+        )
 
         if hierarchy.get("total") != 5:
             raise RuntimeError(f"Unexpected scene node count: {hierarchy.get('total')}")
@@ -119,6 +122,8 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or button_coverage.get("kind") != "node"
             or button_coverage.get("base_support", {}).get("create") is not True
             or "control_get_layout" not in button_coverage.get("semantic_tools", [])
+            or {"button_2d_get", "button_2d_set"}
+            - set(button_coverage.get("semantic_tools", []))
             or button_coverage.get("test_status") != "semantic_smoke"
         ):
             raise RuntimeError(f"Button coverage audit was incomplete: {coverage}")
@@ -172,6 +177,14 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             ),
             None,
         )
+        texture_button_entry = next(
+            (
+                entry
+                for entry in texture_button_coverage.get("entries", [])
+                if entry.get("name") == "TextureButton"
+            ),
+            None,
+        )
         if (
             sprite_coverage is None
             or {"sprite_2d_get", "sprite_2d_set"}
@@ -187,6 +200,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or frames_coverage is None
             or {"sprite_frames_get", "sprite_frames_animation_remove"}
             - set(frames_coverage.get("semantic_tools", []))
+            or texture_button_entry is None
+            or {"button_2d_get", "button_2d_set"}
+            - set(texture_button_entry.get("semantic_tools", []))
+            or texture_button_entry.get("test_status") != "semantic_smoke"
         ):
             raise RuntimeError("2D drawing coverage audit was incomplete")
 
@@ -3437,6 +3454,107 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             "ANIMATED_SPRITE_2D_REQUIRED",
         )
 
+        semantic_button = await app.service.node_create(
+            type_name="Button",
+            name="AgentSemanticButton",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        semantic_button_path = semantic_button["path"]
+        button_configuration = await app.service.button_2d_set(
+            semantic_button_path,
+            {
+                "toggle_mode": True,
+                "button_pressed": True,
+                "action_mode": "press",
+                "button_mask": ["left", "right"],
+                "keep_pressed_outside": True,
+                "shortcut_feedback": False,
+                "shortcut_in_tooltip": False,
+                "button_group_path": "res://test_button_group.tres",
+                "text": "Launch",
+                "icon_path": "res://test_icon.svg",
+                "flat": True,
+                "alignment": "left",
+                "text_overrun_behavior": "ellipsis_force",
+                "autowrap_mode": "smart_word",
+                "autowrap_trim_flags": ["trim_start"],
+                "clip_text": True,
+                "icon_alignment": "right",
+                "vertical_icon_alignment": "bottom",
+                "expand_icon": True,
+                "text_direction": "ltr",
+                "language": "en",
+            },
+            scene_file=scene_file,
+        )
+        button_state = button_configuration["configuration"]
+        text_button_state = button_state["button"]
+        if (
+            not button_configuration.get("changed")
+            or button_state["button_pressed"] is not True
+            or button_state["button_mask"] != ["left", "right"]
+            or button_state["button_group"]["resource_path"] != "res://test_button_group.tres"
+            or text_button_state["text"] != "Launch"
+            or text_button_state["icon"]["resource_path"] != "res://test_icon.svg"
+            or text_button_state["autowrap_trim_flags"] != ["trim_start"]
+            or text_button_state["vertical_icon_alignment"] != "bottom"
+        ):
+            raise RuntimeError("Button semantic configuration was not applied")
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("Button semantic configuration was not undoable")
+        restored_button = await app.service.button_2d_get(
+            semantic_button_path, scene_file=scene_file
+        )
+        if restored_button["configuration"]["button"]["text"]:
+            raise RuntimeError("Undo did not restore Button text")
+        if not (await app.service.scene_redo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("Button semantic configuration was not redoable")
+
+        semantic_texture_button = await app.service.node_create(
+            type_name="TextureButton",
+            name="AgentTextureButton",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        semantic_texture_button_path = semantic_texture_button["path"]
+        texture_button_configuration = await app.service.button_2d_set(
+            semantic_texture_button_path,
+            {
+                "texture_normal_path": "res://test_icon.svg",
+                "texture_pressed_path": "res://test_icon.svg",
+                "texture_hover_path": "res://test_icon.svg",
+                "texture_disabled_path": "res://test_icon.svg",
+                "texture_focused_path": "res://test_icon.svg",
+                "ignore_texture_size": True,
+                "stretch_mode": "keep_aspect_centered",
+                "flip_h": True,
+                "flip_v": True,
+            },
+            scene_file=scene_file,
+        )
+        texture_button_state = texture_button_configuration["configuration"]["texture_button"]
+        if (
+            texture_button_state["texture_normal"]["resource_path"] != "res://test_icon.svg"
+            or texture_button_state["stretch_mode"] != "keep_aspect_centered"
+            or texture_button_state["flip_h"] is not True
+            or texture_button_state["flip_v"] is not True
+        ):
+            raise RuntimeError("TextureButton semantic configuration was not applied")
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("TextureButton semantic configuration was not undoable")
+        restored_texture_button = await app.service.button_2d_get(
+            semantic_texture_button_path, scene_file=scene_file
+        )
+        if restored_texture_button["configuration"]["texture_button"]["texture_normal"]["assigned"]:
+            raise RuntimeError("Undo did not clear TextureButton textures")
+        if not (await app.service.scene_redo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("TextureButton semantic configuration was not redoable")
+        await _expect_godot_error(
+            app.service.button_2d_get(semantic_line_path, scene_file=scene_file),
+            "BASE_BUTTON_REQUIRED",
+        )
+
         initial_canvas_material = await app.service.canvas_item_material_get(
             canvas_item_path,
             scene_file=scene_file,
@@ -5020,7 +5138,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 53 or _has_node(
+        if final_hierarchy.get("total") != 55 or _has_node(
             final_hierarchy, marker_path
         ):
             raise RuntimeError("Unexpected final hierarchy after write operations")
@@ -5039,6 +5157,8 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentShapeCast" not in saved_scene
             or "AgentNavigationLink" not in saved_scene
             or "AgentAnimatedSprite" not in saved_scene
+            or "AgentSemanticButton" not in saved_scene
+            or "AgentTextureButton" not in saved_scene
             or "AgentPatrolPath" not in saved_scene
             or "AgentSkeleton" not in saved_scene
             or "AgentRootBone" not in saved_scene

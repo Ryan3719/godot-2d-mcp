@@ -171,12 +171,23 @@ const RESOURCE_COVERAGE_CATALOG := [
 		"tools": ["control_theme_defaults_set", "control_theme_item_upsert"],
 	},
 	{
+		"base_type": "ButtonGroup",
+		"category": "ui",
+		"tools": ["button_2d_get", "button_2d_set"],
+	},
+	{
+		"base_type": "Shortcut",
+		"category": "input",
+		"tools": ["button_2d_get", "button_2d_set"],
+	},
+	{
 		"base_type": "Texture2D",
 		"category": "visual",
 		"tools": [
 			"node_set_properties", "control_theme_item_upsert", "sprite_2d_get", "sprite_2d_set",
 			"line_2d_get", "line_2d_set", "polygon_2d_get", "polygon_2d_set",
 			"sprite_frames_get", "sprite_frames_animation_upsert",
+			"button_2d_get", "button_2d_set",
 		],
 	},
 	{
@@ -215,6 +226,10 @@ const NODE_SEMANTIC_CATALOG := [
 			"control_theme_assign", "control_theme_defaults_set", "control_theme_defaults_clear",
 			"control_theme_item_upsert", "control_theme_item_clear",
 		],
+	},
+	{
+		"base_type": "BaseButton",
+		"tools": ["button_2d_get", "button_2d_set"],
 	},
 	{
 		"base_type": "AnimationPlayer",
@@ -354,6 +369,7 @@ const NODE_SEMANTIC_CATALOG := [
 
 const SEMANTIC_SMOKE_COVERED_CLASSES := {
 	"Button": true,
+	"TextureButton": true,
 	"Area2D": true,
 	"StaticBody2D": true,
 	"AnimatableBody2D": true,

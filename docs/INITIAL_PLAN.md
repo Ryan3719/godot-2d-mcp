@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：阶段 0 已完成；阶段 1 已交付项目内 2D/UI 场景创建与安全打开、自定义非工具脚本节点创建/绑定/解绑、完整 2D PackedScene 实例根的插入/删除/复制/重新挂载/撤销重做、首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式、嵌入式 Theme 资源能力、通用公开 Resource 属性的安全项目路径绑定，以及 TypedArray/TypedDictionary 的严格编解码；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力；阶段 4 已交付 TileMapLayer、内嵌 TileSet Atlas、TileSet 语义能力与 Atlas TileData 碰撞/导航/遮挡几何；阶段 5 已交付 PointLight2D、DirectionalLight2D、LightOccluder2D、CanvasItemMaterial、带运行时 uniform 发现与 copy-on-write 配置的 2D ShaderMaterial、Camera2D、Parallax2D、CanvasLayer、Path2D、Curve2D、Skeleton2D、Bone2D、AudioStreamPlayer2D、GPUParticles2D、ParticleProcessMaterial 及其 CurveTexture/GradientTexture1D 和包含 Curve/Gradient 资源的 CPUParticles2D 安全语义编辑，以及 Sprite2D、Line2D、Polygon2D 和 AnimatedSprite2D/SpriteFrames 的高频绘制与帧动画语义编辑；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图、游戏输入模拟，以及 `AudioStreamPlayer2D` 运行时状态/播放/停止/定位控制；阶段 7 已交付首批运行时 `ClassDB` 2D 节点和资源覆盖审计（v0.41.0）
+状态：阶段 0 已完成；阶段 1 已交付项目内 2D/UI 场景创建与安全打开、自定义非工具脚本节点创建/绑定/解绑、完整 2D PackedScene 实例根的插入/删除/复制/重新挂载/撤销重做、首批场景写入、结构编辑、信号管理、动画编辑、UI 布局/样式、嵌入式 Theme 资源能力、通用公开 Resource 属性的安全项目路径绑定，以及 TypedArray/TypedDictionary 的严格编解码；阶段 3 已交付 Shape2D、碰撞层、Area2D、核心 Body2D、Joint2D、RayCast2D、ShapeCast2D、导航节点与 NavigationPolygon 资源能力；阶段 4 已交付 TileMapLayer、内嵌 TileSet Atlas、TileSet 语义能力与 Atlas TileData 碰撞/导航/遮挡几何；阶段 5 已交付 PointLight2D、DirectionalLight2D、LightOccluder2D、CanvasItemMaterial、带运行时 uniform 发现与 copy-on-write 配置的 2D ShaderMaterial、Camera2D、Parallax2D、CanvasLayer、Path2D、Curve2D、Skeleton2D、Bone2D、AudioStreamPlayer2D、GPUParticles2D、ParticleProcessMaterial 及其 CurveTexture/GradientTexture1D 和包含 Curve/Gradient 资源的 CPUParticles2D 安全语义编辑，以及 Sprite2D、Line2D、Polygon2D、AnimatedSprite2D/SpriteFrames 和 BaseButton/Button/TextureButton 的高频绘制、帧动画与交互语义编辑；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图、游戏输入模拟，以及 `AudioStreamPlayer2D` 运行时状态/播放/停止/定位控制；阶段 7 已交付首批运行时 `ClassDB` 2D 节点和资源覆盖审计（v0.42.0）
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -128,6 +128,7 @@ Codex / Claude Code / MCP Client
 - `animation_list`、`animation_get`、`animation_create`、`animation_delete`、属性轨道 upsert/delete 和关键帧 upsert/delete；支持场景内嵌动画库、撤销/重做与保存。
 - `control_get_layout`、`control_set_layout`、`control_set_layout_preset`，支持精确 anchors/offsets 与 Godot 布局预设；Container 子节点会明确拒绝。
 - `control_get_styleboxes`、`control_stylebox_flat_upsert`、`control_stylebox_override_clear`，支持节点本地 `StyleBoxFlat` 状态覆盖及撤销/重做。
+- `button_2d_get`、`button_2d_set`，支持所有 `BaseButton` 派生节点的 disabled/toggle/pressed/action/mask、外部 ButtonGroup/Shortcut 绑定和交互配置；`Button` 派生节点额外支持文本、图标、对齐、换行、文本方向和语言，`TextureButton` 支持五态贴图、BitMap 点击掩码、拉伸与翻转。所有写入均校验类型和值域，并注册为单个撤销事务。
 - `control_theme_get`、`control_theme_create`、`control_theme_assign`，支持读取、创建、绑定、解除和撤销 Control 的 Theme 资源分配。
 - `control_theme_defaults_set`、`control_theme_defaults_clear`，支持嵌入式 Theme 默认字体、字体大小与基础缩放。
 - `control_theme_item_upsert`、`control_theme_item_clear`，支持嵌入式 Theme 的颜色、常量、字体大小、字体、图标和 `StyleBoxFlat` 条目。
@@ -288,7 +289,7 @@ godot-2d-mcp/
 ### 阶段 5：高级 2D
 
 - 粒子、光照、遮挡、Shader、骨骼、路径、相机和音频。
-- 已交付：光照、遮挡、CanvasItemMaterial 的安全绑定和复制后替换配置、仅接受 `canvas_item` 类型的 ShaderMaterial 创建/项目资源绑定/复制后替换源码与运行时 uniform 的安全发现、批量写入和恢复默认值、相机、视口组合、Path2D/Curve2D 的独立内嵌资源替换与 Bézier 点编辑、Skeleton2D/Bone2D 的安全层级创建与 Rest Pose、AudioStreamPlayer2D 的外部流绑定和空间播放配置、GPUParticles2D 的完整节点配置/资源绑定/场景内子发射器编排、ParticleProcessMaterial 的内嵌创建与核心 2D 复制后替换编辑、17 个标量 CurveTexture 槽位与两类 GradientTexture1D 坡度，以及 CPUParticles2D 的核心发射、运动、绘制和纹理绑定配置、全部 14 个参数 Curve 槽位与两类 Gradient 坡度的安全资源编辑。`Sprite2D`、`Line2D`、`Polygon2D` 均支持独立 get/set 工具，项目路径纹理/Curve/Gradient 仅作类型校验后绑定，点、UV、颜色和枚举受数量与几何约束；`AnimatedSprite2D` 提供节点配置、动画列表/分页帧读取，以及 SpriteFrames 动画新增或替换、改名和删除能力。SpriteFrames 修改始终复制并内嵌替换资源，不会原地写入外部或共享资源；每次写入均为单个 Godot 撤销事务。
+- 已交付：光照、遮挡、CanvasItemMaterial 的安全绑定和复制后替换配置、仅接受 `canvas_item` 类型的 ShaderMaterial 创建/项目资源绑定/复制后替换源码与运行时 uniform 的安全发现、批量写入和恢复默认值、相机、视口组合、Path2D/Curve2D 的独立内嵌资源替换与 Bézier 点编辑、Skeleton2D/Bone2D 的安全层级创建与 Rest Pose、AudioStreamPlayer2D 的外部流绑定和空间播放配置、GPUParticles2D 的完整节点配置/资源绑定/场景内子发射器编排、ParticleProcessMaterial 的内嵌创建与核心 2D 复制后替换编辑、17 个标量 CurveTexture 槽位与两类 GradientTexture1D 坡度，以及 CPUParticles2D 的核心发射、运动、绘制和纹理绑定配置、全部 14 个参数 Curve 槽位与两类 Gradient 坡度的安全资源编辑。`Sprite2D`、`Line2D`、`Polygon2D` 均支持独立 get/set 工具，项目路径纹理/Curve/Gradient 仅作类型校验后绑定，点、UV、颜色和枚举受数量与几何约束；`AnimatedSprite2D` 提供节点配置、动画列表/分页帧读取，以及 SpriteFrames 动画新增或替换、改名和删除能力。BaseButton 按钮工作流支持所有派生节点的交互状态与项目资源绑定，文本 Button 派生节点的文本/图标/排版，以及 TextureButton 的五态贴图与命中配置。SpriteFrames 修改始终复制并内嵌替换资源，不会原地写入外部或共享资源；每次写入均为单个 Godot 撤销事务。
 
 ### 阶段 6：运行反馈
 
@@ -298,7 +299,7 @@ godot-2d-mcp/
 
 ### 阶段 7：完整性审计
 
-- 已交付：`class_2d_coverage` 从运行中 Godot 的 `ClassDB` 生成分页的 2D 节点和资源清单。每个条目记录基础支持、专用语义工具、可实例化状态和直接语义烟测状态；资源范围显式限定为当前 2D 工作流涉及的 Shape2D、导航、TileSet、Path、Curve、Gradient、光照、音频、粒子、材质、Shader、Theme、StyleBox、Font、Texture2D、SpriteFrames 和 LabelSettings 家族。`Sprite2D`、`AnimatedSprite2D`、`Line2D`、`Polygon2D` 标记为直接语义烟测覆盖。
+- 已交付：`class_2d_coverage` 从运行中 Godot 的 `ClassDB` 生成分页的 2D 节点和资源清单。每个条目记录基础支持、专用语义工具、可实例化状态和直接语义烟测状态；资源范围显式限定为当前 2D 工作流涉及的 Shape2D、导航、TileSet、Path、Curve、Gradient、光照、音频、粒子、材质、Shader、Theme、StyleBox、Font、Texture2D、SpriteFrames、ButtonGroup、Shortcut 和 LabelSettings 家族。`Sprite2D`、`AnimatedSprite2D`、`Line2D`、`Polygon2D`、`Button`、`TextureButton` 标记为直接语义烟测覆盖。
 - 对 Godot 新版本执行能力差异检测。
 
 ## 12. 测试与验收
