@@ -336,6 +336,19 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def button_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "button_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def animated_sprite_2d_set(
         self,
         path: str,
@@ -347,6 +360,21 @@ class GodotService:
         _validate_animated_sprite_2d_properties(properties)
         return await self.bridge.call(
             "animated_sprite_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def button_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_button_2d_properties(properties)
+        return await self.bridge.call(
+            "button_2d_set",
             _scene_params(scene_file, path=path, properties=properties),
             session_id=session_id,
         )
@@ -3715,6 +3743,134 @@ def _validate_animated_sprite_2d_properties(properties: dict[str, Any]) -> None:
         _validate_draw_2d_vector2(properties["offset"], "offset")
 
 
+def _validate_button_2d_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "disabled",
+        "toggle_mode",
+        "button_pressed",
+        "action_mode",
+        "button_mask",
+        "keep_pressed_outside",
+        "shortcut_feedback",
+        "shortcut_in_tooltip",
+        "button_group_path",
+        "shortcut_path",
+        "text",
+        "icon_path",
+        "flat",
+        "alignment",
+        "text_overrun_behavior",
+        "autowrap_mode",
+        "autowrap_trim_flags",
+        "clip_text",
+        "icon_alignment",
+        "vertical_icon_alignment",
+        "expand_icon",
+        "text_direction",
+        "language",
+        "texture_normal_path",
+        "texture_pressed_path",
+        "texture_hover_path",
+        "texture_disabled_path",
+        "texture_focused_path",
+        "click_mask_path",
+        "ignore_texture_size",
+        "stretch_mode",
+        "flip_h",
+        "flip_v",
+    }
+    _validate_draw_2d_property_names(properties, allowed, "BaseButton", maximum=32)
+    for name in {
+        "disabled",
+        "toggle_mode",
+        "button_pressed",
+        "keep_pressed_outside",
+        "shortcut_feedback",
+        "shortcut_in_tooltip",
+        "flat",
+        "clip_text",
+        "expand_icon",
+        "ignore_texture_size",
+        "flip_h",
+        "flip_v",
+    } & properties.keys():
+        _validate_boolean(properties[name], name)
+    if properties.get("button_pressed") is True and properties.get("toggle_mode") is False:
+        raise ValueError("button_pressed requires toggle_mode to be true")
+    for name in {
+        "button_group_path",
+        "shortcut_path",
+        "icon_path",
+        "texture_normal_path",
+        "texture_pressed_path",
+        "texture_hover_path",
+        "texture_disabled_path",
+        "texture_focused_path",
+        "click_mask_path",
+    } & properties.keys():
+        _validate_optional_project_resource_path(properties[name], name)
+    _validate_button_enum(properties, "action_mode", {"press", "release"})
+    _validate_button_enum(properties, "alignment", {"left", "center", "right"})
+    _validate_button_enum(properties, "icon_alignment", {"left", "center", "right"})
+    _validate_button_enum(properties, "vertical_icon_alignment", {"top", "center", "bottom"})
+    _validate_button_enum(
+        properties,
+        "text_overrun_behavior",
+        {
+            "no_trimming",
+            "trim_characters",
+            "trim_words",
+            "ellipsis",
+            "word_ellipsis",
+            "ellipsis_force",
+            "word_ellipsis_force",
+        },
+    )
+    _validate_button_enum(properties, "autowrap_mode", {"off", "arbitrary", "word", "smart_word"})
+    _validate_button_enum(properties, "text_direction", {"auto", "ltr", "rtl", "inherited"})
+    _validate_button_enum(
+        properties,
+        "stretch_mode",
+        {
+            "scale",
+            "tile",
+            "keep",
+            "keep_centered",
+            "keep_aspect",
+            "keep_aspect_centered",
+            "keep_aspect_covered",
+        },
+    )
+    _validate_button_name_list(properties, "button_mask", {"left", "right", "middle"})
+    _validate_button_name_list(properties, "autowrap_trim_flags", {"trim_start", "trim_end"})
+    for name, maximum in (("text", 4096), ("language", 128)):
+        if name in properties and (
+            not isinstance(properties[name], str) or len(properties[name]) > maximum
+        ):
+            raise ValueError(f"{name} must be a string up to {maximum} characters")
+
+
+def _validate_button_enum(properties: dict[str, Any], name: str, allowed: set[str]) -> None:
+    if name not in properties:
+        return
+    value = properties[name]
+    if not isinstance(value, str) or value.strip().lower() not in allowed:
+        raise ValueError(f"{name} must be one of: {', '.join(sorted(allowed))}")
+
+
+def _validate_button_name_list(properties: dict[str, Any], name: str, allowed: set[str]) -> None:
+    if name not in properties:
+        return
+    value = properties[name]
+    if (
+        not isinstance(value, list)
+        or len(value) > len(allowed)
+        or any(not isinstance(item, str) or item.strip().lower() not in allowed for item in value)
+        or len({item.strip().lower() for item in value}) != len(value)
+    ):
+        raise ValueError(f"{name} must contain unique values from: {', '.join(sorted(allowed))}")
+
+
 def _validate_sprite_frames_animation_name(value: Any, label: str) -> None:
     if (
         not isinstance(value, str)
@@ -3885,12 +4041,12 @@ def _validate_polygon_2d_properties(properties: dict[str, Any]) -> None:
 
 
 def _validate_draw_2d_property_names(
-    properties: dict[str, Any], allowed: set[str], type_name: str
+    properties: dict[str, Any], allowed: set[str], type_name: str, *, maximum: int = 20
 ) -> None:
     if not isinstance(properties, dict) or not properties:
         raise ValueError("properties must be a non-empty object")
-    if len(properties) > 20:
-        raise ValueError("properties can contain at most 20 entries")
+    if len(properties) > maximum:
+        raise ValueError(f"properties can contain at most {maximum} entries")
     if any(not isinstance(name, str) or name not in allowed for name in properties):
         raise ValueError(f"properties contains an unsupported {type_name} property")
 
