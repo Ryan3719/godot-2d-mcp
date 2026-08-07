@@ -20,6 +20,12 @@ from godot_2d_mcp.server import create_application
 
 EDITOR_CONNECTION_TIMEOUT_SECONDS = 30.0
 EDITOR_CONNECTION_POLL_INTERVAL_SECONDS = 0.1
+SMOKE_TRACE_ENABLED = os.environ.get("GODOT_2D_MCP_SMOKE_TRACE") == "1"
+
+
+def _trace_smoke(message: str) -> None:
+    if SMOKE_TRACE_ENABLED:
+        print(f"[godot-smoke] {message}", flush=True)
 
 
 def free_port() -> int:
@@ -40,6 +46,7 @@ async def run_smoke(godot_binary: str, project_path: Path) -> None:
 
 
 async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
+    _trace_smoke("starting editor bridge")
     port = free_port()
     app = create_application(ws_port=port, command_timeout=5.0)
     await app.bridge.start()
@@ -81,6 +88,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             )
 
         state = await _wait_for_editor_ready(app)
+        _trace_smoke("editor connected and ready")
         loop_mode = "pingpong" if str(state.get("godot_version", "")).startswith("4.7") else "linear"
         hierarchy = await app.service.scene_get_hierarchy(limit=20)
         classes = await app.service.class_search(query="Button", limit=20)
@@ -3793,6 +3801,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             "BUTTON_MENU_REQUIRED",
         )
 
+        _trace_smoke("starting Container smoke")
         hbox = await app.service.node_create(
             type_name="HBoxContainer",
             name="AgentHBox",
@@ -3884,6 +3893,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore Container child layout constraints")
         if not (await app.service.scene_redo(scene_file=scene_file)).get("changed"):
             raise RuntimeError("Container child layout constraints were not redoable")
+        _trace_smoke("HBoxContainer smoke passed")
 
         grid = await app.service.node_create(
             type_name="GridContainer",
@@ -3912,6 +3922,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             ),
             "CONTAINER_CHILD_NOT_DIRECT",
         )
+        _trace_smoke("GridContainer smoke passed")
 
         aspect = await app.service.node_create(
             type_name="AspectRatioContainer",
@@ -3936,6 +3947,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or aspect_configuration["configuration"]["alignment_vertical"] != "center"
         ):
             raise RuntimeError("AspectRatioContainer configuration was not applied")
+        _trace_smoke("AspectRatioContainer smoke passed")
 
         flow = await app.service.node_create(
             type_name="HFlowContainer",
@@ -3958,6 +3970,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or flow_configuration["configuration"]["reverse_fill"] is not True
         ):
             raise RuntimeError("HFlowContainer configuration was not applied")
+        _trace_smoke("HFlowContainer smoke passed")
 
         split = await app.service.node_create(
             type_name="HSplitContainer",
@@ -4008,6 +4021,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or split_state["drag_area_highlight_in_editor"] is not False
         ):
             raise RuntimeError("HSplitContainer configuration was not applied")
+        _trace_smoke("HSplitContainer smoke passed")
 
         scroll = await app.service.node_create(
             type_name="ScrollContainer",
@@ -4045,6 +4059,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or scroll_state["tile_scroll_hint"] is not True
         ):
             raise RuntimeError("ScrollContainer configuration was not applied")
+        _trace_smoke("ScrollContainer smoke passed")
 
         tabs = await app.service.node_create(
             type_name="TabContainer",
@@ -4097,6 +4112,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or tabs_state["deselect_enabled"] is not True
         ):
             raise RuntimeError("TabContainer configuration was not applied")
+        _trace_smoke("TabContainer smoke passed")
 
         subviewport_container = await app.service.node_create(
             type_name="SubViewportContainer",
@@ -4115,6 +4131,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or subviewport_configuration["configuration"]["mouse_target"] is not False
         ):
             raise RuntimeError("SubViewportContainer configuration was not applied")
+        _trace_smoke("Container smoke completed")
 
         initial_canvas_material = await app.service.canvas_item_material_get(
             canvas_item_path,
