@@ -1051,6 +1051,27 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def container_2d_get(
+        self,
+        path: str,
+        child_offset: int = 0,
+        child_limit: int = 100,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_container_child_page(child_offset, child_limit)
+        return await self.bridge.call(
+            "container_2d_get",
+            _scene_params(
+                scene_file,
+                path=path,
+                child_offset=child_offset,
+                child_limit=child_limit,
+            ),
+            session_id=session_id,
+        )
+
     async def control_set_layout(
         self,
         path: str,
@@ -1074,6 +1095,43 @@ class GodotService:
         return await self.bridge.call(
             "control_set_layout",
             _scene_params(scene_file, path=path, anchors=anchors, offsets=offsets),
+            session_id=session_id,
+        )
+
+    async def container_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_container_2d_properties(properties)
+        return await self.bridge.call(
+            "container_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def container_child_layout_set(
+        self,
+        path: str,
+        child_path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_node_path(child_path)
+        _validate_container_child_layout_properties(properties)
+        return await self.bridge.call(
+            "container_child_layout_set",
+            _scene_params(
+                scene_file,
+                path=path,
+                child_path=child_path,
+                properties=properties,
+            ),
             session_id=session_id,
         )
 
@@ -3440,6 +3498,198 @@ def _validate_layout_resize_mode(value: str) -> None:
 def _validate_layout_margin(value: int) -> None:
     if isinstance(value, bool) or not isinstance(value, int) or abs(value) > 1_000_000:
         raise ValueError("margin must be an integer between -1000000 and 1000000")
+
+
+def _validate_container_child_page(offset: int, limit: int) -> None:
+    if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset <= 256:
+        raise ValueError("child_offset must be an integer between 0 and 256")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 256:
+        raise ValueError("child_limit must be an integer between 1 and 256")
+
+
+def _validate_container_2d_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "accessibility_region",
+        "alignment",
+        "columns",
+        "use_top_left",
+        "ratio",
+        "stretch_mode",
+        "alignment_horizontal",
+        "alignment_vertical",
+        "last_wrap_alignment",
+        "reverse_fill",
+        "split_offsets",
+        "collapsed",
+        "dragging_enabled",
+        "dragger_visibility",
+        "touch_dragger_enabled",
+        "drag_nested_intersections",
+        "drag_area_margin_begin",
+        "drag_area_margin_end",
+        "drag_area_offset",
+        "drag_area_highlight_in_editor",
+        "follow_focus",
+        "draw_focus_border",
+        "scroll_horizontal",
+        "scroll_vertical",
+        "scroll_horizontal_custom_step",
+        "scroll_vertical_custom_step",
+        "horizontal_scroll_mode",
+        "vertical_scroll_mode",
+        "scroll_horizontal_by_default",
+        "scroll_deadzone",
+        "scroll_hint_mode",
+        "tile_scroll_hint",
+        "tab_alignment",
+        "current_tab",
+        "tabs_position",
+        "clip_tabs",
+        "tabs_visible",
+        "switch_on_drag_hover",
+        "drag_to_rearrange_enabled",
+        "tabs_rearrange_group",
+        "use_hidden_tabs_for_min_size",
+        "tab_focus_mode",
+        "deselect_enabled",
+        "stretch",
+        "stretch_shrink",
+        "mouse_target",
+    }
+    _validate_draw_2d_property_names(properties, allowed, "Container", maximum=32)
+    for name in {
+        "accessibility_region",
+        "use_top_left",
+        "reverse_fill",
+        "collapsed",
+        "dragging_enabled",
+        "touch_dragger_enabled",
+        "drag_nested_intersections",
+        "drag_area_highlight_in_editor",
+        "follow_focus",
+        "draw_focus_border",
+        "scroll_horizontal_by_default",
+        "tile_scroll_hint",
+        "clip_tabs",
+        "tabs_visible",
+        "switch_on_drag_hover",
+        "drag_to_rearrange_enabled",
+        "use_hidden_tabs_for_min_size",
+        "deselect_enabled",
+        "stretch",
+        "mouse_target",
+    } & properties.keys():
+        _validate_boolean(properties[name], name)
+    for name, choices in {
+        "alignment": {"begin", "center", "end"},
+        "alignment_horizontal": {"begin", "center", "end"},
+        "alignment_vertical": {"begin", "center", "end"},
+        "stretch_mode": {"width_controls_height", "height_controls_width", "fit", "cover"},
+        "last_wrap_alignment": {"inherit", "begin", "center", "end"},
+        "dragger_visibility": {"visible", "hidden", "hidden_and_collapsed"},
+        "horizontal_scroll_mode": {
+            "disabled",
+            "auto",
+            "always_show",
+            "never_show",
+            "reserve",
+            "maximize_first",
+        },
+        "vertical_scroll_mode": {
+            "disabled",
+            "auto",
+            "always_show",
+            "never_show",
+            "reserve",
+            "maximize_first",
+        },
+        "scroll_hint_mode": {"disabled", "all", "top_and_left", "bottom_and_right"},
+        "tab_alignment": {"left", "center", "right"},
+        "tabs_position": {"top", "bottom"},
+        "tab_focus_mode": {"none", "click", "all"},
+    }.items():
+        _validate_button_enum(properties, name, choices)
+    if "ratio" in properties:
+        _validate_viewport_number(properties["ratio"], "ratio", minimum=0.001, maximum=1_000_000.0)
+    for name in {
+        "scroll_horizontal_custom_step",
+        "scroll_vertical_custom_step",
+    } & properties.keys():
+        _validate_viewport_number(properties[name], name, minimum=-1.0, maximum=4096.0)
+    for name, minimum, maximum in (
+        ("columns", 1, 1024),
+        ("drag_area_margin_begin", -1_000_000, 1_000_000),
+        ("drag_area_margin_end", -1_000_000, 1_000_000),
+        ("drag_area_offset", -1_000_000, 1_000_000),
+        ("scroll_horizontal", 0, 1_000_000),
+        ("scroll_vertical", 0, 1_000_000),
+        ("scroll_deadzone", 0, 1_000_000),
+        ("current_tab", -1, 4096),
+        ("tabs_rearrange_group", -1, 1_000_000),
+        ("stretch_shrink", 1, 1_000_000),
+    ):
+        if name in properties:
+            _validate_container_integer(properties[name], name, minimum, maximum)
+    if "split_offsets" in properties:
+        offsets = properties["split_offsets"]
+        if not isinstance(offsets, list) or len(offsets) > 256:
+            raise ValueError("split_offsets must contain at most 256 integer pixel offsets")
+        for index, offset in enumerate(offsets):
+            _validate_container_integer(offset, f"split_offsets[{index}]", -1_000_000, 1_000_000)
+
+
+def _validate_container_child_layout_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "custom_minimum_size",
+        "size_flags_horizontal",
+        "size_flags_vertical",
+        "size_flags_stretch_ratio",
+    }
+    _validate_draw_2d_property_names(properties, allowed, "container child layout", maximum=4)
+    if "custom_minimum_size" in properties:
+        value = properties["custom_minimum_size"]
+        if (
+            not isinstance(value, dict)
+            or set(value) != {"x", "y"}
+            or any(
+                not _is_finite_number(value[axis])
+                or not 0.0 <= float(value[axis]) <= 1_000_000.0
+                for axis in ("x", "y")
+            )
+        ):
+            raise ValueError(
+                "custom_minimum_size values must be finite numbers between 0 and 1000000"
+            )
+    for name in {"size_flags_horizontal", "size_flags_vertical"} & properties.keys():
+        _validate_container_size_flags(properties[name], name)
+    if "size_flags_stretch_ratio" in properties:
+        _validate_viewport_number(
+            properties["size_flags_stretch_ratio"],
+            "size_flags_stretch_ratio",
+            minimum=0.0,
+            maximum=1_000_000.0,
+        )
+
+
+def _validate_container_integer(value: Any, label: str, minimum: int, maximum: int) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+        raise ValueError(f"{label} must be an integer between {minimum} and {maximum}")
+
+
+def _validate_container_size_flags(value: Any, label: str) -> None:
+    allowed = {"fill", "expand", "shrink_begin", "shrink_center", "shrink_end"}
+    if (
+        not isinstance(value, list)
+        or len(value) > 4
+        or any(not isinstance(flag, str) or flag.strip().lower() not in allowed for flag in value)
+        or len({flag.strip().lower() for flag in value}) != len(value)
+    ):
+        raise ValueError(f"{label} must contain unique supported size flag names")
+    normalized = {flag.strip().lower() for flag in value}
+    if "shrink_begin" in normalized and len(normalized) != 1:
+        raise ValueError("shrink_begin cannot be combined with other size flags")
+    if len(normalized & {"shrink_center", "shrink_end"}) > 1:
+        raise ValueError(f"{label} can contain only one shrink flag")
 
 
 def _validate_stylebox_state(value: str) -> None:

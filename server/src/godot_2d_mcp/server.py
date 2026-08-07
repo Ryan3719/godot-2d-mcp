@@ -469,6 +469,23 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def container_2d_get(
+        path: str,
+        child_offset: int = 0,
+        child_limit: int = 100,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read a Container's layout configuration and direct Control child constraints."""
+        return await service.container_2d_get(
+            path=path,
+            child_offset=child_offset,
+            child_limit=child_limit,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def control_get_styleboxes(
         path: str,
         session_id: str | None = None,
@@ -1443,6 +1460,38 @@ def create_application(
             path=path,
             anchors=anchors,
             offsets=offsets,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def container_2d_set(
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically configure one local Container's supported layout behavior."""
+        return await service.container_2d_set(
+            path=path,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def container_child_layout_set(
+        path: str,
+        child_path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Set one direct Container child's minimum size, flags, and stretch ratio."""
+        return await service.container_child_layout_set(
+            path=path,
+            child_path=child_path,
+            properties=properties,
             session_id=session_id,
             scene_file=scene_file,
         )
