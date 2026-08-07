@@ -18,6 +18,9 @@ from pathlib import Path
 from godot_2d_mcp.bridge import GodotCommandError
 from godot_2d_mcp.server import create_application
 
+EDITOR_CONNECTION_TIMEOUT_SECONDS = 30.0
+EDITOR_CONNECTION_POLL_INTERVAL_SECONDS = 0.1
+
 
 def free_port() -> int:
     with socket.socket() as sock:
@@ -59,15 +62,18 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
     output = b""
     failure: BaseException | None = None
     try:
-        for _ in range(100):
+        for _ in range(int(EDITOR_CONNECTION_TIMEOUT_SECONDS / EDITOR_CONNECTION_POLL_INTERVAL_SECONDS)):
             sessions = await app.registry.list_sessions()
             if sessions:
                 break
             if process.returncode is not None:
                 raise RuntimeError("Godot exited before the plugin connected")
-            await asyncio.sleep(0.1)
+            await asyncio.sleep(EDITOR_CONNECTION_POLL_INTERVAL_SECONDS)
         else:
-            raise RuntimeError("Godot plugin did not connect within 10 seconds")
+            raise RuntimeError(
+                "Godot plugin did not connect within "
+                f"{EDITOR_CONNECTION_TIMEOUT_SECONDS:.0f} seconds"
+            )
 
         state = await _wait_for_editor_ready(app)
         hierarchy = await app.service.scene_get_hierarchy(limit=20)
