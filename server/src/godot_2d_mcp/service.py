@@ -18,6 +18,9 @@ from godot_2d_mcp.sessions import SessionRegistry
 _COVERAGE_SNAPSHOT_VERSION = 1
 _COVERAGE_PAGE_LIMIT = 500
 _MAX_COVERAGE_SNAPSHOT_ENTRIES = 2_000
+_INPUT_MAP_PAGE_LIMIT = 500
+_INPUT_MAP_MAX_EVENTS = 64
+_RUNTIME_TOUCH_MAX_INDEX = 31
 _COVERAGE_ENTRY_FIELDS = (
     "parent",
     "kind",
@@ -88,6 +91,73 @@ class GodotService:
 
     async def editor_stop(self, session_id: str | None = None) -> dict[str, Any]:
         return await self.bridge.call("editor_stop", session_id=session_id)
+
+    async def input_map_get(
+        self,
+        query: str = "",
+        offset: int = 0,
+        limit: int = 100,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        if not isinstance(query, str) or len(query) > 128:
+            raise ValueError("query must be a string no longer than 128 characters")
+        if isinstance(offset, bool) or not isinstance(offset, int) or offset < 0:
+            raise ValueError("offset must be a non-negative integer")
+        if (
+            isinstance(limit, bool)
+            or not isinstance(limit, int)
+            or not 1 <= limit <= _INPUT_MAP_PAGE_LIMIT
+        ):
+            raise ValueError(f"limit must be an integer between 1 and {_INPUT_MAP_PAGE_LIMIT}")
+        return await self.bridge.call(
+            "input_map_get",
+            {"query": query.strip(), "offset": offset, "limit": limit},
+            session_id=session_id,
+        )
+
+    async def input_map_action_upsert(
+        self,
+        action: str,
+        events: list[dict[str, Any]],
+        deadzone: float | None = None,
+        replace_existing: bool = False,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        _validate_input_map_action(action)
+        _validate_input_map_events(events)
+        if deadzone is not None and (
+            not _is_finite_number(deadzone) or not 0 <= float(deadzone) <= 1
+        ):
+            raise ValueError("deadzone must be a finite number between 0 and 1")
+        _validate_boolean(replace_existing, "replace_existing")
+        params: dict[str, Any] = {
+            "action": action.strip(),
+            "events": events,
+            "replace_existing": replace_existing,
+        }
+        if deadzone is not None:
+            params["deadzone"] = float(deadzone)
+        return await self.bridge.call("input_map_action_upsert", params, session_id=session_id)
+
+    async def input_map_action_delete(
+        self,
+        action: str,
+        confirm: bool = False,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        _validate_input_map_action(action)
+        _validate_boolean(confirm, "confirm")
+        return await self.bridge.call(
+            "input_map_action_delete",
+            {"action": action.strip(), "confirm": confirm},
+            session_id=session_id,
+        )
+
+    async def input_map_undo(self, session_id: str | None = None) -> dict[str, Any]:
+        return await self.bridge.call("input_map_undo", session_id=session_id)
+
+    async def input_map_redo(self, session_id: str | None = None) -> dict[str, Any]:
+        return await self.bridge.call("input_map_redo", session_id=session_id)
 
     async def runtime_get_state(self, session_id: str | None = None) -> dict[str, Any]:
         return await self.bridge.call("runtime_get_state", session_id=session_id)
@@ -525,6 +595,34 @@ class GodotService:
         return await self.bridge.call(
             "class_search",
             {"query": query, "offset": offset, "limit": limit},
+            session_id=session_id,
+        )
+
+    async def class_2d_describe(
+        self,
+        type_name: str,
+        section: str = "overview",
+        session_id: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        if not isinstance(type_name, str) or not type_name.strip() or len(type_name) > 256:
+            raise ValueError("type must be a non-empty string no longer than 256 characters")
+        normalized_section = section.strip().lower() if isinstance(section, str) else ""
+        if normalized_section not in {"overview", "properties", "methods", "signals", "enums"}:
+            raise ValueError("section must be overview, properties, methods, signals, or enums")
+        if offset < 0:
+            raise ValueError("offset must be non-negative")
+        if not 1 <= limit <= 500:
+            raise ValueError("limit must be between 1 and 500")
+        return await self.bridge.call(
+            "class_2d_describe",
+            {
+                "type": type_name.strip(),
+                "section": normalized_section,
+                "offset": offset,
+                "limit": limit,
+            },
             session_id=session_id,
         )
 
@@ -4146,8 +4244,15 @@ def _validate_runtime_input_events(events: list[dict[str, Any]]) -> None:
             _validate_runtime_mouse_button_event(event)
         elif event_type == "mouse_motion":
             _validate_runtime_mouse_motion_event(event)
+        elif event_type == "screen_touch":
+            _validate_runtime_screen_touch_event(event)
+        elif event_type == "screen_drag":
+            _validate_runtime_screen_drag_event(event)
         else:
-            raise ValueError("input event type must be action, key, mouse_button, or mouse_motion")
+            raise ValueError(
+                "input event type must be action, key, mouse_button, mouse_motion, "
+                "screen_touch, or screen_drag"
+            )
 
 
 def _validate_runtime_action_event(event: dict[str, Any]) -> None:
@@ -4188,6 +4293,76 @@ def _validate_runtime_mouse_motion_event(event: dict[str, Any]) -> None:
     _validate_runtime_position(event.get("relative"), "relative")
 
 
+def _validate_runtime_screen_touch_event(event: dict[str, Any]) -> None:
+    _validate_runtime_input_event_fields(
+        event,
+        {"type", "index", "position", "pressed", "double_tap", "canceled"},
+        "screen_touch",
+    )
+    _validate_runtime_touch_index(event.get("index"))
+    _validate_runtime_position(event.get("position"), "position")
+    _validate_boolean(event.get("pressed"), "pressed")
+    for field in ("double_tap", "canceled"):
+        if field in event:
+            _validate_boolean(event[field], field)
+
+
+def _validate_runtime_screen_drag_event(event: dict[str, Any]) -> None:
+    _validate_runtime_input_event_fields(
+        event,
+        {
+            "type",
+            "index",
+            "position",
+            "relative",
+            "screen_relative",
+            "pressure",
+            "tilt",
+            "pen_inverted",
+        },
+        "screen_drag",
+    )
+    _validate_runtime_touch_index(event.get("index"))
+    _validate_runtime_position(event.get("position"), "position")
+    _validate_runtime_position(event.get("relative"), "relative")
+    for field in ("screen_relative",):
+        if field in event:
+            _validate_runtime_position(event[field], field)
+    if "pressure" in event:
+        pressure = event["pressure"]
+        if not _is_finite_number(pressure) or not 0 <= float(pressure) <= 1:
+            raise ValueError("pressure must be a finite number between 0 and 1")
+    if "tilt" in event:
+        _validate_runtime_touch_tilt(event["tilt"])
+    if "pen_inverted" in event:
+        _validate_boolean(event["pen_inverted"], "pen_inverted")
+
+
+def _validate_runtime_input_event_fields(
+    event: dict[str, Any], allowed: set[str], event_type: str
+) -> None:
+    unknown = sorted(set(event) - allowed)
+    if unknown:
+        raise ValueError(
+            f"{event_type} input events contain unsupported fields: {', '.join(unknown)}"
+        )
+
+
+def _validate_runtime_touch_index(value: Any) -> None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 0 <= value <= _RUNTIME_TOUCH_MAX_INDEX
+    ):
+        raise ValueError(f"index must be an integer between 0 and {_RUNTIME_TOUCH_MAX_INDEX}")
+
+
+def _validate_runtime_touch_tilt(value: Any) -> None:
+    _validate_runtime_position(value, "tilt")
+    if any(abs(float(value[axis])) > 1 for axis in ("x", "y")):
+        raise ValueError("tilt coordinates must be finite numbers between -1 and 1")
+
+
 def _validate_runtime_position(value: Any, label: str) -> None:
     if not isinstance(value, dict) or set(value) != {"x", "y"}:
         raise ValueError(f"{label} must be an object with x and y")
@@ -4196,6 +4371,135 @@ def _validate_runtime_position(value: Any, label: str) -> None:
         for axis in ("x", "y")
     ):
         raise ValueError(f"{label} coordinates must be finite numbers from -100000 to 100000")
+
+
+def _validate_input_map_action(value: str) -> None:
+    if not isinstance(value, str):
+        raise ValueError("action must be a string with 1 to 128 characters")
+    normalized = value.strip()
+    if not 1 <= len(normalized) <= 128:
+        raise ValueError("action must contain between 1 and 128 characters")
+    if any(ord(character) < 32 for character in normalized):
+        raise ValueError("action must not contain control characters")
+
+
+def _validate_input_map_events(events: list[dict[str, Any]]) -> None:
+    if not isinstance(events, list) or len(events) > _INPUT_MAP_MAX_EVENTS:
+        raise ValueError(f"events must be an array with at most {_INPUT_MAP_MAX_EVENTS} entries")
+    for event in events:
+        if not isinstance(event, dict):
+            raise ValueError("each Input Map event must be an object")
+        event_type = event.get("type")
+        if event_type == "key":
+            _validate_input_map_key_event(event)
+        elif event_type == "mouse_button":
+            _validate_input_map_mouse_button_event(event)
+        elif event_type == "joypad_button":
+            _validate_input_map_joypad_button_event(event)
+        elif event_type == "joypad_motion":
+            _validate_input_map_joypad_motion_event(event)
+        else:
+            raise ValueError(
+                "Input Map event type must be key, mouse_button, joypad_button, or joypad_motion"
+            )
+
+
+def _validate_input_map_key_event(event: dict[str, Any]) -> None:
+    allowed = {
+        "type",
+        "keycode",
+        "physical_keycode",
+        "key_label",
+        "unicode",
+        "location",
+        "device",
+        "shift",
+        "alt",
+        "ctrl",
+        "meta",
+        "command_or_control_autoremap",
+    }
+    _validate_input_map_event_fields(event, allowed, "key")
+    key_fields = ("keycode", "physical_keycode", "key_label", "unicode")
+    supplied = [field for field in key_fields if field in event]
+    if len(supplied) != 1:
+        raise ValueError(
+            "key Input Map events require exactly one of keycode, physical_keycode, "
+            "key_label, or unicode"
+        )
+    _validate_input_map_int(event[supplied[0]], supplied[0], minimum=1, maximum=0x7FFFFFFF)
+    if "location" in event:
+        _validate_input_map_int(event["location"], "location", minimum=0, maximum=2)
+    _validate_input_map_device(event)
+    _validate_input_map_modifiers(event)
+
+
+def _validate_input_map_mouse_button_event(event: dict[str, Any]) -> None:
+    allowed = {
+        "type",
+        "button",
+        "device",
+        "shift",
+        "alt",
+        "ctrl",
+        "meta",
+        "command_or_control_autoremap",
+    }
+    _validate_input_map_event_fields(event, allowed, "mouse_button")
+    _validate_input_map_int(event.get("button"), "button", minimum=1, maximum=9)
+    _validate_input_map_device(event)
+    _validate_input_map_modifiers(event)
+
+
+def _validate_input_map_joypad_button_event(event: dict[str, Any]) -> None:
+    _validate_input_map_event_fields(event, {"type", "button", "device"}, "joypad_button")
+    _validate_input_map_int(event.get("button"), "button", minimum=0, maximum=127)
+    _validate_input_map_device(event)
+
+
+def _validate_input_map_joypad_motion_event(event: dict[str, Any]) -> None:
+    _validate_input_map_event_fields(
+        event, {"type", "axis", "axis_value", "device"}, "joypad_motion"
+    )
+    _validate_input_map_int(event.get("axis"), "axis", minimum=0, maximum=9)
+    axis_value = event.get("axis_value")
+    if (
+        not _is_finite_number(axis_value)
+        or not -1 <= float(axis_value) <= 1
+        or float(axis_value) == 0
+    ):
+        raise ValueError("axis_value must be a non-zero finite number between -1 and 1")
+    _validate_input_map_device(event)
+
+
+def _validate_input_map_event_fields(
+    event: dict[str, Any], allowed: set[str], event_type: str
+) -> None:
+    unknown = sorted(set(event) - allowed)
+    if unknown:
+        raise ValueError(
+            f"{event_type} Input Map event contains unsupported fields: {', '.join(unknown)}"
+        )
+
+
+def _validate_input_map_int(value: Any, label: str, *, minimum: int, maximum: int) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+        raise ValueError(f"{label} must be an integer between {minimum} and {maximum}")
+
+
+def _validate_input_map_device(event: dict[str, Any]) -> None:
+    if "device" in event:
+        _validate_input_map_int(event["device"], "device", minimum=-1, maximum=0x7FFFFFFF)
+
+
+def _validate_input_map_modifiers(event: dict[str, Any]) -> None:
+    for name in ("shift", "alt", "ctrl", "meta", "command_or_control_autoremap"):
+        if name in event:
+            _validate_boolean(event[name], name)
+    if event.get("command_or_control_autoremap", False) and (
+        event.get("ctrl", False) or event.get("meta", False)
+    ):
+        raise ValueError("command_or_control_autoremap cannot be combined with ctrl or meta")
 
 
 def _validate_node_name(name: str) -> None:

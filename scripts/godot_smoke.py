@@ -90,8 +90,135 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         state = await _wait_for_editor_ready(app)
         _trace_smoke("editor connected and ready")
         loop_mode = "pingpong" if str(state.get("godot_version", "")).startswith("4.7") else "linear"
+        input_action_name = "mcp_smoke_move_left"
+        input_events = [
+            {"type": "key", "physical_keycode": 65, "shift": True},
+            {"type": "mouse_button", "button": 1, "device": -1},
+            {"type": "joypad_button", "button": 0, "device": 2},
+            {"type": "joypad_motion", "axis": 0, "axis_value": -1.0},
+        ]
+        input_action_created = await app.service.input_map_action_upsert(
+            input_action_name,
+            input_events,
+            deadzone=0.35,
+        )
+        input_actions_after_create = await app.service.input_map_get(
+            query=input_action_name, limit=20
+        )
+        created_input_action = next(
+            (
+                action
+                for action in input_actions_after_create.get("actions", [])
+                if action.get("action") == input_action_name
+            ),
+            None,
+        )
+        if (
+            input_action_created.get("created") is not True
+            or created_input_action is None
+            or abs(float(created_input_action.get("deadzone", -1)) - 0.35) > 0.00001
+            or {event.get("type") for event in created_input_action.get("events", [])}
+            != {"key", "mouse_button", "joypad_button", "joypad_motion"}
+            or input_action_name not in (project_path / "project.godot").read_text(encoding="utf-8")
+        ):
+            raise RuntimeError(
+                "Input Map action creation was incomplete: "
+                f"result={input_action_created}, action={created_input_action}"
+            )
+        input_action_undo_create = await app.service.input_map_undo()
+        input_actions_after_undo_create = await app.service.input_map_get(
+            query=input_action_name, limit=20
+        )
+        input_action_redo_create = await app.service.input_map_redo()
+        input_actions_after_redo_create = await app.service.input_map_get(
+            query=input_action_name, limit=20
+        )
+        if (
+            input_action_undo_create.get("changed") is not True
+            or input_actions_after_undo_create.get("total") != 0
+            or input_action_redo_create.get("changed") is not True
+            or input_actions_after_redo_create.get("total") != 1
+        ):
+            raise RuntimeError(
+                "Input Map creation undo/redo was incomplete: "
+                f"undo={input_action_undo_create}, after_undo={input_actions_after_undo_create}, "
+                f"redo={input_action_redo_create}, after_redo={input_actions_after_redo_create}"
+            )
+        input_action_updated = await app.service.input_map_action_upsert(
+            input_action_name,
+            [{"type": "key", "keycode": 68, "command_or_control_autoremap": True}],
+            deadzone=0.5,
+            replace_existing=True,
+        )
+        input_action_undo_update = await app.service.input_map_undo()
+        input_action_redo_update = await app.service.input_map_redo()
+        input_actions_after_update = await app.service.input_map_get(
+            query=input_action_name, limit=20
+        )
+        updated_input_action = next(
+            (
+                action
+                for action in input_actions_after_update.get("actions", [])
+                if action.get("action") == input_action_name
+            ),
+            None,
+        )
+        if (
+            input_action_updated.get("replaced") is not True
+            or input_action_undo_update.get("changed") is not True
+            or input_action_redo_update.get("changed") is not True
+            or updated_input_action is None
+            or abs(float(updated_input_action.get("deadzone", -1)) - 0.5) > 0.00001
+            or updated_input_action.get("event_count") != 1
+            or updated_input_action.get("events", [{}])[0].get("keycode") != 68
+            or updated_input_action.get("events", [{}])[0].get("command_or_control_autoremap")
+            is not True
+        ):
+            raise RuntimeError(
+                "Input Map action replacement was incomplete: "
+                f"result={input_action_updated}, action={updated_input_action}"
+            )
+        input_action_deleted = await app.service.input_map_action_delete(
+            input_action_name, confirm=True
+        )
+        input_action_undo_delete = await app.service.input_map_undo()
+        input_action_redo_delete = await app.service.input_map_redo()
+        input_actions_after_delete = await app.service.input_map_get(
+            query=input_action_name, limit=20
+        )
+        if (
+            input_action_deleted.get("deleted") is not True
+            or input_action_undo_delete.get("changed") is not True
+            or input_action_redo_delete.get("changed") is not True
+            or input_actions_after_delete.get("total") != 0
+            or input_action_name in (project_path / "project.godot").read_text(encoding="utf-8")
+        ):
+            raise RuntimeError(
+                "Input Map action deletion was incomplete: "
+                f"delete={input_action_deleted}, undo={input_action_undo_delete}, "
+                f"redo={input_action_redo_delete}, after_delete={input_actions_after_delete}"
+            )
         hierarchy = await app.service.scene_get_hierarchy(limit=20)
         classes = await app.service.class_search(query="Button", limit=20)
+        button_overview = await app.service.class_2d_describe("Button")
+        button_properties = await app.service.class_2d_describe(
+            "Button", section="properties", limit=500
+        )
+        button_methods = await app.service.class_2d_describe(
+            "Button", section="methods", limit=500
+        )
+        button_methods_tail = await app.service.class_2d_describe(
+            "Button", section="methods", offset=500, limit=100
+        )
+        button_signals = await app.service.class_2d_describe(
+            "Button", section="signals", limit=500
+        )
+        button_enums = await app.service.class_2d_describe(
+            "Button", section="enums", limit=500
+        )
+        navigation_polygon_properties = await app.service.class_2d_describe(
+            "NavigationPolygon", section="properties", limit=500
+        )
         coverage = await app.service.class_2d_coverage(
             query="Button", scope="node", limit=20
         )
@@ -124,6 +251,31 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError(f"Unexpected scene node count: {hierarchy.get('total')}")
         if classes.get("total", 0) < 4:
             raise RuntimeError("2D class search returned too few Button types")
+        if (
+            button_overview.get("kind") != "node"
+            or button_overview.get("api_type") != "core"
+            or {"Button", "BaseButton", "Control"}
+            - set(button_overview.get("inheritance", []))
+            or not any(item.get("name") == "text" for item in button_properties.get("items", []))
+            or button_methods.get("has_more") is not True
+            or not any(
+                item.get("name") == "set_text" for item in button_methods_tail.get("items", [])
+            )
+            or not any(item.get("name") == "pressed" for item in button_signals.get("items", []))
+            or button_enums.get("total", 0) < 1
+            or navigation_polygon_properties.get("kind") != "resource"
+            or not any(
+                item.get("name") == "agent_radius"
+                for item in navigation_polygon_properties.get("items", [])
+            )
+        ):
+            raise RuntimeError(
+                "ClassDB 2D reflection details were incomplete: "
+                f"overview={button_overview}, properties={button_properties}, "
+                f"methods={button_methods}, methods_tail={button_methods_tail}, "
+                f"signals={button_signals}, enums={button_enums}, "
+                f"navigation_polygon_properties={navigation_polygon_properties}"
+            )
         button_coverage = next(
             (
                 entry
@@ -6396,6 +6548,45 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if input_result.get("result", {}).get("applied") != 1:
             raise RuntimeError(f"Runtime input was not applied: {input_result}")
         await _wait_for_runtime_log(app, "GODOT_2D_MCP_RUNTIME_INPUT_RECEIVED")
+        touch_input_request = await app.service.runtime_input_send(
+            [
+                {
+                    "type": "screen_touch",
+                    "index": 1,
+                    "position": {"x": 32, "y": 48},
+                    "pressed": True,
+                    "double_tap": True,
+                },
+                {
+                    "type": "screen_drag",
+                    "index": 1,
+                    "position": {"x": 64, "y": 96},
+                    "relative": {"x": 32, "y": 48},
+                    "screen_relative": {"x": 64, "y": 96},
+                    "pressure": 0.5,
+                    "tilt": {"x": 0.25, "y": -0.25},
+                    "pen_inverted": True,
+                },
+                {
+                    "type": "screen_touch",
+                    "index": 1,
+                    "position": {"x": 64, "y": 96},
+                    "pressed": False,
+                    "canceled": True,
+                },
+            ]
+        )
+        touch_input_result = await _wait_for_runtime_input_result(
+            app, touch_input_request["request_id"]
+        )
+        if touch_input_result.get("result", {}).get("applied") != 3:
+            raise RuntimeError(f"Runtime touch input was not applied: {touch_input_result}")
+        for marker in (
+            "GODOT_2D_MCP_RUNTIME_TOUCH_PRESS_RECEIVED",
+            "GODOT_2D_MCP_RUNTIME_TOUCH_DRAG_RECEIVED",
+            "GODOT_2D_MCP_RUNTIME_TOUCH_RELEASE_RECEIVED",
+        ):
+            await _wait_for_runtime_log(app, marker)
         runtime_stop = await app.service.editor_stop()
         if runtime_stop.get("was_playing") is not True:
             raise RuntimeError("Runtime feedback smoke could not stop its custom scene")

@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：阶段 0 至阶段 7 已完成。阶段 1 至阶段 5 已交付完整 2D/UI 场景、动画、物理、导航、TileMap、视觉、粒子与控件语义能力；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图、输入模拟、`AudioStreamPlayer2D` 运行时状态/播放/停止/定位控制、受限性能采样、客户端 PNG 内容断言和有总超时/自动清理边界的游戏测试编排；阶段 7 已交付运行时 `ClassDB` 2D 覆盖审计、完整快照、跨版本差异和全允许节点生命周期验收（v0.50.0）
+状态：阶段 0 至阶段 7 已完成。阶段 1 至阶段 5 已交付完整 2D/UI 场景、动画、物理、导航、TileMap、视觉、粒子与控件语义能力；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图、键盘/鼠标/多点触摸输入模拟、项目 Input Map 动作与键盘/鼠标/手柄绑定编辑、`AudioStreamPlayer2D` 运行时状态/播放/停止/定位控制、受限性能采样、客户端 PNG 内容断言和有总超时/自动清理边界的游戏测试编排；阶段 7 已交付运行时 `ClassDB` 2D 覆盖审计、完整快照、跨版本差异、类型详情反射和全允许节点生命周期验收（v0.53.0）
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -100,7 +100,12 @@ Codex / Claude Code / MCP Client
 | `session_list` | 列出连接的 Godot 编辑器实例 |
 | `session_activate` | 显式选择目标编辑器会话 |
 | `editor_get_state` | 获取项目、场景、导入和运行状态 |
+| `input_map_get` | 分页读取项目 Input Map 动作与持久化绑定 |
+| `input_map_action_upsert` | 创建或显式完整替换一个项目输入动作 |
+| `input_map_action_delete` | 显式确认后删除一个项目输入动作 |
+| `input_map_undo` / `input_map_redo` | 撤销或重做紧邻的 MCP 输入映射操作 |
 | `class_search` | 查询允许创建的 2D 类型及能力 |
+| `class_2d_describe` | 分页读取支持类型的继承、公开属性、方法、信号和枚举 |
 | `scene_get_hierarchy` | 分页读取当前场景树 |
 | `node_get_properties` | 获取节点属性、脚本、分组和信号 |
 | `node_create` | 创建内置节点，可附加兼容项目脚本 |
@@ -122,6 +127,7 @@ Codex / Claude Code / MCP Client
 ### 当前已交付
 
 - 会话选择、编辑器状态、2D 类型检索、场景树和节点属性读取；`scene_create` 仅在项目内创建此前不存在的 `.tscn`，自动打开并允许后续节点编辑，`scene_open` 会先审计完整实例子树再打开现有项目 `.tscn`/`.scn`，两者均拒绝 3D 和其他策略外节点。
+- `input_map_get`、`input_map_action_upsert`、`input_map_action_delete`、`input_map_undo`、`input_map_redo` 支持项目级 Input Map 的分页读取、动作创建/完整替换、显式删除和受作用域限制的全局撤销/重做。写入同步保存 `project.godot`，不依赖场景保存；键盘、鼠标按钮、手柄按钮和手柄轴绑定均采用稳定 JSON 结构，键盘支持 keycode、physical keycode、key label、unicode 与修饰键，`device: -1` 表示全部设备。为避免破坏 Godot 编辑器导航，`ui_*` 内置动作只读。
 - 内置 `ClassDB` 2D/UI 节点创建、兼容项目内非 `@tool` Script 的直接创建/绑定/显式解绑、原子属性修改、删除、撤销/重做和显式保存；脚本必须具有兼容的受支持 2D/UI 原生基类，`@tool` 脚本会被拒绝以避免编辑器内代码执行。对 Godot 声明为 `Resource` 的公开属性，以及 `TypedArray`/`TypedDictionary` 中声明为 Resource 的元素，可通过严格类型检查的 `{ "resource_path": "res://..." }` 引用安全绑定项目资源，且不会修改外部资源。读取类型化容器时会返回 `container_type` 元数据；每个元素在写入前按 Godot 声明转换，非字符串键字典以 `{ "entries": [{ "key": ..., "value": ... }] }` 传输以保持键类型，场景 Node 引用和脚本约束对象明确拒绝。`node_instance_scene` 仅实例化完整受支持的 2D/UI PackedScene，保留内部 owner，支持撤销/重做与完整实例根删除，`node_duplicate`/`node_reparent` 同样可处理未添加局部 override 的完整实例根且绝不展平其内部节点。
 - `node_rename`、`node_duplicate`、`node_reparent` 和 `node_move`。
 - `node_get_signals`、`signal_connect` 和 `signal_disconnect`，支持连接已有节点方法、绑定 JSON 参数、deferred 与 one-shot 选项。
@@ -297,14 +303,14 @@ godot-2d-mcp/
 ### 阶段 6：运行反馈
 
 - 运行/停止、编辑器和游戏日志、截图、输入模拟和测试运行。
-- 已交付：`editor_run` 支持安全启动当前、主场景或现有 `res://` 自定义 `PackedScene`；`editor_stop` 可幂等停止运行中的场景。`runtime_get_state`、`runtime_logs_get`、`runtime_screenshot_request/get` 与 `runtime_input_send/result_get` 通过插件托管的 autoload 和 `EditorDebuggerPlugin` 连接真实游戏进程，支持带序号的日志、受 1024 像素/1 MB 上限约束的根视口 PNG/JPEG 截图、以及 action/键盘/鼠标事件注入回执。`runtime_audio_stream_player_2d_control/result_get` 采用相同的请求 ID 轮询模型，限制为活动场景树内的 `AudioStreamPlayer2D` 及 `get`、`play`、`stop`、`seek` 四个动作，结果带回播放状态和 stream 元数据。
+- 已交付：`editor_run` 支持安全启动当前、主场景或现有 `res://` 自定义 `PackedScene`；`editor_stop` 可幂等停止运行中的场景。`runtime_get_state`、`runtime_logs_get`、`runtime_screenshot_request/get` 与 `runtime_input_send/result_get` 通过插件托管的 autoload 和 `EditorDebuggerPlugin` 连接真实游戏进程，支持带序号的日志、受 1024 像素/1 MB 上限约束的根视口 PNG/JPEG 截图、以及 action/键盘/鼠标/多点触摸事件注入回执。触摸支持 0 至 31 的索引、按下/抬起/取消、拖拽相对坐标和可选屏幕相对位移、压感、倾角与手写笔反转，且服务端与游戏端均严格验证固定 JSON 契约；速度由 Godot 的输入管线按时间与相对位移计算，不接受伪造值。`runtime_audio_stream_player_2d_control/result_get` 采用相同的请求 ID 轮询模型，限制为活动场景树内的 `AudioStreamPlayer2D` 及 `get`、`play`、`stop`、`seek` 四个动作，结果带回播放状态和 stream 元数据。
 - 已交付：`runtime_performance_sample_request/result_get` 以 0.1 至 30 秒的有界采样窗口返回实际时长、帧数、估算 FPS、process delta min/mean/max，以及 `Performance.TIME_FPS`、静态内存、对象数量和当帧 draw calls。游戏进程只接受固定 `performance_sample` 调试消息，最多四个并发样本，编辑器仅保存有界轮询结果。
 - 已交付：`runtime_screenshot_assert` 只在 MCP Python 进程中解码已完成的 PNG 截图，不向游戏开放表达式或脚本执行。解析器限制为 1 MB、1024 像素、非交错 8-bit RGB/RGBA PNG，验证 chunk CRC 并支持 PNG filter 0-4；断言限定为 `dimensions`、`pixel`、`region_mean` 与 `color_presence` 四类，每次最多 32 条。
 - 已交付：`runtime_test_run` 将现有受限启动、等待、输入、性能和截图接口编排成一次有总时限的测试。它只能启动 current/main/项目内 custom 场景，等待编辑器运行和 runtime bridge 连接，返回结构化 `passed`/`failed`/`error`，默认停止测试场景。编辑器输出与游戏输出保持独立，绝不将编辑器界面截图冒充为游戏画面。
 
 ### 阶段 7：完整性审计
 
-- 已交付：`class_2d_coverage` 从运行中 Godot 的 `ClassDB` 生成分页的 2D 节点和资源清单。每个条目记录基础支持、专用语义工具、可实例化状态和直接语义烟测状态；资源范围显式限定为当前 2D 工作流涉及的 Shape2D、导航、TileSet、Path、Curve、Gradient、光照、音频、粒子、材质、Shader、Theme、StyleBox、Font、Texture2D、SpriteFrames、ButtonGroup、Shortcut 和 LabelSettings 家族。`class_2d_coverage_snapshot` 在服务端收集完整分页清单并附上引擎元数据；`class_2d_coverage_diff` 接受这个基线并报告新增、移除、字段变化和可能破坏兼容性的变化。编辑器 API 类型会在集中类型策略中排除，避免错误写入游戏场景。
+- 已交付：`class_2d_coverage` 从运行中 Godot 的 `ClassDB` 生成分页的 2D 节点和资源清单。每个条目记录基础支持、专用语义工具、可实例化状态和直接语义烟测状态；资源范围显式限定为当前 2D 工作流涉及的 Shape2D、导航、TileSet、Path、Curve、Gradient、光照、音频、粒子、材质、Shader、Theme、StyleBox、Font、Texture2D、SpriteFrames、ButtonGroup、Shortcut 和 LabelSettings 家族。`class_2d_coverage_snapshot` 在服务端收集完整分页清单并附上引擎元数据；`class_2d_coverage_diff` 接受这个基线并报告新增、移除、字段变化和可能破坏兼容性的变化。`class_2d_describe` 仅对同一类型策略允许的节点和已审计资源返回运行中 Godot 的继承链与分页的公开属性、方法、信号、枚举；属性包含声明类型、类名、提示、只读和 getter/setter，方法/信号包含参数、默认参数数和 flags。编辑器 API 类型会在集中类型策略中排除，避免错误写入游戏场景。
 - 已交付：Godot 4.7 真实编辑器冒烟在隔离场景中对每个当前允许的 2D 节点执行创建、属性读取、保存/重开、删除和一次删除操作的撤销/重做；任何单类失败都会使 CI 失败。
 
 ## 12. 测试与验收

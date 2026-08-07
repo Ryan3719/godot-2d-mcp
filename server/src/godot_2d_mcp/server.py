@@ -19,6 +19,8 @@ INSTRUCTIONS = """Godot 2D editor integration. Inspect editor state before editi
 When multiple sessions are connected, activate the intended session before issuing commands.
 Pass scene_file from editor_get_state to write tools when scene drift must be rejected.
 Node changes participate in Godot undo/redo and remain unsaved until scene_save is called.
+Input Map tools update and save project.godot immediately.
+Use input_map_undo or input_map_redo for their scoped history.
 """
 
 READ_ONLY = ToolAnnotations(
@@ -119,6 +121,61 @@ def create_application(
         return await service.editor_stop(session_id=session_id)
 
     @mcp.tool(annotations=READ_ONLY)
+    async def input_map_get(
+        query: str = "",
+        offset: int = 0,
+        limit: int = 100,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Read paginated project Input Map actions and their persistent bindings."""
+        return await service.input_map_get(
+            query=query,
+            offset=offset,
+            limit=limit,
+            session_id=session_id,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def input_map_action_upsert(
+        action: str,
+        events: list[dict[str, Any]],
+        deadzone: float | None = None,
+        replace_existing: bool = False,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Create or atomically replace one project Input Map action and its full binding list."""
+        return await service.input_map_action_upsert(
+            action=action,
+            events=events,
+            deadzone=deadzone,
+            replace_existing=replace_existing,
+            session_id=session_id,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def input_map_action_delete(
+        action: str,
+        confirm: bool = False,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Delete one non-built-in Input Map action after explicit confirmation."""
+        return await service.input_map_action_delete(
+            action=action,
+            confirm=confirm,
+            session_id=session_id,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def input_map_undo(session_id: str | None = None) -> dict[str, Any]:
+        """Undo the latest MCP Input Map operation from the project-wide editor history."""
+        return await service.input_map_undo(session_id=session_id)
+
+    @mcp.tool(annotations=WRITE)
+    async def input_map_redo(session_id: str | None = None) -> dict[str, Any]:
+        """Redo the next MCP Input Map operation from the project-wide editor history."""
+        return await service.input_map_redo(session_id=session_id)
+
+    @mcp.tool(annotations=READ_ONLY)
     async def runtime_get_state(session_id: str | None = None) -> dict[str, Any]:
         """Read runtime-bridge availability, game-debugger connection, and pending feedback jobs."""
         return await service.runtime_get_state(session_id=session_id)
@@ -201,7 +258,7 @@ def create_application(
     async def runtime_input_send(
         events: list[dict[str, Any]], session_id: str | None = None
     ) -> dict[str, Any]:
-        """Inject bounded action, keyboard, or mouse events into the game input pipeline."""
+        """Inject bounded action, keyboard, mouse, or screen-touch events into the game."""
         return await service.runtime_input_send(events=events, session_id=session_id)
 
     @mcp.tool(annotations=READ_ONLY)
@@ -330,6 +387,23 @@ def create_application(
         """Search Godot classes allowed by the server's 2D node policy."""
         return await service.class_search(
             query=query,
+            session_id=session_id,
+            offset=offset,
+            limit=limit,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def class_2d_describe(
+        type_name: str,
+        section: str = "overview",
+        session_id: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Describe one supported 2D class's inheritance, properties, methods, signals, or enums."""
+        return await service.class_2d_describe(
+            type_name=type_name,
+            section=section,
             session_id=session_id,
             offset=offset,
             limit=limit,

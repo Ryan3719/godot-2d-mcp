@@ -423,7 +423,7 @@ server = [
 
 [[package]]
 name = "godot-2d-mcp"
-version = "0.50.0"
+version = "0.53.0"
 source = { editable = "." }
 dependencies = [
     { name = "fastmcp" },

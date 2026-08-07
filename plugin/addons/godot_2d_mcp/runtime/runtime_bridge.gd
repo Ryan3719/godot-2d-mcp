@@ -7,6 +7,9 @@ const MAX_SCREENSHOT_BYTES := 1_000_000
 const MAX_SCREENSHOT_DIMENSION := 1024
 const MAX_INPUT_EVENTS := 64
 const MAX_COORDINATE := 100_000.0
+const MAX_TOUCH_INDEX := 31
+const MAX_TOUCH_PRESSURE := 1.0
+const MAX_TOUCH_TILT := 1.0
 const MAX_RUNTIME_NODE_PATH_LENGTH := 4096
 const MAX_AUDIO_POSITION_SECONDS := 3600.0
 const MIN_PERFORMANCE_SAMPLE_SECONDS := 0.1
@@ -45,7 +48,7 @@ func _ready() -> void:
 		[
 			{
 				"protocol_version": 1,
-				"capabilities": ["logs", "screenshot", "input", "audio_stream_player_2d", "performance_sample"],
+				"capabilities": ["logs", "screenshot", "input", "touch_input", "audio_stream_player_2d", "performance_sample"],
 			}
 		]
 	)
@@ -533,7 +536,91 @@ func _decode_input_event(value) -> Dictionary:
 		motion_event.global_position = motion_position["position"]
 		motion_event.relative = relative_result["position"]
 		return {"event": motion_event}
-	return {"error": "type must be action, key, mouse_button, or mouse_motion"}
+	if event_type == "screen_touch":
+		return _decode_screen_touch_event(value)
+	if event_type == "screen_drag":
+		return _decode_screen_drag_event(value)
+	return {"error": "type must be action, key, mouse_button, mouse_motion, screen_touch, or screen_drag"}
+
+
+func _decode_screen_touch_event(value: Dictionary) -> Dictionary:
+	var fields_error := _input_event_fields_error(
+		value, ["type", "index", "position", "pressed", "double_tap", "canceled"]
+	)
+	if not fields_error.is_empty():
+		return {"error": fields_error}
+	if not _is_valid_touch_index(value.get("index", null)):
+		return {"error": "screen_touch events require index between 0 and %d" % MAX_TOUCH_INDEX}
+	if not value.get("pressed", null) is bool:
+		return {"error": "screen_touch events require boolean pressed"}
+	var position_result := _decode_position(value.get("position", {}), "position")
+	if position_result.has("error"):
+		return position_result
+	if value.has("double_tap") and not value["double_tap"] is bool:
+		return {"error": "double_tap must be a boolean"}
+	if value.has("canceled") and not value["canceled"] is bool:
+		return {"error": "canceled must be a boolean"}
+	var touch_event := InputEventScreenTouch.new()
+	touch_event.index = int(value["index"])
+	touch_event.position = position_result["position"]
+	touch_event.pressed = value["pressed"]
+	touch_event.double_tap = bool(value.get("double_tap", false))
+	touch_event.canceled = bool(value.get("canceled", false))
+	return {"event": touch_event}
+
+
+func _decode_screen_drag_event(value: Dictionary) -> Dictionary:
+	var fields_error := _input_event_fields_error(
+		value,
+		[
+			"type", "index", "position", "relative", "screen_relative", "pressure", "tilt",
+			"pen_inverted",
+		]
+	)
+	if not fields_error.is_empty():
+		return {"error": fields_error}
+	if not _is_valid_touch_index(value.get("index", null)):
+		return {"error": "screen_drag events require index between 0 and %d" % MAX_TOUCH_INDEX}
+	var position_result := _decode_position(value.get("position", {}), "position")
+	if position_result.has("error"):
+		return position_result
+	var relative_result := _decode_position(value.get("relative", {}), "relative")
+	if relative_result.has("error"):
+		return relative_result
+	if value.has("pressure") and not _is_valid_touch_pressure(value["pressure"]):
+		return {"error": "pressure must be a finite number between 0 and %.1f" % MAX_TOUCH_PRESSURE}
+	var tilt_result: Dictionary = {}
+	if value.has("tilt"):
+		tilt_result = _decode_touch_tilt(value["tilt"])
+		if tilt_result.has("error"):
+			return tilt_result
+	if value.has("pen_inverted") and not value["pen_inverted"] is bool:
+		return {"error": "pen_inverted must be a boolean"}
+	var drag_event := InputEventScreenDrag.new()
+	drag_event.index = int(value["index"])
+	drag_event.position = position_result["position"]
+	drag_event.relative = relative_result["position"]
+	for field in ["screen_relative"]:
+		if not value.has(field):
+			continue
+		var vector_result := _decode_position(value[field], field)
+		if vector_result.has("error"):
+			return vector_result
+		drag_event.set(field, vector_result["position"])
+	if value.has("pressure"):
+		drag_event.pressure = float(value["pressure"])
+	if value.has("tilt"):
+		drag_event.tilt = tilt_result["position"]
+	if value.has("pen_inverted"):
+		drag_event.pen_inverted = value["pen_inverted"]
+	return {"event": drag_event}
+
+
+func _input_event_fields_error(value: Dictionary, allowed: Array[String]) -> String:
+	for field in value:
+		if str(field) not in allowed:
+			return "input event contains unsupported field: %s" % str(field)
+	return ""
 
 
 func _decode_position(value, name: String) -> Dictionary:
@@ -547,6 +634,29 @@ func _is_valid_coordinate(value) -> bool:
 	if not (value is int or value is float):
 		return false
 	return absf(float(value)) <= MAX_COORDINATE
+
+
+func _decode_touch_tilt(value) -> Dictionary:
+	var tilt_result := _decode_position(value, "tilt")
+	if tilt_result.has("error"):
+		return tilt_result
+	var tilt: Vector2 = tilt_result["position"]
+	if absf(tilt.x) > MAX_TOUCH_TILT or absf(tilt.y) > MAX_TOUCH_TILT:
+		return {"error": "tilt coordinates must be between -1 and 1"}
+	return tilt_result
+
+
+func _is_valid_touch_index(value) -> bool:
+	if not (value is int or value is float) or value is bool:
+		return false
+	var numeric_value := float(value)
+	return is_finite(numeric_value) and numeric_value >= 0.0 and numeric_value <= MAX_TOUCH_INDEX \
+		and is_equal_approx(numeric_value, roundf(numeric_value))
+
+
+func _is_valid_touch_pressure(value) -> bool:
+	return (value is int or value is float) and not (value is bool) and is_finite(float(value)) \
+		and float(value) >= 0.0 and float(value) <= MAX_TOUCH_PRESSURE
 
 
 func _is_valid_key_value(value) -> bool:
