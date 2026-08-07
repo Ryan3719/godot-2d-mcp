@@ -244,6 +244,16 @@ async def test_container_2d_tools_forward_validated_payloads() -> None:
         "size_flags_vertical": ["shrink_end"],
         "size_flags_stretch_ratio": 2.5,
     }
+    tab_item_properties = {
+        "title": "Setup",
+        "tooltip": "Configure the game",
+        "icon_path": "res://ui/setup.svg",
+        "icon_max_width": 24,
+        "disabled": False,
+        "hidden": True,
+        "metadata": {"section": "setup", "steps": [1, 2]},
+        "button_icon_path": "",
+    }
 
     await service.container_2d_get(
         "/Main/Layout",
@@ -252,9 +262,23 @@ async def test_container_2d_tools_forward_validated_payloads() -> None:
         scene_file="res://main.tscn",
         session_id="project@a1b2",
     )
+    await service.tab_container_items_get(
+        "/Main/Tabs",
+        item_offset=1,
+        item_limit=20,
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
     await service.container_2d_set(
         "/Main/Layout",
         container_properties,
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
+    await service.tab_container_item_set(
+        "/Main/Tabs",
+        "/Main/Tabs/Setup",
+        tab_item_properties,
         scene_file="res://main.tscn",
         session_id="project@a1b2",
     )
@@ -278,10 +302,30 @@ async def test_container_2d_tools_forward_validated_payloads() -> None:
             "project@a1b2",
         ),
         (
+            "tab_container_items_get",
+            {
+                "path": "/Main/Tabs",
+                "item_offset": 1,
+                "item_limit": 20,
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        ),
+        (
             "container_2d_set",
             {
                 "path": "/Main/Layout",
                 "properties": container_properties,
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        ),
+        (
+            "tab_container_item_set",
+            {
+                "path": "/Main/Tabs",
+                "child_path": "/Main/Tabs/Setup",
+                "properties": tab_item_properties,
                 "scene_file": "res://main.tscn",
             },
             "project@a1b2",
@@ -311,6 +355,22 @@ async def test_container_2d_tools_reject_invalid_payloads() -> None:
         await service.container_2d_set("/Main/Layout", {"ratio": 0.0})
     with pytest.raises(ValueError, match="split_offsets"):
         await service.container_2d_set("/Main/Layout", {"split_offsets": [1.5]})
+    with pytest.raises(ValueError, match="item_offset"):
+        await service.tab_container_items_get("/Main/Tabs", item_offset=-1)
+    with pytest.raises(ValueError, match="properties"):
+        await service.tab_container_item_set("/Main/Tabs", "/Main/Tabs/Setup", {})
+    with pytest.raises(ValueError, match="icon_path"):
+        await service.tab_container_item_set(
+            "/Main/Tabs", "/Main/Tabs/Setup", {"icon_path": "../setup.svg"}
+        )
+    with pytest.raises(ValueError, match="icon_max_width"):
+        await service.tab_container_item_set(
+            "/Main/Tabs", "/Main/Tabs/Setup", {"icon_max_width": 24.5}
+        )
+    with pytest.raises(ValueError, match="metadata"):
+        await service.tab_container_item_set(
+            "/Main/Tabs", "/Main/Tabs/Setup", {"metadata": {"invalid": {1, 2}}}
+        )
     with pytest.raises(ValueError, match="size_flags_horizontal"):
         await service.container_child_layout_set(
             "/Main/Layout",

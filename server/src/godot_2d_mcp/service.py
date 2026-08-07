@@ -1113,6 +1113,49 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def tab_container_items_get(
+        self,
+        path: str,
+        item_offset: int = 0,
+        item_limit: int = 100,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tab_container_item_page(item_offset, item_limit)
+        return await self.bridge.call(
+            "tab_container_items_get",
+            _scene_params(
+                scene_file,
+                path=path,
+                item_offset=item_offset,
+                item_limit=item_limit,
+            ),
+            session_id=session_id,
+        )
+
+    async def tab_container_item_set(
+        self,
+        path: str,
+        child_path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_node_path(child_path)
+        _validate_tab_container_item_properties(properties)
+        return await self.bridge.call(
+            "tab_container_item_set",
+            _scene_params(
+                scene_file,
+                path=path,
+                child_path=child_path,
+                properties=properties,
+            ),
+            session_id=session_id,
+        )
+
     async def container_child_layout_set(
         self,
         path: str,
@@ -3507,6 +3550,13 @@ def _validate_container_child_page(offset: int, limit: int) -> None:
         raise ValueError("child_limit must be an integer between 1 and 256")
 
 
+def _validate_tab_container_item_page(offset: int, limit: int) -> None:
+    if isinstance(offset, bool) or not isinstance(offset, int) or not 0 <= offset <= 256:
+        raise ValueError("item_offset must be an integer between 0 and 256")
+    if isinstance(limit, bool) or not isinstance(limit, int) or not 1 <= limit <= 256:
+        raise ValueError("item_limit must be an integer between 1 and 256")
+
+
 def _validate_container_2d_properties(properties: dict[str, Any]) -> None:
     allowed = {
         "accessibility_region",
@@ -3669,6 +3719,33 @@ def _validate_container_child_layout_properties(properties: dict[str, Any]) -> N
             minimum=0.0,
             maximum=1_000_000.0,
         )
+
+
+def _validate_tab_container_item_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "title",
+        "tooltip",
+        "icon_path",
+        "icon_max_width",
+        "disabled",
+        "hidden",
+        "metadata",
+        "button_icon_path",
+    }
+    _validate_draw_2d_property_names(properties, allowed, "TabContainer item", maximum=8)
+    for name, maximum in {"title": 4096, "tooltip": 4096}.items():
+        if name in properties and (
+            not isinstance(properties[name], str) or len(properties[name]) > maximum
+        ):
+            raise ValueError(f"{name} must be a string up to {maximum} characters")
+    for name in {"icon_path", "button_icon_path"} & properties.keys():
+        _validate_optional_project_resource_path(properties[name], name)
+    for name in {"disabled", "hidden"} & properties.keys():
+        _validate_boolean(properties[name], name)
+    if "icon_max_width" in properties:
+        _validate_container_integer(properties["icon_max_width"], "icon_max_width", 0, 4096)
+    if "metadata" in properties:
+        _validate_button_menu_json(properties["metadata"], "metadata")
 
 
 def _validate_container_integer(value: Any, label: str, minimum: int, maximum: int) -> None:

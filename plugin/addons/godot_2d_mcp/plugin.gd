@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.45.0"
+const PLUGIN_VERSION := "0.46.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 const RUNTIME_AUTOLOAD_NAME := "Godot2DMcpRuntime"
 const RUNTIME_AUTOLOAD_PATH := "res://addons/godot_2d_mcp/runtime/runtime_bridge.gd"
@@ -160,6 +160,7 @@ func _register_handlers() -> void:
 	_dispatcher.register("animation_get", animation_handler.get_animation)
 	_dispatcher.register("control_get_layout", ui_handler.get_layout)
 	_dispatcher.register("container_2d_get", container_handler.get_container)
+	_dispatcher.register("tab_container_items_get", container_handler.get_tab_items)
 	_dispatcher.register("control_get_styleboxes", ui_handler.get_styleboxes)
 	_dispatcher.register("control_theme_get", theme_handler.get_theme)
 	_dispatcher.register("collision_shape_get", physics_handler.get_collision_shape)
@@ -221,6 +222,7 @@ func _register_handlers() -> void:
 	_dispatcher.register("animation_key_delete", animation_handler.delete_key)
 	_dispatcher.register("control_set_layout", ui_handler.set_layout)
 	_dispatcher.register("container_2d_set", container_handler.set_container)
+	_dispatcher.register("tab_container_item_set", container_handler.set_tab_item)
 	_dispatcher.register("container_child_layout_set", container_handler.set_child_layout)
 	_dispatcher.register("control_set_layout_preset", ui_handler.set_layout_preset)
 	_dispatcher.register("control_stylebox_flat_upsert", ui_handler.upsert_stylebox_flat)

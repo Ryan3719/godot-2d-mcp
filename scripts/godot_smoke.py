@@ -277,14 +277,16 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             "SubViewportContainer",
         ):
             container_entry = container_entries.get(class_name)
+            required_tools = {
+                "container_2d_get",
+                "container_2d_set",
+                "container_child_layout_set",
+            }
+            if class_name == "TabContainer":
+                required_tools.update({"tab_container_items_get", "tab_container_item_set"})
             if (
                 container_entry is None
-                or {
-                    "container_2d_get",
-                    "container_2d_set",
-                    "container_child_layout_set",
-                }
-                - set(container_entry.get("semantic_tools", []))
+                or required_tools - set(container_entry.get("semantic_tools", []))
                 or container_entry.get("test_status") != "semantic_smoke"
             ):
                 raise RuntimeError(
@@ -4068,12 +4070,13 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         tabs_path = tabs["path"]
-        await app.service.node_create(
+        tab_one = await app.service.node_create(
             type_name="Label",
             name="AgentTabOne",
             parent_path=tabs_path,
             scene_file=scene_file,
         )
+        tab_one_path = tab_one["path"]
         await app.service.node_create(
             type_name="Label",
             name="AgentTabTwo",
@@ -4112,6 +4115,66 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or tabs_state["deselect_enabled"] is not True
         ):
             raise RuntimeError("TabContainer configuration was not applied")
+        tab_items_initial = await app.service.tab_container_items_get(
+            tabs_path, item_limit=1, scene_file=scene_file
+        )
+        if (
+            tab_items_initial["items_total"] != 2
+            or len(tab_items_initial["items"]) != 1
+            or tab_items_initial["items_truncated"] is not True
+            or tab_items_initial["items"][0]["path"] != tab_one_path
+            or tab_items_initial["items"][0]["title"] != "AgentTabOne"
+            or "button_icon_path" not in tab_items_initial["supported_item_properties"]
+        ):
+            raise RuntimeError("TabContainer items were not reported")
+        tab_item_update = await app.service.tab_container_item_set(
+            tabs_path,
+            tab_one_path,
+            {
+                "title": "Configured tab",
+                "tooltip": "Configured by the MCP smoke test",
+                "icon_path": "res://test_icon.svg",
+                "icon_max_width": 24,
+                "disabled": True,
+                "hidden": True,
+                "metadata": {"owner": "mcp", "priority": 2},
+                "button_icon_path": "res://test_icon.svg",
+            },
+            scene_file=scene_file,
+        )
+        tab_item = tab_item_update["item"]
+        if (
+            not tab_item_update.get("changed")
+            or tab_item["title"] != "Configured tab"
+            or tab_item["tooltip"] != "Configured by the MCP smoke test"
+            or tab_item["icon_max_width"] != 24
+            or tab_item["disabled"] is not True
+            or tab_item["hidden"] is not True
+            or tab_item["metadata"] != {"owner": "mcp", "priority": 2}
+            or tab_item["icon"].get("resource_path") != "res://test_icon.svg"
+            or tab_item["button_icon"].get("resource_path") != "res://test_icon.svg"
+        ):
+            raise RuntimeError("TabContainer item configuration was not applied")
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("TabContainer item configuration was not undoable")
+        restored_tab_items = await app.service.tab_container_items_get(tabs_path, scene_file=scene_file)
+        restored_tab_item = restored_tab_items["items"][0]
+        if (
+            restored_tab_item["title"] != "AgentTabOne"
+            or restored_tab_item["tooltip"] != ""
+            or restored_tab_item["disabled"] is not False
+            or restored_tab_item["hidden"] is not False
+            or restored_tab_item["metadata"] is not None
+            or restored_tab_item["icon"]["assigned"] is not False
+            or restored_tab_item["button_icon"]["assigned"] is not False
+        ):
+            raise RuntimeError("Undo did not restore TabContainer item configuration")
+        if not (await app.service.scene_redo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("TabContainer item configuration was not redoable")
+        await _expect_godot_error(
+            app.service.tab_container_items_get(hbox_path, scene_file=scene_file),
+            "TAB_CONTAINER_REQUIRED",
+        )
         _trace_smoke("TabContainer smoke passed")
 
         subviewport_container = await app.service.node_create(
