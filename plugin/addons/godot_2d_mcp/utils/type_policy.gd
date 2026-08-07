@@ -253,7 +253,8 @@ const NODE_SEMANTIC_CATALOG := [
 		"base_type": "AnimationPlayer",
 		"tools": [
 			"animation_list", "animation_get", "animation_create", "animation_delete",
-			"animation_track_upsert", "animation_audio_track_upsert", "animation_track_delete",
+			"animation_track_upsert", "animation_audio_track_upsert", "animation_bezier_track_upsert",
+			"animation_track_delete",
 			"animation_key_upsert",
 			"animation_key_delete",
 		],

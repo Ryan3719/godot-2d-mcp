@@ -11,11 +11,23 @@ const MAX_ANIMATIONS := 256
 const MAX_TRACKS := 128
 const MAX_KEYS_PER_TRACK := 512
 const MAX_ANIMATION_LENGTH := 3600.0
+const MAX_BEZIER_VALUE := 1000000.0
+const MAX_BEZIER_HANDLE := 3600.0
 const AUDIO_KEY_FIELDS := {
 	"time": true,
 	"stream_path": true,
 	"start_offset": true,
 	"end_offset": true,
+}
+const BEZIER_KEY_FIELDS := {
+	"time": true,
+	"value": true,
+	"in_handle": true,
+	"out_handle": true,
+}
+const BEZIER_COMPONENTS_BY_TYPE := {
+	TYPE_VECTOR2: {"x": true, "y": true},
+	TYPE_COLOR: {"r": true, "g": true, "b": true, "a": true},
 }
 const PROTECTED_PROPERTIES := {
 	"owner": true,
@@ -408,6 +420,83 @@ func upsert_audio_track(params: Dictionary) -> Dictionary:
 	}
 
 
+func upsert_bezier_track(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_player(params)
+	if resolved.has("_error"):
+		return resolved
+	var player: AnimationPlayer = resolved["player"]
+	var scene_root: Node = resolved["scene_root"]
+	var library_result := _resolve_library(player, params)
+	if library_result.has("_error"):
+		return library_result
+	var library: AnimationLibrary = library_result["library"]
+	var library_editability := _require_editable_library(library)
+	if library_editability != null:
+		return library_editability
+	var animation_result := _resolve_editable_animation(library, params)
+	if animation_result.has("_error"):
+		return animation_result
+	var animation: Animation = animation_result["animation"]
+	var target_result := _resolve_local_target(scene_root, str(params.get("target_path", "")))
+	if target_result.has("_error"):
+		return target_result
+	var target: Node = target_result["node"]
+	var property_result := _resolve_bezier_property(target, str(params.get("property", "")))
+	if property_result.has("_error"):
+		return property_result
+	var animation_root_result := _resolve_animation_root(player, scene_root)
+	if animation_root_result.has("_error"):
+		return animation_root_result
+	var track_path := _make_track_path(animation_root_result["root"], target, property_result["name"])
+	var keys_result := _parse_bezier_track_keys(params.get("keys", []), animation.length)
+	if keys_result.has("_error"):
+		return keys_result
+	var enabled = params.get("enabled", true)
+	if not enabled is bool:
+		return Errors.make("INVALID_PARAMETER", "enabled must be a boolean")
+	var existing_index := animation.find_track(track_path, Animation.TYPE_BEZIER)
+	if existing_index >= 0 and animation.track_is_imported(existing_index):
+		return Errors.make(
+			"IMPORTED_ANIMATION_TRACK",
+			"Cannot replace imported animation track %d" % existing_index,
+			false,
+			"Edit the source animation instead of an imported track."
+		)
+	var replacement := _duplicate_animation(animation)
+	if replacement == null:
+		return Errors.make("ANIMATION_DUPLICATE_FAILED", "Godot failed to duplicate the animation resource")
+	var track_index := existing_index
+	if existing_index >= 0:
+		replacement.remove_track(existing_index)
+	track_index = replacement.add_track(Animation.TYPE_BEZIER, existing_index)
+	replacement.track_set_path(track_index, track_path)
+	replacement.track_set_enabled(track_index, enabled)
+	for key in keys_result["keys"]:
+		replacement.bezier_track_insert_key(
+			track_index, key["time"], key["value"], key["in_handle"], key["out_handle"]
+		)
+	_commit_animation_replacement(
+		scene_root,
+		player,
+		library,
+		library_result["name"],
+		animation_result["name"],
+		animation,
+		replacement,
+		false,
+		"Godot 2D MCP: Update animation Bezier track"
+	)
+	return {
+		"player_path": ScenePath.from_node(player, scene_root),
+		"library": library_result["name"],
+		"animation": animation_result["name"],
+		"track": _serialize_track(replacement, track_index, animation_root_result["root"], scene_root),
+		"replaced_existing": existing_index >= 0,
+		"undoable": true,
+		"_scene_mutated": true,
+	}
+
+
 func delete_track(params: Dictionary) -> Dictionary:
 	var resolved := _resolve_player(params)
 	if resolved.has("_error"):
@@ -430,12 +519,13 @@ func delete_track(params: Dictionary) -> Dictionary:
 		return track_index_result
 	var track_index: int = track_index_result["index"]
 	var track_type := animation.track_get_type(track_index)
-	if track_type != Animation.TYPE_VALUE and track_type != Animation.TYPE_AUDIO:
+	if track_type != Animation.TYPE_VALUE and track_type != Animation.TYPE_AUDIO \
+		and track_type != Animation.TYPE_BEZIER:
 		return Errors.make(
 			"UNSUPPORTED_ANIMATION_TRACK",
-			"animation_track_delete supports local 2D/UI property value and audio tracks only",
+			"animation_track_delete supports local 2D/UI property value, Bezier, and audio tracks only",
 			false,
-			"Method, nested-animation, Bezier, and 3D tracks are not editable in this release."
+			"Method, nested-animation, and 3D tracks are not editable in this release."
 		)
 	if animation.track_is_imported(track_index):
 		return Errors.make(
@@ -452,8 +542,12 @@ func delete_track(params: Dictionary) -> Dictionary:
 		track_scope_result = _resolve_track_property(
 			animation, track_index, animation_root_result["root"], scene_root
 		)
-	else:
+	elif track_type == Animation.TYPE_AUDIO:
 		track_scope_result = _resolve_audio_track_target(
+			animation, track_index, animation_root_result["root"], scene_root
+		)
+	else:
+		track_scope_result = _resolve_bezier_track_property(
 			animation, track_index, animation_root_result["root"], scene_root
 		)
 	if track_scope_result.has("_error"):
@@ -828,6 +922,47 @@ func _resolve_writable_property(node: Node, property_name: String) -> Dictionary
 	)
 
 
+func _resolve_bezier_property(node: Node, property_path: String) -> Dictionary:
+	var clean_path := property_path.strip_edges()
+	if clean_path.is_empty() or clean_path.length() > 256:
+		return Errors.make("INVALID_PROPERTY", "property must contain 1 to 256 characters")
+	var parts := clean_path.split(":")
+	if parts.size() < 1 or parts.size() > 2:
+		return Errors.make(
+			"INVALID_BEZIER_PROPERTY",
+			"Bezier properties must be a float property or one Vector2/Color component",
+			false,
+			"Use a float property, position:x, position:y, or modulate:r/g/b/a."
+		)
+	for part in parts:
+		if part.is_empty() or part.length() > 128:
+			return Errors.make("INVALID_BEZIER_PROPERTY", "property path contains an empty or oversized segment")
+	var property_result := _resolve_writable_property(node, parts[0])
+	if property_result.has("_error"):
+		return property_result
+	var property_type := int(property_result["property_info"].get("type", TYPE_NIL))
+	if parts.size() == 1:
+		if property_type != TYPE_FLOAT:
+			return Errors.make(
+				"BEZIER_PROPERTY_TYPE_UNSUPPORTED",
+				"Bezier tracks require a float property or Vector2/Color component, not %s"
+					% type_string(property_type),
+				false,
+				"Target a float property or a supported :x, :y, :r, :g, :b, or :a component."
+			)
+		return {"name": clean_path, "property_info": property_result["property_info"]}
+	var component: String = parts[1]
+	if not BEZIER_COMPONENTS_BY_TYPE.has(property_type) \
+		or not BEZIER_COMPONENTS_BY_TYPE[property_type].has(component):
+		return Errors.make(
+			"BEZIER_PROPERTY_TYPE_UNSUPPORTED",
+			"Property '%s' does not expose Bezier component '%s'" % [parts[0], component],
+			false,
+			"Use :x or :y for Vector2, or :r, :g, :b, or :a for Color."
+		)
+	return {"name": clean_path, "property_info": property_result["property_info"]}
+
+
 func _resolve_track_property(
 	animation: Animation, track_index: int, animation_root: Node, scene_root: Node
 ) -> Dictionary:
@@ -862,6 +997,45 @@ func _resolve_track_property(
 			"Use animation_track_upsert with a supported 2D target."
 		)
 	return _resolve_writable_property(target, str(track_path.get_subname(0))).merged({"node": target})
+
+
+func _resolve_bezier_track_property(
+	animation: Animation, track_index: int, animation_root: Node, scene_root: Node
+) -> Dictionary:
+	var track_path := animation.track_get_path(track_index)
+	if track_path.get_subname_count() < 1 or track_path.get_subname_count() > 2:
+		return Errors.make(
+			"UNSUPPORTED_ANIMATION_TRACK_PATH",
+			"Bezier track %d must target one float property or Vector2/Color component" % track_index,
+			false,
+			"Use animation_bezier_track_upsert with a supported local property."
+		)
+	var target := animation_root.get_node_or_null(track_path)
+	if target == null:
+		return Errors.make(
+			"ANIMATION_TARGET_NOT_FOUND",
+			"Animation track %d target no longer exists" % track_index,
+			false,
+			"Repair or replace the track with animation_bezier_track_upsert."
+		)
+	if target != scene_root and target.owner != scene_root:
+		return Errors.make(
+			"PACKED_SCENE_BOUNDARY",
+			"Cannot edit a track targeting instanced node '%s'" % target.name,
+			false,
+			"Edit the source PackedScene or replace the track with a local target."
+		)
+	if not TypePolicy.is_supported_node_class(target.get_class()):
+		return Errors.make(
+			"UNSUPPORTED_2D_TYPE",
+			"Animation track %d targets unsupported type %s" % [track_index, target.get_class()],
+			false,
+			"Use animation_bezier_track_upsert with a supported 2D target."
+		)
+	var property_path := str(track_path.get_subname(0))
+	if track_path.get_subname_count() == 2:
+		property_path += ":%s" % track_path.get_subname(1)
+	return _resolve_bezier_property(target, property_path).merged({"node": target})
 
 
 func _resolve_audio_track_target(
@@ -919,11 +1093,18 @@ func _require_2d_animation_track_scope(
 			if audio_result.has("_error"):
 				return audio_result
 			continue
+		if track_type == Animation.TYPE_BEZIER:
+			var bezier_result := _resolve_bezier_track_property(
+				animation, track_index, animation_root, scene_root
+			)
+			if bezier_result.has("_error"):
+				return bezier_result
+			continue
 		return Errors.make(
 			"UNSUPPORTED_ANIMATION_TRACK",
 			"Animation contains an unsupported track at index %d" % track_index,
 			false,
-			"Only local 2D/UI property value tracks and AudioStreamPlayer2D audio tracks are editable."
+			"Only local 2D/UI property value and Bezier tracks plus AudioStreamPlayer2D audio tracks are editable."
 		)
 	return null
 
@@ -1072,6 +1253,83 @@ func _parse_audio_track_offset(raw_offset: Variant, label: String) -> Dictionary
 			"%s must be between 0 and %s seconds" % [label, MAX_ANIMATION_LENGTH]
 		)
 	return {"offset": offset}
+
+
+func _parse_bezier_track_keys(raw_keys: Variant, animation_length: float) -> Dictionary:
+	if not raw_keys is Array or raw_keys.is_empty():
+		return Errors.make("MISSING_PARAMETER", "keys must be a non-empty array")
+	if raw_keys.size() > MAX_KEYS_PER_TRACK:
+		return Errors.make(
+			"REQUEST_LIMIT_EXCEEDED",
+			"A track can contain at most %d keys" % MAX_KEYS_PER_TRACK
+		)
+	var parsed: Array[Dictionary] = []
+	for raw_key in raw_keys:
+		if not raw_key is Dictionary:
+			return Errors.make("INVALID_BEZIER_KEY", "Every Bezier key must be an object")
+		for field in raw_key:
+			if not field is String or not BEZIER_KEY_FIELDS.has(field):
+				return Errors.make(
+					"INVALID_BEZIER_KEY",
+					"Bezier keys allow only time, value, in_handle, and out_handle"
+				)
+		if not raw_key.has("time") or not raw_key.has("value"):
+			return Errors.make("INVALID_BEZIER_KEY", "Each Bezier key requires time and value")
+		var time_result := _parse_key_time(raw_key["time"], animation_length)
+		if time_result.has("_error"):
+			return time_result
+		if not _is_finite_number(raw_key["value"]) \
+			or absf(float(raw_key["value"])) > MAX_BEZIER_VALUE:
+			return Errors.make(
+				"INVALID_BEZIER_KEY",
+				"value must be a finite number between -%s and %s" % [MAX_BEZIER_VALUE, MAX_BEZIER_VALUE]
+			)
+		var in_handle_result := _parse_bezier_handle(
+			raw_key.get("in_handle", {"x": 0.0, "y": 0.0}), true, "in_handle"
+		)
+		if in_handle_result.has("_error"):
+			return in_handle_result
+		var out_handle_result := _parse_bezier_handle(
+			raw_key.get("out_handle", {"x": 0.0, "y": 0.0}), false, "out_handle"
+		)
+		if out_handle_result.has("_error"):
+			return out_handle_result
+		for existing_key in parsed:
+			if is_equal_approx(existing_key["time"], time_result["time"]):
+				return Errors.make(
+					"DUPLICATE_ANIMATION_KEY",
+					"A track cannot contain more than one key at the same time"
+				)
+		parsed.append(
+			{
+				"time": time_result["time"],
+				"value": float(raw_key["value"]),
+				"in_handle": in_handle_result["handle"],
+				"out_handle": out_handle_result["handle"],
+			}
+		)
+	return {"keys": parsed}
+
+
+func _parse_bezier_handle(raw_handle: Variant, is_in_handle: bool, label: String) -> Dictionary:
+	if not raw_handle is Dictionary or raw_handle.size() != 2 \
+		or not raw_handle.has("x") or not raw_handle.has("y"):
+		return Errors.make("INVALID_BEZIER_KEY", "%s must contain finite x and y values" % label)
+	if not _is_finite_number(raw_handle["x"]) or not _is_finite_number(raw_handle["y"]):
+		return Errors.make("INVALID_BEZIER_KEY", "%s must contain finite x and y values" % label)
+	var x := float(raw_handle["x"])
+	var y := float(raw_handle["y"])
+	if absf(x) > MAX_BEZIER_HANDLE or absf(y) > MAX_BEZIER_VALUE:
+		return Errors.make(
+			"INVALID_BEZIER_KEY",
+			"%s exceeds the supported Bezier handle bounds" % label
+		)
+	if (is_in_handle and x > 0.0) or (not is_in_handle and x < 0.0):
+		return Errors.make(
+			"INVALID_BEZIER_KEY",
+			"%s.x must be %s 0" % [label, "at most" if is_in_handle else "at least"]
+		)
+	return {"handle": Vector2(x, y)}
 
 
 func _parse_key_time(raw_time: Variant, animation_length: float) -> Dictionary:
@@ -1301,6 +1559,14 @@ func _serialize_key(animation: Animation, track_index: int, key_index: int) -> D
 		result["end_offset"] = _safe_float(
 			animation.audio_track_get_key_end_offset(track_index, key_index)
 		)
+	elif animation.track_get_type(track_index) == Animation.TYPE_BEZIER:
+		result["value"] = _safe_float(animation.bezier_track_get_key_value(track_index, key_index))
+		result["in_handle"] = VariantCodec.serialize(
+			animation.bezier_track_get_key_in_handle(track_index, key_index)
+		)
+		result["out_handle"] = VariantCodec.serialize(
+			animation.bezier_track_get_key_out_handle(track_index, key_index)
+		)
 	else:
 		result["value"] = VariantCodec.serialize(animation.track_get_key_value(track_index, key_index))
 	return result
@@ -1336,7 +1602,11 @@ func _safe_float(value: float) -> Variant:
 
 
 func _track_property_name(track_path: NodePath) -> String:
-	return str(track_path.get_subname(0)) if track_path.get_subname_count() == 1 else ""
+	if track_path.get_subname_count() == 1:
+		return str(track_path.get_subname(0))
+	if track_path.get_subname_count() == 2:
+		return "%s:%s" % [track_path.get_subname(0), track_path.get_subname(1)]
+	return ""
 
 
 func _track_type_name(track_type: int) -> String:

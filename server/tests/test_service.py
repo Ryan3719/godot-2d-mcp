@@ -1872,6 +1872,86 @@ async def test_animation_audio_track_upsert_rejects_unsafe_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_animation_bezier_track_upsert_forwards_strict_payload() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    keys = [
+        {
+            "time": 0.0,
+            "value": 1.0,
+            "in_handle": {"x": -0.1, "y": 0.0},
+            "out_handle": {"x": 0.1, "y": 0.2},
+        },
+        {"time": 0.2, "value": 0.0},
+    ]
+
+    await service.animation_bezier_track_upsert(
+        player_path="/Main/ButtonAnimations",
+        animation="button_hover",
+        target_path="/Main/UI/StartButton",
+        property="modulate:a",
+        keys=keys,
+        enabled=False,
+        library="ui",
+        session_id="project@a1b2",
+        scene_file="res://main.tscn",
+    )
+
+    assert bridge.calls == [
+        (
+            "animation_bezier_track_upsert",
+            {
+                "player_path": "/Main/ButtonAnimations",
+                "animation": "button_hover",
+                "target_path": "/Main/UI/StartButton",
+                "property": "modulate:a",
+                "keys": keys,
+                "enabled": False,
+                "library": "ui",
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_animation_bezier_track_upsert_rejects_unsafe_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="property"):
+        await service.animation_bezier_track_upsert(
+            "/Main/ButtonAnimations",
+            "hover",
+            "/Main/UI/StartButton",
+            "modulate:a:invalid",
+            keys=[{"time": 0.0, "value": 1.0}],
+        )
+    with pytest.raises(ValueError, match="only time"):
+        await service.animation_bezier_track_upsert(
+            "/Main/ButtonAnimations",
+            "hover",
+            "/Main/UI/StartButton",
+            "modulate:a",
+            keys=[{"time": 0.0, "value": 1.0, "transition": 0.5}],
+        )
+    with pytest.raises(ValueError, match="in_handle.x"):
+        await service.animation_bezier_track_upsert(
+            "/Main/ButtonAnimations",
+            "hover",
+            "/Main/UI/StartButton",
+            "modulate:a",
+            keys=[
+                {
+                    "time": 0.0,
+                    "value": 1.0,
+                    "in_handle": {"x": 0.1, "y": 0.0},
+                }
+            ],
+        )
+
+
+@pytest.mark.asyncio
 async def test_control_layout_and_stylebox_tools_forward_structured_values() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)
