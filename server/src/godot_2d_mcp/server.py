@@ -646,6 +646,15 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def navigation_polygon_bake_result_get(
+        request_id: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        """Poll an asynchronous NavigationPolygon scene-source geometry bake request."""
+        return await service.navigation_polygon_bake_result_get(
+            request_id=request_id, session_id=session_id
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def camera_2d_get(
         path: str,
         session_id: str | None = None,
@@ -1924,6 +1933,23 @@ def create_application(
         """Build NavigationPolygon convex polygons from its existing outlines."""
         return await service.navigation_polygon_make_from_outlines(
             path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def navigation_polygon_bake_request(
+        path: str,
+        source_root_path: str = "",
+        settings: dict[str, Any] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Start an asynchronous scene-source geometry bake for one NavigationPolygon."""
+        return await service.navigation_polygon_bake_request(
+            path=path,
+            source_root_path=source_root_path,
+            settings=settings,
             session_id=session_id,
             scene_file=scene_file,
         )

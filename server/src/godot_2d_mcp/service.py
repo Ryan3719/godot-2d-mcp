@@ -2125,6 +2125,39 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def navigation_polygon_bake_request(
+        self,
+        path: str,
+        source_root_path: str = "",
+        settings: dict[str, Any] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_navigation_bake_source_root_path(source_root_path)
+        requested_settings = {} if settings is None else settings
+        _validate_navigation_polygon_bake_settings(requested_settings)
+        return await self.bridge.call(
+            "navigation_polygon_bake_request",
+            _scene_params(
+                scene_file,
+                path=path,
+                source_root_path=source_root_path,
+                settings=requested_settings,
+            ),
+            session_id=session_id,
+        )
+
+    async def navigation_polygon_bake_result_get(
+        self, request_id: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        _validate_runtime_request_id(request_id)
+        return await self.bridge.call(
+            "navigation_polygon_bake_result_get",
+            {"request_id": request_id},
+            session_id=session_id,
+        )
+
     async def navigation_polygon_clear(
         self,
         path: str,
@@ -5844,6 +5877,83 @@ def _validate_light_occluder_polygon(polygon: dict[str, Any]) -> None:
 def _validate_navigation_polygon_agent_radius(value: float) -> None:
     if not _is_finite_number(value) or float(value) < 0.0:
         raise ValueError("agent_radius must be a finite number greater than or equal to zero")
+
+
+def _validate_navigation_bake_source_root_path(value: str) -> None:
+    if not isinstance(value, str):
+        raise ValueError("source_root_path must be a string")
+    if value.strip():
+        _validate_node_path(value.strip())
+
+
+def _validate_navigation_polygon_bake_settings(settings: dict[str, Any]) -> None:
+    allowed = {
+        "agent_radius",
+        "cell_size",
+        "border_size",
+        "baking_rect",
+        "baking_rect_offset",
+        "sample_partition_type",
+        "parsed_geometry_type",
+        "parsed_collision_layers",
+    }
+    if not isinstance(settings, dict):
+        raise ValueError("settings must be an object")
+    if len(settings) > len(allowed):
+        raise ValueError("settings contains too many NavigationPolygon bake properties")
+    if unsupported := set(settings) - allowed:
+        raise ValueError(
+            "settings contains unsupported NavigationPolygon bake properties: "
+            + ", ".join(sorted(str(name) for name in unsupported))
+        )
+
+    for name, minimum, maximum in (
+        ("agent_radius", 0.0, 4096.0),
+        ("cell_size", 1.0, 4096.0),
+        ("border_size", 0.0, 4096.0),
+    ):
+        if name in settings and (
+            not _is_finite_number(settings[name])
+            or not minimum <= float(settings[name]) <= maximum
+        ):
+            raise ValueError(
+                f"{name} must be a finite number between {minimum:g} and {maximum:g}"
+            )
+
+    if "baking_rect" in settings:
+        _validate_navigation_bake_rect2(settings["baking_rect"], "baking_rect")
+    if "baking_rect_offset" in settings:
+        _validate_viewport_vector2(settings["baking_rect_offset"], "baking_rect_offset")
+    if "sample_partition_type" in settings:
+        _validate_navigation_bake_enum(
+            settings["sample_partition_type"],
+            "sample_partition_type",
+            {"convex_partition", "triangulate"},
+        )
+    if "parsed_geometry_type" in settings:
+        _validate_navigation_bake_enum(
+            settings["parsed_geometry_type"],
+            "parsed_geometry_type",
+            {"mesh_instances", "static_colliders", "both"},
+        )
+    if "parsed_collision_layers" in settings:
+        _validate_collision_layer_numbers(
+            settings["parsed_collision_layers"], "parsed_collision_layers"
+        )
+
+
+def _validate_navigation_bake_rect2(value: Any, label: str) -> None:
+    if not isinstance(value, dict) or set(value) != {"position", "size"}:
+        raise ValueError(f"{label} must contain position and size Vector2 values")
+    _validate_viewport_vector2(value["position"], f"{label}.position")
+    _validate_viewport_vector2(value["size"], f"{label}.size")
+    if value["size"]["x"] < 0 or value["size"]["y"] < 0:
+        raise ValueError(f"{label} size must be non-negative")
+
+
+def _validate_navigation_bake_enum(value: Any, label: str, allowed: set[str]) -> None:
+    if not isinstance(value, str) or value.strip().lower() not in allowed:
+        raise ValueError(f"{label} must be one of: {', '.join(sorted(allowed))}")
 
 
 def _validate_navigation_polygon_vertices(

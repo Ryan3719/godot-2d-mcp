@@ -98,6 +98,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         resource_coverage = await app.service.class_2d_coverage(
             query="TileSet", scope="resource", limit=20
         )
+        navigation_polygon_coverage = await app.service.class_2d_coverage(
+            query="NavigationPolygon", scope="resource", limit=20
+        )
         draw_coverage = await app.service.class_2d_coverage(
             query="Sprite2D", scope="node", limit=20
         )
@@ -196,6 +199,29 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         ):
             raise RuntimeError(
                 f"TileSet coverage audit was incomplete: {resource_coverage}"
+            )
+        navigation_polygon_coverage_entry = next(
+            (
+                entry
+                for entry in navigation_polygon_coverage.get("entries", [])
+                if entry.get("name") == "NavigationPolygon"
+            ),
+            None,
+        )
+        if (
+            navigation_polygon_coverage.get("scope") != "resource"
+            or navigation_polygon_coverage_entry is None
+            or {
+                "navigation_polygon_get",
+                "navigation_polygon_bake_request",
+                "navigation_polygon_bake_result_get",
+            }
+            - set(navigation_polygon_coverage_entry.get("semantic_tools", []))
+            or navigation_polygon_coverage_entry.get("test_status") != "semantic_smoke"
+        ):
+            raise RuntimeError(
+                "NavigationPolygon coverage audit was incomplete: "
+                f"{navigation_polygon_coverage}"
             )
         sprite_coverage = next(
             (
@@ -2052,6 +2078,12 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )
         if created_navigation_polygon["navigation_polygon"]["agent_radius"] != 12.0:
             raise RuntimeError("NavigationPolygon creation did not set agent_radius")
+        await _expect_godot_error(
+            app.service.navigation_polygon_bake_request(
+                navigation_region_path, scene_file=scene_file
+            ),
+            "NAVIGATION_POLYGON_OUTLINES_REQUIRED",
+        )
         direct_navigation_polygon = await app.service.navigation_polygon_geometry_set(
             navigation_region_path,
             navigation_polygon_vertices,
@@ -2108,6 +2140,86 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )
         if not restored_navigation_polygon["navigation_polygon"]["polygons"]:
             raise RuntimeError("Undo did not restore the NavigationPolygon resource")
+        bake_outline = await app.service.navigation_polygon_outline_set(
+            navigation_region_path, navigation_polygon_vertices, scene_file=scene_file
+        )
+        if bake_outline["outline_index"] != 0:
+            raise RuntimeError("NavigationPolygon bake outline was not appended")
+        navigation_bake_settings = {
+            "agent_radius": 4.0,
+            "cell_size": 2.0,
+            "border_size": 4.0,
+            "baking_rect": {
+                "position": {"x": 0.0, "y": 0.0},
+                "size": {"x": 192.0, "y": 96.0},
+            },
+            "baking_rect_offset": {"x": 0.0, "y": 0.0},
+            "sample_partition_type": "triangulate",
+            "parsed_geometry_type": "static_colliders",
+            "parsed_collision_layers": [2, 5],
+        }
+        navigation_bake_request = await app.service.navigation_polygon_bake_request(
+            navigation_region_path,
+            source_root_path=wall_path,
+            settings=navigation_bake_settings,
+            scene_file=scene_file,
+        )
+        if (
+            navigation_bake_request.get("status") not in {"pending", "ready"}
+            or navigation_bake_request.get("source_root_path") != wall_path
+            or navigation_bake_request.get("source_geometry", {}).get("obstruction_outline_count", 0)
+            < 1
+            or navigation_bake_request.get("source_geometry", {})
+            .get("bounds", {})
+            .get("size", {})
+            .get("x", 0.0)
+            <= 0.0
+        ):
+            raise RuntimeError(
+                f"NavigationPolygon source geometry bake was not started: {navigation_bake_request}"
+            )
+        navigation_bake_result = await _wait_for_navigation_polygon_bake(
+            app, navigation_bake_request["request_id"]
+        )
+        baked_result_polygon = navigation_bake_result.get("result", {}).get(
+            "navigation_polygon", {}
+        )
+        if (
+            navigation_bake_result.get("status") != "ready"
+            or not baked_result_polygon.get("polygons")
+            or baked_result_polygon.get("agent_radius") != 4.0
+            or baked_result_polygon.get("bake_settings", {}).get("cell_size") != 2.0
+            or baked_result_polygon.get("bake_settings", {}).get("border_size") != 4.0
+            or baked_result_polygon.get("bake_settings", {}).get("baking_rect")
+            != navigation_bake_settings["baking_rect"]
+            or baked_result_polygon.get("bake_settings", {}).get("baking_rect_offset")
+            != navigation_bake_settings["baking_rect_offset"]
+            or baked_result_polygon.get("bake_settings", {}).get("sample_partition_type")
+            != "triangulate"
+            or baked_result_polygon.get("bake_settings", {}).get("parsed_geometry_type")
+            != "static_colliders"
+            or baked_result_polygon.get("bake_settings", {}).get("parsed_collision_layers")
+            != [2, 5]
+        ):
+            raise RuntimeError(
+                f"NavigationPolygon source geometry bake did not complete: {navigation_bake_result}"
+            )
+        undo_navigation_bake = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_navigation_bake.get("changed"):
+            raise RuntimeError("NavigationPolygon source geometry bake was not undoable")
+        navigation_before_bake_redo = await app.service.navigation_polygon_get(
+            navigation_region_path, scene_file=scene_file
+        )
+        if navigation_before_bake_redo["navigation_polygon"]["agent_radius"] != 8.0:
+            raise RuntimeError("Undo did not restore the pre-bake NavigationPolygon")
+        redo_navigation_bake = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_navigation_bake.get("changed"):
+            raise RuntimeError("NavigationPolygon source geometry bake was not redoable")
+        navigation_after_bake_redo = await app.service.navigation_polygon_get(
+            navigation_region_path, scene_file=scene_file
+        )
+        if navigation_after_bake_redo["navigation_polygon"]["agent_radius"] != 4.0:
+            raise RuntimeError("Redo did not restore the baked NavigationPolygon")
 
         navigation_agent = await app.service.node_create(
             type_name="NavigationAgent2D",
@@ -6367,6 +6479,22 @@ async def _wait_for_runtime_audio_control_result(
         await asyncio.sleep(0.1)
     raise RuntimeError(
         "Runtime audio control did not complete within "
+        f"{timeout_seconds:.0f} seconds; last result: {result}"
+    )
+
+
+async def _wait_for_navigation_polygon_bake(
+    app: object, request_id: str, timeout_seconds: float = 10.0
+) -> dict:
+    attempts = int(timeout_seconds / 0.1)
+    result: dict = {}
+    for _ in range(attempts):
+        result = await app.service.navigation_polygon_bake_result_get(request_id)
+        if result.get("status") != "pending":
+            return result
+        await asyncio.sleep(0.1)
+    raise RuntimeError(
+        "NavigationPolygon source geometry bake did not complete within "
         f"{timeout_seconds:.0f} seconds; last result: {result}"
     )
 
