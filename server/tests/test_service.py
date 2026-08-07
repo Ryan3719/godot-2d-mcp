@@ -688,6 +688,19 @@ class RuntimeTestBridge(FakeBridge):
             return {"play_state": "stopped" if self.stopped else "playing"}
         if command == "runtime_get_state":
             return {"connected": True}
+        if command == "runtime_screenshot_request":
+            return {"request_id": "screenshot-123", "status": "pending"}
+        if command == "runtime_screenshot_get":
+            return {
+                "status": "ready",
+                "result": {
+                    "ok": True,
+                    "mime_type": "image/png",
+                    "width": 1,
+                    "height": 1,
+                    "byte_size": 1,
+                },
+            }
         if command == "editor_stop":
             self.stopped = True
             return {"requested": True, "was_playing": True}
@@ -717,6 +730,43 @@ async def test_runtime_test_run_orchestrates_bounded_launch_and_cleanup() -> Non
         "editor_stop",
         "editor_get_state",
     ]
+
+
+@pytest.mark.asyncio
+async def test_runtime_test_run_preserves_full_image_assertion_wire_form() -> None:
+    bridge = RuntimeTestBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    assertions = [
+        {
+            "kind": "color_presence",
+            "color": {"r": 1, "g": 2, "b": 3},
+            "min_pixels": 1,
+        }
+    ]
+
+    async def runtime_screenshot_assert(
+        request_id: str,
+        raw_assertions: list[dict[str, Any]],
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        assert request_id == "screenshot-123"
+        assert raw_assertions == assertions
+        assert session_id == "project@a1b2"
+        return {"status": "ready", "passed": True, "assertions": []}
+
+    service.runtime_screenshot_assert = runtime_screenshot_assert  # type: ignore[method-assign]
+    result = await service.runtime_test_run(
+        mode="custom",
+        scene_file="res://runtime_smoke.tscn",
+        settle_seconds=0.0,
+        screenshot={"format": "png", "max_width": 1, "max_height": 1},
+        screenshot_assertions=assertions,
+        timeout_seconds=3.0,
+        session_id="project@a1b2",
+    )
+
+    assert result["status"] == "passed"
+    assert result["screenshot_assertions"]["passed"] is True
 
 
 @pytest.mark.asyncio

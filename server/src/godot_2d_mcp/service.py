@@ -3821,7 +3821,10 @@ def _validate_runtime_test_assertions(
         raise ValueError("screenshot_assertions requires a screenshot configuration")
     if screenshot["format"] != "png":
         raise ValueError("screenshot_assertions requires screenshot.format to be png")
-    return validate_screenshot_assertions(assertions)
+    # Validate here, but preserve the declarative wire form for the assertion service.
+    # Its own normalization uses None internally to represent a full-image region.
+    validate_screenshot_assertions(assertions)
+    return assertions
 
 
 def _validate_runtime_test_seconds(
