@@ -127,6 +127,10 @@ static func serialize(value: Variant, depth: int = 0) -> Variant:
 	return null
 
 
+static func decode_json_value(value: Variant) -> Dictionary:
+	return _decode_json_variant(value)
+
+
 static func describe_container(value: Variant) -> Variant:
 	if value is Array and value.is_typed():
 		return {

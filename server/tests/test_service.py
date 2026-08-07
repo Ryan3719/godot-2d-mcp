@@ -225,6 +225,94 @@ async def test_button_2d_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_button_menu_item_tools_forward_validated_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    items = [
+        {
+            "kind": "normal",
+            "text": "Open",
+            "id": 10,
+            "icon_path": "res://ui/open.svg",
+            "metadata": {"action": "open"},
+            "disabled": False,
+            "tooltip": "Open a scene",
+            "indent": 1,
+            "text_direction": "ltr",
+            "auto_translate_mode": "always",
+            "icon_max_width": 32,
+            "icon_modulate": {"r": 1.0, "g": 0.8, "b": 0.2, "a": 1.0},
+        },
+        {"kind": "check", "text": "Grid", "checked": True},
+        {"kind": "multistate", "text": "Quality", "max_states": 3, "state": 1},
+        {"kind": "separator", "text": "Advanced"},
+    ]
+
+    await service.button_menu_items_get(
+        "/Main/Actions", offset=4, limit=50, scene_file="res://main.tscn", session_id="project@a1b2"
+    )
+    await service.button_menu_items_set(
+        "/Main/Actions",
+        items,
+        selected_index=1,
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
+    await service.button_menu_items_clear(
+        "/Main/Actions", scene_file="res://main.tscn", session_id="project@a1b2"
+    )
+
+    assert bridge.calls == [
+        (
+            "button_menu_items_get",
+            {"path": "/Main/Actions", "offset": 4, "limit": 50, "scene_file": "res://main.tscn"},
+            "project@a1b2",
+        ),
+        (
+            "button_menu_items_set",
+            {
+                "path": "/Main/Actions",
+                "items": items,
+                "selected_index": 1,
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        ),
+        (
+            "button_menu_items_clear",
+            {"path": "/Main/Actions", "scene_file": "res://main.tscn"},
+            "project@a1b2",
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_button_menu_item_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="offset"):
+        await service.button_menu_items_get("/Main/Actions", offset=-1)
+    with pytest.raises(ValueError, match="items"):
+        await service.button_menu_items_set("/Main/Actions", [])
+    with pytest.raises(ValueError, match="max_states"):
+        await service.button_menu_items_set(
+            "/Main/Actions", [{"kind": "multistate", "text": "Quality", "max_states": 1}]
+        )
+    with pytest.raises(ValueError, match="unsupported menu item field"):
+        await service.button_menu_items_set(
+            "/Main/Actions", [{"kind": "separator", "text": "Tools", "disabled": True}]
+        )
+    with pytest.raises(ValueError, match="JSON-compatible"):
+        await service.button_menu_items_set(
+            "/Main/Actions", [{"kind": "normal", "text": "Open", "metadata": {"bad": {1, 2}}}]
+        )
+    with pytest.raises(ValueError, match="selected_index"):
+        await service.button_menu_items_set(
+            "/Main/Actions", [{"kind": "normal", "text": "Open"}], selected_index=2
+        )
+
+
+@pytest.mark.asyncio
 async def test_editor_run_and_stop_forward_validated_modes() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

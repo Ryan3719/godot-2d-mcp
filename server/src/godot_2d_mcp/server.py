@@ -409,6 +409,23 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def button_menu_items_get(
+        path: str,
+        offset: int = 0,
+        limit: int = 100,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read a paginated OptionButton or MenuButton item list and selection state."""
+        return await service.button_menu_items_get(
+            path=path,
+            offset=offset,
+            limit=limit,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def animation_list(
         player_path: str,
         session_id: str | None = None,
@@ -1071,6 +1088,36 @@ def create_application(
         return await service.button_2d_set(
             path=path,
             properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def button_menu_items_set(
+        path: str,
+        items: list[dict[str, Any]],
+        selected_index: int | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically replace a flat OptionButton or MenuButton item list."""
+        return await service.button_menu_items_set(
+            path=path,
+            items=items,
+            selected_index=selected_index,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def button_menu_items_clear(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Remove every flat OptionButton or MenuButton menu item in one undoable transaction."""
+        return await service.button_menu_items_clear(
+            path=path,
             session_id=session_id,
             scene_file=scene_file,
         )

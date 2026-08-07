@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.42.0"
+const PLUGIN_VERSION := "0.43.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 const RUNTIME_AUTOLOAD_NAME := "Godot2DMcpRuntime"
 const RUNTIME_AUTOLOAD_PATH := "res://addons/godot_2d_mcp/runtime/runtime_bridge.gd"
@@ -190,6 +190,7 @@ func _register_handlers() -> void:
 	_dispatcher.register("animated_sprite_2d_get", animated_sprite_handler.get_animated_sprite_2d)
 	_dispatcher.register("sprite_frames_get", animated_sprite_handler.get_sprite_frames)
 	_dispatcher.register("button_2d_get", button_handler.get_button_2d)
+	_dispatcher.register("button_menu_items_get", button_handler.get_button_menu_items)
 	_dispatcher.register("light_2d_get", lighting_handler.get_light_2d)
 	_dispatcher.register("light_occluder_2d_get", lighting_handler.get_light_occluder_2d)
 	_dispatcher.register("tile_map_layer_get", tile_map_handler.get_tile_map_layer)
@@ -294,6 +295,8 @@ func _register_handlers() -> void:
 		"sprite_frames_animation_remove", animated_sprite_handler.remove_sprite_frames_animation
 	)
 	_dispatcher.register("button_2d_set", button_handler.set_button_2d)
+	_dispatcher.register("button_menu_items_set", button_handler.set_button_menu_items)
+	_dispatcher.register("button_menu_items_clear", button_handler.clear_button_menu_items)
 	_dispatcher.register("light_2d_set", lighting_handler.set_light_2d)
 	_dispatcher.register("light_occluder_2d_set", lighting_handler.set_light_occluder_2d)
 	_dispatcher.register("tile_set_create", tile_map_handler.create_tile_set)

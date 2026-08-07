@@ -115,6 +115,22 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             ),
             None,
         )
+        option_button_coverage = next(
+            (
+                entry
+                for entry in coverage.get("entries", [])
+                if entry.get("name") == "OptionButton"
+            ),
+            None,
+        )
+        menu_button_coverage = next(
+            (
+                entry
+                for entry in coverage.get("entries", [])
+                if entry.get("name") == "MenuButton"
+            ),
+            None,
+        )
         if (
             coverage.get("audit_version") != 1
             or coverage.get("scope") != "node"
@@ -127,6 +143,21 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or button_coverage.get("test_status") != "semantic_smoke"
         ):
             raise RuntimeError(f"Button coverage audit was incomplete: {coverage}")
+        for entry, class_name in (
+            (option_button_coverage, "OptionButton"),
+            (menu_button_coverage, "MenuButton"),
+        ):
+            if (
+                entry is None
+                or {
+                    "button_menu_items_get",
+                    "button_menu_items_set",
+                    "button_menu_items_clear",
+                }
+                - set(entry.get("semantic_tools", []))
+                or entry.get("test_status") != "semantic_smoke"
+            ):
+                raise RuntimeError(f"{class_name} coverage audit was incomplete: {coverage}")
         tile_set_coverage = next(
             (
                 entry
@@ -3555,6 +3586,126 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             "BASE_BUTTON_REQUIRED",
         )
 
+        option_button = await app.service.node_create(
+            type_name="OptionButton",
+            name="AgentOptionMenu",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        option_button_path = option_button["path"]
+        option_menu = await app.service.button_menu_items_set(
+            option_button_path,
+            [
+                {
+                    "kind": "normal",
+                    "text": "Easy",
+                    "id": 10,
+                    "icon_path": "res://test_icon.svg",
+                    "metadata": {"difficulty": 1},
+                    "tooltip": "Suitable for new players",
+                },
+                {"kind": "normal", "text": "Normal", "id": 20, "disabled": True},
+                {"kind": "separator", "text": "Locked"},
+            ],
+            selected_index=1,
+            scene_file=scene_file,
+        )
+        if (
+            option_menu["type"] != "OptionButton"
+            or option_menu["item_count"] != 3
+            or option_menu["selected_index"] != 1
+            or option_menu["items"][0]["icon"]["resource_path"] != "res://test_icon.svg"
+            or option_menu["items"][0]["metadata"] != {"difficulty": 1}
+            or option_menu["items"][2]["kind"] != "separator"
+        ):
+            raise RuntimeError("OptionButton menu items were not applied")
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("OptionButton menu item update was not undoable")
+        restored_option_menu = await app.service.button_menu_items_get(
+            option_button_path, scene_file=scene_file
+        )
+        if restored_option_menu["item_count"] != 0:
+            raise RuntimeError("Undo did not restore the empty OptionButton menu")
+        if not (await app.service.scene_redo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("OptionButton menu item update was not redoable")
+        resized_option_menu = await app.service.button_menu_items_set(
+            option_button_path,
+            [{"kind": "normal", "text": "Easy", "id": 10}],
+            scene_file=scene_file,
+        )
+        if resized_option_menu["selected_index"] != -1:
+            raise RuntimeError("OptionButton did not clear an out-of-range preserved selection")
+        cleared_option_menu = await app.service.button_menu_items_clear(
+            option_button_path, scene_file=scene_file
+        )
+        if cleared_option_menu["item_count"] != 0 or not cleared_option_menu["undoable"]:
+            raise RuntimeError("OptionButton menu items were not cleared")
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("OptionButton menu clearing was not undoable")
+
+        menu_button = await app.service.node_create(
+            type_name="MenuButton",
+            name="AgentMenuButton",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        menu_button_path = menu_button["path"]
+        menu_items = await app.service.button_menu_items_set(
+            menu_button_path,
+            [
+                {
+                    "kind": "normal",
+                    "text": "Open",
+                    "id": 100,
+                    "icon_path": "res://test_icon.svg",
+                    "metadata": {"command": "open"},
+                    "tooltip": "Open an existing scene",
+                    "accelerator": 79,
+                    "indent": 1,
+                    "text_direction": "ltr",
+                    "auto_translate_mode": "always",
+                    "icon_max_width": 24,
+                    "icon_modulate": {"r": 0.8, "g": 0.9, "b": 1.0, "a": 1.0},
+                },
+                {"kind": "check", "text": "Show Grid", "checked": True},
+                {"kind": "radio", "text": "Snap", "checked": True},
+                {"kind": "multistate", "text": "Quality", "max_states": 3, "state": 2},
+                {"kind": "separator", "text": "Advanced"},
+            ],
+            scene_file=scene_file,
+        )
+        if (
+            menu_items["type"] != "MenuButton"
+            or menu_items["item_count"] != 5
+            or menu_items["items"][0]["icon"]["resource_path"] != "res://test_icon.svg"
+            or menu_items["items"][0]["metadata"] != {"command": "open"}
+            or menu_items["items"][1]["checked"] is not True
+            or menu_items["items"][2]["kind"] != "radio"
+            or menu_items["items"][3]["state"] != 2
+            or menu_items["items"][4]["kind"] != "separator"
+        ):
+            raise RuntimeError("MenuButton menu items were not applied")
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("MenuButton menu item update was not undoable")
+        restored_menu_button = await app.service.button_menu_items_get(
+            menu_button_path, scene_file=scene_file
+        )
+        if restored_menu_button["item_count"] != 0:
+            raise RuntimeError("Undo did not restore the empty MenuButton menu")
+        if not (await app.service.scene_redo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("MenuButton menu item update was not redoable")
+        cleared_menu_button = await app.service.button_menu_items_clear(
+            menu_button_path, scene_file=scene_file
+        )
+        if cleared_menu_button["item_count"] != 0:
+            raise RuntimeError("MenuButton menu items were not cleared")
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("MenuButton menu clearing was not undoable")
+        await _expect_godot_error(
+            app.service.button_menu_items_get(semantic_button_path, scene_file=scene_file),
+            "BUTTON_MENU_REQUIRED",
+        )
+
         initial_canvas_material = await app.service.canvas_item_material_get(
             canvas_item_path,
             scene_file=scene_file,
@@ -5138,7 +5289,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 55 or _has_node(
+        if final_hierarchy.get("total") != 57 or _has_node(
             final_hierarchy, marker_path
         ):
             raise RuntimeError("Unexpected final hierarchy after write operations")
@@ -5159,6 +5310,11 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentAnimatedSprite" not in saved_scene
             or "AgentSemanticButton" not in saved_scene
             or "AgentTextureButton" not in saved_scene
+            or "AgentOptionMenu" not in saved_scene
+            or "AgentMenuButton" not in saved_scene
+            or "Easy" not in saved_scene
+            or "Show Grid" not in saved_scene
+            or "Quality" not in saved_scene
             or "AgentPatrolPath" not in saved_scene
             or "AgentSkeleton" not in saved_scene
             or "AgentRootBone" not in saved_scene
