@@ -353,6 +353,21 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def class_2d_coverage_snapshot(
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Collect a complete, versioned ClassDB snapshot for Godot 2D coverage comparisons."""
+        return await service.class_2d_coverage_snapshot(session_id=session_id)
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def class_2d_coverage_diff(
+        baseline: dict[str, Any],
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Compare a class_2d_coverage_snapshot result with the active Godot build."""
+        return await service.class_2d_coverage_diff(baseline=baseline, session_id=session_id)
+
+    @mcp.tool(annotations=READ_ONLY)
     async def node_get_properties(
         path: str,
         fields: list[str] | None = None,

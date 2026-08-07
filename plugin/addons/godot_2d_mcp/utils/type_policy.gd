@@ -445,6 +445,8 @@ static func is_supported_node_class(type_name: StringName) -> bool:
 	var class_string := String(type_name)
 	if not ClassDB.class_exists(type_name) or not ClassDB.can_instantiate(type_name):
 		return false
+	if _is_editor_only_class(type_name):
+		return false
 	if class_string == "Node3D" or ClassDB.is_parent_class(type_name, "Node3D"):
 		return false
 	if class_string.contains("3D"):
@@ -456,6 +458,11 @@ static func is_supported_node_class(type_name: StringName) -> bool:
 	if class_string.ends_with("2D"):
 		return true
 	return GENERIC_NODE_ALLOWLIST.has(class_string)
+
+
+static func _is_editor_only_class(type_name: StringName) -> bool:
+	var api_type := ClassDB.class_get_api_type(type_name)
+	return api_type == ClassDB.API_EDITOR or api_type == ClassDB.API_EDITOR_EXTENSION
 
 
 static func category(type_name: StringName) -> String:

@@ -22,6 +22,64 @@ class FakeBridge:
         return {"command": command}
 
 
+class CoverageBridge(FakeBridge):
+    def __init__(self, pages: list[dict[str, Any]]) -> None:
+        super().__init__()
+        self.pages = pages
+
+    async def call(
+        self,
+        command: str,
+        params: dict[str, Any] | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        self.calls.append((command, params or {}, session_id))
+        if command != "class_2d_coverage" or not self.pages:
+            raise AssertionError(f"Unexpected coverage bridge call: {command}")
+        return self.pages.pop(0)
+
+
+def _coverage_entry(
+    name: str,
+    *,
+    kind: str = "node",
+    parent: str = "Control",
+    instantiable: bool = True,
+    semantic_tools: list[str] | None = None,
+) -> dict[str, Any]:
+    tools = semantic_tools or []
+    return {
+        "name": name,
+        "parent": parent,
+        "kind": kind,
+        "category": "ui" if kind == "node" else "resource",
+        "instantiable": instantiable,
+        "property_count": 12,
+        "signal_count": 2,
+        "base_support": {
+            "create": kind == "node",
+            "inspect_properties": kind == "node",
+            "scene_structure": kind == "node",
+            "set_properties": kind == "node",
+        },
+        "semantic_tools": tools,
+        "support_level": "semantic" if tools else "generic",
+        "test_status": "semantic_smoke" if tools else "not_directly_smoke_covered",
+    }
+
+
+def _coverage_page(
+    entries: list[dict[str, Any]], *, has_more: bool = False, total: int | None = None
+) -> dict[str, Any]:
+    return {
+        "audit_version": 1,
+        "engine": {"major": 4, "minor": 7, "patch": 0, "status": "stable"},
+        "entries": entries,
+        "total": len(entries) if total is None else total,
+        "has_more": has_more,
+    }
+
+
 @pytest.mark.asyncio
 async def test_hierarchy_params_are_forwarded() -> None:
     bridge = FakeBridge()
@@ -812,6 +870,123 @@ async def test_class_2d_coverage_rejects_invalid_filters() -> None:
         await service.class_2d_coverage(offset=-1)
     with pytest.raises(ValueError, match="limit"):
         await service.class_2d_coverage(limit=501)
+
+
+@pytest.mark.asyncio
+async def test_class_2d_coverage_snapshot_collects_all_pages() -> None:
+    bridge = CoverageBridge(
+        [
+            _coverage_page(
+                [_coverage_entry("Button", semantic_tools=["button_2d_get"])],
+                has_more=True,
+                total=2,
+            ),
+            _coverage_page([_coverage_entry("Theme", kind="resource")], total=2),
+        ]
+    )
+    service = GodotService(SessionRegistry(), bridge)
+
+    result = await service.class_2d_coverage_snapshot(session_id="project@a1b2")
+
+    assert result == {
+        "snapshot_version": 1,
+        "audit_version": 1,
+        "engine": {"major": 4, "minor": 7, "patch": 0, "status": "stable"},
+        "entries": [
+            _coverage_entry("Button", semantic_tools=["button_2d_get"]),
+            _coverage_entry("Theme", kind="resource"),
+        ],
+        "total": 2,
+        "summary": {
+            "node": 1,
+            "resource": 1,
+            "semantic": 1,
+            "generic": 1,
+            "semantic_smoke": 1,
+        },
+    }
+    assert bridge.calls == [
+        (
+            "class_2d_coverage",
+            {"query": "", "scope": "all", "offset": 0, "limit": 500},
+            "project@a1b2",
+        ),
+        (
+            "class_2d_coverage",
+            {"query": "", "scope": "all", "offset": 1, "limit": 500},
+            "project@a1b2",
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_class_2d_coverage_diff_reports_additions_removals_and_breaking_changes() -> None:
+    baseline = {
+        "snapshot_version": 1,
+        "audit_version": 1,
+        "engine": {"major": 4, "minor": 7, "patch": 0, "status": "stable"},
+        "entries": [
+            _coverage_entry("Button", semantic_tools=["button_2d_get", "button_2d_set"]),
+            _coverage_entry("RemovedControl"),
+        ],
+        "total": 2,
+    }
+    bridge = CoverageBridge(
+        [
+            _coverage_page(
+                [
+                    _coverage_entry("AddedControl"),
+                    _coverage_entry("Button", semantic_tools=["button_2d_get"]),
+                ],
+                total=2,
+            )
+        ]
+    )
+    service = GodotService(SessionRegistry(), bridge)
+
+    result = await service.class_2d_coverage_diff(baseline, session_id="project@a1b2")
+
+    assert [entry["name"] for entry in result["added"]] == ["AddedControl"]
+    assert [entry["name"] for entry in result["removed"]] == ["RemovedControl"]
+    assert result["changed"] == [
+        {
+            "name": "Button",
+            "changes": {
+                "semantic_tools": {
+                    "before": ["button_2d_get", "button_2d_set"],
+                    "after": ["button_2d_get"],
+                }
+            },
+        }
+    ]
+    assert result["breaking_changes"] == {
+        "removed": ["RemovedControl"],
+        "changed": [
+            {
+                "name": "Button",
+                "reasons": ["semantic_tool_removed:button_2d_set"],
+            }
+        ],
+    }
+    assert result["summary"] == {"added": 1, "removed": 1, "changed": 1, "breaking": 2}
+
+
+@pytest.mark.asyncio
+async def test_class_2d_coverage_diff_rejects_incomplete_baselines() -> None:
+    bridge = CoverageBridge([])
+    service = GodotService(SessionRegistry(), bridge)
+
+    with pytest.raises(ValueError, match="baseline.total"):
+        await service.class_2d_coverage_diff(
+            {
+                "snapshot_version": 1,
+                "audit_version": 1,
+                "engine": {"major": 4, "minor": 7, "patch": 0, "status": "stable"},
+                "entries": [],
+                "total": 1,
+            }
+        )
+    assert bridge.calls == []
 
 
 @pytest.mark.asyncio

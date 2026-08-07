@@ -701,13 +701,13 @@ func _tab_items_response(
 
 
 func _serialize_configuration(container: Container) -> Dictionary:
-	var configuration := {"accessibility_region": bool(container.get("accessibility_region"))}
+	var configuration := {"accessibility_region": container.get("accessibility_region")}
 	if container is BoxContainer:
 		configuration["alignment"] = _enum_name(int(container.get("alignment")), ALIGNMENTS)
 	if container is GridContainer:
 		configuration["columns"] = int(container.get("columns"))
 	if container is CenterContainer:
-		configuration["use_top_left"] = bool(container.get("use_top_left"))
+		configuration["use_top_left"] = container.get("use_top_left")
 	if container is AspectRatioContainer:
 		configuration["ratio"] = float(container.get("ratio"))
 		configuration["stretch_mode"] = _enum_name(
@@ -724,21 +724,21 @@ func _serialize_configuration(container: Container) -> Dictionary:
 		configuration["last_wrap_alignment"] = _enum_name(
 			int(container.get("last_wrap_alignment")), FLOW_LAST_WRAP_ALIGNMENTS
 		)
-		configuration["reverse_fill"] = bool(container.get("reverse_fill"))
+		configuration["reverse_fill"] = container.get("reverse_fill")
 	if container is SplitContainer:
 		configuration["split_offsets"] = _serialize_packed_ints(container.get("split_offsets"))
-		configuration["collapsed"] = bool(container.get("collapsed"))
-		configuration["dragging_enabled"] = bool(container.get("dragging_enabled"))
+		configuration["collapsed"] = container.get("collapsed")
+		configuration["dragging_enabled"] = container.get("dragging_enabled")
 		configuration["dragger_visibility"] = _enum_name(
 			int(container.get("dragger_visibility")), DRAGGER_VISIBILITIES
 		)
-		configuration["touch_dragger_enabled"] = bool(container.get("touch_dragger_enabled"))
-		configuration["drag_nested_intersections"] = bool(container.get("drag_nested_intersections"))
+		configuration["touch_dragger_enabled"] = container.get("touch_dragger_enabled")
+		configuration["drag_nested_intersections"] = container.get("drag_nested_intersections")
 		configuration["drag_area_margin_begin"] = int(container.get("drag_area_margin_begin"))
 		configuration["drag_area_margin_end"] = int(container.get("drag_area_margin_end"))
 		configuration["drag_area_offset"] = int(container.get("drag_area_offset"))
-		configuration["drag_area_highlight_in_editor"] = bool(
-			container.get("drag_area_highlight_in_editor")
+		configuration["drag_area_highlight_in_editor"] = container.get(
+			"drag_area_highlight_in_editor"
 		)
 	if container is ScrollContainer:
 		for property_name in [
@@ -773,9 +773,9 @@ func _serialize_configuration(container: Container) -> Dictionary:
 			int(container.get("tab_focus_mode")), FOCUS_MODES
 		)
 	if container is SubViewportContainer:
-		configuration["stretch"] = bool(container.get("stretch"))
+		configuration["stretch"] = container.get("stretch")
 		configuration["stretch_shrink"] = int(container.get("stretch_shrink"))
-		configuration["mouse_target"] = bool(container.get("mouse_target"))
+		configuration["mouse_target"] = container.get("mouse_target")
 	return configuration
 
 

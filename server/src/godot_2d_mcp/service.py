@@ -15,6 +15,22 @@ from godot_2d_mcp.screenshot_assertions import (
 )
 from godot_2d_mcp.sessions import SessionRegistry
 
+_COVERAGE_SNAPSHOT_VERSION = 1
+_COVERAGE_PAGE_LIMIT = 500
+_MAX_COVERAGE_SNAPSHOT_ENTRIES = 2_000
+_COVERAGE_ENTRY_FIELDS = (
+    "parent",
+    "kind",
+    "category",
+    "instantiable",
+    "property_count",
+    "signal_count",
+    "base_support",
+    "semantic_tools",
+    "support_level",
+    "test_status",
+)
+
 
 class _RuntimeTestTimeout(RuntimeError):
     """A test orchestration phase exceeded its bounded total duration."""
@@ -534,6 +550,109 @@ class GodotService:
             {"query": query, "scope": normalized_scope, "offset": offset, "limit": limit},
             session_id=session_id,
         )
+
+    async def class_2d_coverage_snapshot(
+        self, session_id: str | None = None
+    ) -> dict[str, Any]:
+        """Collect one complete, versioned ClassDB 2D coverage snapshot."""
+        return await self._collect_2d_coverage_snapshot(session_id=session_id)
+
+    async def class_2d_coverage_diff(
+        self,
+        baseline: dict[str, Any],
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Compare a previous complete 2D coverage snapshot with the active Godot build."""
+        normalized_baseline = _validate_coverage_snapshot(baseline)
+        current = await self._collect_2d_coverage_snapshot(session_id=session_id)
+        baseline_by_name = {entry["name"]: entry for entry in normalized_baseline["entries"]}
+        current_by_name = {entry["name"]: entry for entry in current["entries"]}
+        added_names = sorted(current_by_name.keys() - baseline_by_name.keys())
+        added = [current_by_name[name] for name in added_names]
+        removed = [
+            baseline_by_name[name]
+            for name in sorted(baseline_by_name.keys() - current_by_name.keys())
+        ]
+        changed: list[dict[str, Any]] = []
+        breaking_changes: list[dict[str, Any]] = []
+        for name in sorted(baseline_by_name.keys() & current_by_name.keys()):
+            before = baseline_by_name[name]
+            after = current_by_name[name]
+            fields = _coverage_entry_changes(before, after)
+            if not fields:
+                continue
+            change = {"name": name, "changes": fields}
+            changed.append(change)
+            reasons = _coverage_breaking_change_reasons(before, after)
+            if reasons:
+                breaking_changes.append({"name": name, "reasons": reasons})
+        return {
+            "diff_version": 1,
+            "baseline_engine": normalized_baseline["engine"],
+            "current_engine": current["engine"],
+            "baseline_total": len(normalized_baseline["entries"]),
+            "current_total": len(current["entries"]),
+            "added": added,
+            "removed": removed,
+            "changed": changed,
+            "unchanged_count": len(baseline_by_name.keys() & current_by_name.keys()) - len(changed),
+            "breaking_changes": {
+                "removed": [entry["name"] for entry in removed],
+                "changed": breaking_changes,
+            },
+            "summary": {
+                "added": len(added),
+                "removed": len(removed),
+                "changed": len(changed),
+                "breaking": len(removed) + len(breaking_changes),
+            },
+        }
+
+    async def _collect_2d_coverage_snapshot(
+        self, session_id: str | None = None
+    ) -> dict[str, Any]:
+        entries: list[dict[str, Any]] = []
+        offset = 0
+        first_page: dict[str, Any] | None = None
+        while True:
+            page = await self.bridge.call(
+                "class_2d_coverage",
+                {"query": "", "scope": "all", "offset": offset, "limit": _COVERAGE_PAGE_LIMIT},
+                session_id=session_id,
+            )
+            if first_page is None:
+                first_page = page
+            raw_entries = page.get("entries")
+            if not isinstance(raw_entries, list):
+                raise RuntimeError("Godot returned an invalid 2D coverage audit page")
+            entries.extend(_normalize_coverage_entry(entry) for entry in raw_entries)
+            if len(entries) > _MAX_COVERAGE_SNAPSHOT_ENTRIES:
+                raise RuntimeError(
+                    "Godot returned more 2D coverage entries than the snapshot safety limit"
+                )
+            if page.get("has_more") is not True:
+                break
+            next_offset = offset + len(raw_entries)
+            if not raw_entries or next_offset <= offset:
+                raise RuntimeError("Godot returned a non-progressing 2D coverage audit page")
+            offset = next_offset
+        if first_page is None:
+            raise RuntimeError("Godot returned no 2D coverage audit pages")
+        total = first_page.get("total")
+        if isinstance(total, bool) or not isinstance(total, int) or total != len(entries):
+            raise RuntimeError("Godot returned an incomplete 2D coverage audit")
+        engine = first_page.get("engine")
+        if not isinstance(engine, dict):
+            raise RuntimeError("Godot returned no engine metadata for the 2D coverage audit")
+        normalized_entries = sorted(entries, key=lambda entry: entry["name"])
+        return {
+            "snapshot_version": _COVERAGE_SNAPSHOT_VERSION,
+            "audit_version": first_page.get("audit_version"),
+            "engine": dict(engine),
+            "entries": normalized_entries,
+            "total": len(normalized_entries),
+            "summary": _coverage_summary(normalized_entries),
+        }
 
     async def node_get_properties(
         self,
@@ -3740,6 +3859,157 @@ class GodotService:
             _scene_params(scene_file),
             session_id=session_id,
         )
+
+
+def _validate_coverage_snapshot(snapshot: Any) -> dict[str, Any]:
+    if not isinstance(snapshot, dict):
+        raise ValueError("baseline must be a class_2d_coverage_snapshot result")
+    if snapshot.get("snapshot_version") != _COVERAGE_SNAPSHOT_VERSION:
+        raise ValueError(
+            f"baseline.snapshot_version must be {_COVERAGE_SNAPSHOT_VERSION}"
+        )
+    audit_version = snapshot.get("audit_version")
+    if isinstance(audit_version, bool) or not isinstance(audit_version, int) or audit_version < 1:
+        raise ValueError("baseline.audit_version must be a positive integer")
+    engine = _normalize_coverage_engine(snapshot.get("engine"), "baseline.engine")
+    raw_entries = snapshot.get("entries")
+    if not isinstance(raw_entries, list) or len(raw_entries) > _MAX_COVERAGE_SNAPSHOT_ENTRIES:
+        raise ValueError(
+            "baseline.entries must be an array containing at most "
+            f"{_MAX_COVERAGE_SNAPSHOT_ENTRIES} entries"
+        )
+    total = snapshot.get("total")
+    if isinstance(total, bool) or not isinstance(total, int) or total != len(raw_entries):
+        raise ValueError("baseline.total must equal the number of baseline.entries")
+    entries = [_normalize_coverage_entry(entry, "baseline.entries") for entry in raw_entries]
+    names = [entry["name"] for entry in entries]
+    if len(set(names)) != len(names):
+        raise ValueError("baseline.entries must not contain duplicate class names")
+    return {
+        "snapshot_version": _COVERAGE_SNAPSHOT_VERSION,
+        "audit_version": audit_version,
+        "engine": engine,
+        "entries": sorted(entries, key=lambda entry: entry["name"]),
+        "total": len(entries),
+    }
+
+
+def _normalize_coverage_engine(value: Any, label: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} must be an object")
+    normalized: dict[str, Any] = {}
+    for name in ("major", "minor", "patch"):
+        component = value.get(name)
+        if isinstance(component, bool) or not isinstance(component, int) or component < 0:
+            raise ValueError(f"{label}.{name} must be a non-negative integer")
+        normalized[name] = component
+    status = value.get("status")
+    if not isinstance(status, str) or len(status) > 64:
+        raise ValueError(f"{label}.status must be a string up to 64 characters")
+    normalized["status"] = status
+    return normalized
+
+
+def _normalize_coverage_entry(value: Any, label: str = "coverage entry") -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ValueError(f"{label} must be an object")
+    name = value.get("name")
+    if not isinstance(name, str) or not name or len(name) > 256:
+        raise ValueError(f"{label}.name must be a non-empty string up to 256 characters")
+    parent = value.get("parent")
+    category = value.get("category")
+    if not isinstance(parent, str) or len(parent) > 256:
+        raise ValueError(f"{label}.parent must be a string up to 256 characters")
+    if not isinstance(category, str) or not category or len(category) > 128:
+        raise ValueError(f"{label}.category must be a non-empty string up to 128 characters")
+    kind = value.get("kind")
+    if kind not in {"node", "resource"}:
+        raise ValueError(f"{label}.kind must be node or resource")
+    instantiable = value.get("instantiable")
+    if not isinstance(instantiable, bool):
+        raise ValueError(f"{label}.instantiable must be a boolean")
+    support_level = value.get("support_level")
+    if support_level not in {"generic", "semantic"}:
+        raise ValueError(f"{label}.support_level must be generic or semantic")
+    test_status = value.get("test_status")
+    if not isinstance(test_status, str) or not test_status or len(test_status) > 128:
+        raise ValueError(f"{label}.test_status must be a non-empty string up to 128 characters")
+    normalized: dict[str, Any] = {
+        "name": name,
+        "parent": parent,
+        "kind": kind,
+        "category": category,
+        "instantiable": instantiable,
+        "support_level": support_level,
+        "test_status": test_status,
+    }
+    for property_name in ("property_count", "signal_count"):
+        count = value.get(property_name)
+        if isinstance(count, bool) or not isinstance(count, int) or not 0 <= count <= 100_000:
+            raise ValueError(f"{label}.{property_name} must be an integer between 0 and 100000")
+        normalized[property_name] = count
+    raw_base_support = value.get("base_support")
+    if not isinstance(raw_base_support, dict) or len(raw_base_support) > 32:
+        raise ValueError(f"{label}.base_support must be an object with at most 32 entries")
+    base_support: dict[str, bool] = {}
+    for capability, enabled in raw_base_support.items():
+        if (
+            not isinstance(capability, str)
+            or not capability
+            or len(capability) > 128
+            or not isinstance(enabled, bool)
+        ):
+            raise ValueError(f"{label}.base_support must map capability names to booleans")
+        base_support[capability] = enabled
+    raw_semantic_tools = value.get("semantic_tools")
+    if not isinstance(raw_semantic_tools, list) or len(raw_semantic_tools) > 256:
+        raise ValueError(f"{label}.semantic_tools must contain at most 256 tool names")
+    semantic_tools: list[str] = []
+    for tool_name in raw_semantic_tools:
+        if not isinstance(tool_name, str) or not tool_name or len(tool_name) > 128:
+            raise ValueError(f"{label}.semantic_tools must only contain non-empty tool names")
+        semantic_tools.append(tool_name)
+    if len(set(semantic_tools)) != len(semantic_tools):
+        raise ValueError(f"{label}.semantic_tools must not contain duplicates")
+    normalized["base_support"] = dict(sorted(base_support.items()))
+    normalized["semantic_tools"] = sorted(semantic_tools)
+    return normalized
+
+
+def _coverage_summary(entries: list[dict[str, Any]]) -> dict[str, int]:
+    summary = {"node": 0, "resource": 0, "semantic": 0, "generic": 0, "semantic_smoke": 0}
+    for entry in entries:
+        summary[entry["kind"]] += 1
+        summary[entry["support_level"]] += 1
+        if entry["test_status"] == "semantic_smoke":
+            summary["semantic_smoke"] += 1
+    return summary
+
+
+def _coverage_entry_changes(
+    before: dict[str, Any], after: dict[str, Any]
+) -> dict[str, dict[str, Any]]:
+    changes: dict[str, dict[str, Any]] = {}
+    for field in _COVERAGE_ENTRY_FIELDS:
+        if before[field] != after[field]:
+            changes[field] = {"before": before[field], "after": after[field]}
+    return changes
+
+
+def _coverage_breaking_change_reasons(before: dict[str, Any], after: dict[str, Any]) -> list[str]:
+    reasons: list[str] = []
+    if before["kind"] != after["kind"]:
+        reasons.append("kind_changed")
+    if before["parent"] != after["parent"]:
+        reasons.append("parent_changed")
+    if before["instantiable"] and not after["instantiable"]:
+        reasons.append("instantiability_removed")
+    for capability, enabled in before["base_support"].items():
+        if enabled and not after["base_support"].get(capability, False):
+            reasons.append(f"base_support_removed:{capability}")
+    removed_tools = sorted(set(before["semantic_tools"]) - set(after["semantic_tools"]))
+    reasons.extend(f"semantic_tool_removed:{tool_name}" for tool_name in removed_tools)
+    return reasons
 
 
 def _validate_node_path(path: str) -> None:
