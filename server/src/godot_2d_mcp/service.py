@@ -2938,6 +2938,37 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def tile_map_layer_terrain_paint(
+        self,
+        path: str,
+        coords: list[dict[str, int]],
+        terrain_set: int,
+        terrain: int,
+        strategy: str = "connect",
+        ignore_empty_terrains: bool = True,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tilemap_coordinates(coords)
+        _validate_tile_set_terrain_set_index(terrain_set)
+        _validate_tile_set_terrain_index(terrain, allow_clear=False, label="terrain")
+        _validate_tilemap_terrain_strategy(strategy)
+        _validate_boolean(ignore_empty_terrains, "ignore_empty_terrains")
+        return await self.bridge.call(
+            "tile_map_layer_terrain_paint",
+            _scene_params(
+                scene_file,
+                path=path,
+                coords=coords,
+                terrain_set=terrain_set,
+                terrain=terrain,
+                strategy=strategy,
+                ignore_empty_terrains=ignore_empty_terrains,
+            ),
+            session_id=session_id,
+        )
+
     async def tile_set_physics_layer_create(
         self,
         path: str,
@@ -3022,6 +3053,48 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def tile_set_layer_set(
+        self,
+        path: str,
+        kind: str,
+        index: int,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tile_set_layer_kind(kind)
+        _validate_tile_set_layer_index(index, "index")
+        _validate_tile_set_layer_properties(kind, properties)
+        return await self.bridge.call(
+            "tile_set_layer_set",
+            _scene_params(
+                scene_file,
+                path=path,
+                kind=kind,
+                index=index,
+                properties=properties,
+            ),
+            session_id=session_id,
+        )
+
+    async def tile_set_layer_remove(
+        self,
+        path: str,
+        kind: str,
+        index: int,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tile_set_layer_kind(kind)
+        _validate_tile_set_layer_index(index, "index")
+        return await self.bridge.call(
+            "tile_set_layer_remove",
+            _scene_params(scene_file, path=path, kind=kind, index=index),
+            session_id=session_id,
+        )
+
     async def tile_set_terrain_set_create(
         self,
         path: str,
@@ -3058,6 +3131,38 @@ class GodotService:
                 name=name,
                 color=color,
             ),
+            session_id=session_id,
+        )
+
+    async def tile_set_terrain_set_remove(
+        self,
+        path: str,
+        terrain_set: int,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tile_set_terrain_set_index(terrain_set)
+        return await self.bridge.call(
+            "tile_set_terrain_set_remove",
+            _scene_params(scene_file, path=path, terrain_set=terrain_set),
+            session_id=session_id,
+        )
+
+    async def tile_set_terrain_remove(
+        self,
+        path: str,
+        terrain_set: int,
+        terrain: int,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_tile_set_terrain_set_index(terrain_set)
+        _validate_tile_set_terrain_index(terrain, allow_clear=False, label="terrain")
+        return await self.bridge.call(
+            "tile_set_terrain_remove",
+            _scene_params(scene_file, path=path, terrain_set=terrain_set, terrain=terrain),
             session_id=session_id,
         )
 
@@ -5781,6 +5886,43 @@ def _validate_tile_set_layer_index(value: int, label: str) -> None:
         raise ValueError(f"{label} must be an integer between 0 and 63")
 
 
+def _validate_tile_set_layer_kind(value: str) -> None:
+    if not isinstance(value, str) or value.strip().lower() not in {
+        "physics",
+        "navigation",
+        "occlusion",
+        "custom_data",
+    }:
+        raise ValueError("kind must be physics, navigation, occlusion, or custom_data")
+
+
+def _validate_tile_set_layer_properties(kind: str, properties: dict[str, Any]) -> None:
+    normalized_kind = kind.strip().lower()
+    allowed_by_kind = {
+        "physics": {"layers", "masks", "priority"},
+        "navigation": {"layers"},
+        "occlusion": {"layers", "sdf_collision"},
+        "custom_data": {"name", "value_type"},
+    }
+    allowed = allowed_by_kind[normalized_kind]
+    _validate_draw_2d_property_names(
+        properties,
+        allowed,
+        f"TileSet {normalized_kind} layer",
+        maximum=len(allowed),
+    )
+    for name in {"layers", "masks"} & properties.keys():
+        _validate_collision_layer_numbers(properties[name], name)
+    if "priority" in properties:
+        _validate_nonnegative_finite_number(properties["priority"], "priority")
+    if "sdf_collision" in properties:
+        _validate_boolean(properties["sdf_collision"], "sdf_collision")
+    if "name" in properties:
+        _validate_tile_set_identifier(properties["name"], "name")
+    if "value_type" in properties:
+        _validate_tile_set_custom_data_type(properties["value_type"])
+
+
 def _validate_tile_geometry_points(points: list[dict[str, float | int]], label: str) -> None:
     if not isinstance(points, list) or not 3 <= len(points) <= 512:
         raise ValueError(f"{label} must contain between three and 512 Vector2 points")
@@ -6051,6 +6193,11 @@ def _validate_tile_set_terrain_index(value: int, *, allow_clear: bool, label: st
     minimum = -1 if allow_clear else 0
     if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value < 64:
         raise ValueError(f"{label} must be an integer between {minimum} and 63")
+
+
+def _validate_tilemap_terrain_strategy(value: str) -> None:
+    if not isinstance(value, str) or value.strip().lower() not in {"connect", "path"}:
+        raise ValueError("strategy must be connect or path")
 
 
 def _validate_atlas_alternative_tile(value: int) -> None:

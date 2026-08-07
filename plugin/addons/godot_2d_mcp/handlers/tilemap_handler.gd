@@ -20,6 +20,8 @@ const MAX_TILE_NAVIGATION_POLYGONS := 512
 const MAX_TILE_NAVIGATION_INDICES := 2048
 const MAX_TILE_OCCLUSION_POLYGONS := 128
 const MAX_TILE_OCCLUSION_TOTAL_POINTS := 2048
+const TILE_SET_LAYER_KINDS := ["physics", "navigation", "occlusion", "custom_data"]
+const TERRAIN_PAINT_STRATEGIES := ["connect", "path"]
 const TERRAIN_MODES := {
 	"match_corners_and_sides": 0,
 	"match_corners": 1,
@@ -371,6 +373,86 @@ func clear_tile_map_layer_cells(params: Dictionary) -> Dictionary:
 	return result
 
 
+func paint_tile_map_layer_terrain(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tile_map_layer(params)
+	if resolved.has("_error"):
+		return resolved
+	var tile_map_layer: TileMapLayer = resolved["tile_map_layer"]
+	var tile_set: TileSet = tile_map_layer.tile_set
+	if tile_set == null:
+		return _tile_set_required(tile_map_layer)
+	var strategy_result := _parse_terrain_paint_strategy(params.get("strategy", "connect"))
+	if strategy_result.has("_error"):
+		return strategy_result
+	var coordinates_result := _parse_cell_coordinates(params.get("coords", null))
+	if coordinates_result.has("_error"):
+		return coordinates_result
+	var coordinates: Array[Vector2i] = coordinates_result["coords"]
+	var terrain_set_result := _parse_existing_terrain_set(params, tile_set)
+	if terrain_set_result.has("_error"):
+		return terrain_set_result
+	var terrain_set: int = terrain_set_result["terrain_set"]
+	var terrain_result := _parse_existing_terrain(params, tile_set, terrain_set)
+	if terrain_result.has("_error"):
+		return terrain_result
+	var ignore_empty_result := _parse_boolean(
+		params.get("ignore_empty_terrains", true), "ignore_empty_terrains"
+	)
+	if ignore_empty_result.has("_error"):
+		return ignore_empty_result
+	if strategy_result["strategy"] == "path":
+		var path_result := _validate_terrain_path(tile_map_layer, coordinates)
+		if path_result.has("_error"):
+			return path_result
+	var affected := _terrain_paint_affected_coordinates(tile_map_layer, coordinates)
+	var previous := {}
+	for coords in affected:
+		previous[coords] = _read_cell(tile_map_layer, coords)
+	if strategy_result["strategy"] == "connect":
+		tile_map_layer.set_cells_terrain_connect(
+			coordinates, terrain_set, terrain_result["terrain"], ignore_empty_result["value"]
+		)
+	else:
+		tile_map_layer.set_cells_terrain_path(
+			coordinates, terrain_set, terrain_result["terrain"], ignore_empty_result["value"]
+		)
+	var changed := []
+	for coords in affected:
+		var next := _read_cell(tile_map_layer, coords)
+		if not _cells_match(previous[coords], next):
+			changed.append({"previous": previous[coords], "next": next})
+	if changed.is_empty():
+		var unchanged := _tile_map_layer_response(tile_map_layer, resolved["scene_root"])
+		unchanged["strategy"] = strategy_result["strategy"]
+		unchanged["terrain_set"] = terrain_set
+		unchanged["terrain"] = terrain_result["terrain"]
+		unchanged["requested_cells"] = coordinates.size()
+		unchanged["changed_cells"] = 0
+		unchanged["changed"] = false
+		unchanged["undoable"] = false
+		return unchanged
+	_undo_redo.create_action(
+		"Godot 2D MCP: Paint TileMapLayer terrain on %s" % tile_map_layer.name,
+		UndoRedo.MERGE_DISABLE,
+		resolved["scene_root"],
+		true
+	)
+	for change in changed:
+		_add_do_cell_change(tile_map_layer, change["next"])
+		_add_undo_cell_change(tile_map_layer, change["previous"])
+	_undo_redo.commit_action()
+	var result := _tile_map_layer_response(tile_map_layer, resolved["scene_root"])
+	result["strategy"] = strategy_result["strategy"]
+	result["terrain_set"] = terrain_set
+	result["terrain"] = terrain_result["terrain"]
+	result["ignore_empty_terrains"] = ignore_empty_result["value"]
+	result["requested_cells"] = coordinates.size()
+	result["changed_cells"] = changed.size()
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
 func get_tile_set_layers(params: Dictionary) -> Dictionary:
 	var resolved := _resolve_tile_map_layer(params, false)
 	if resolved.has("_error"):
@@ -552,6 +634,105 @@ func create_tile_set_custom_data_layer(params: Dictionary) -> Dictionary:
 	return result
 
 
+func set_tile_set_layer(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tile_map_layer(params)
+	if resolved.has("_error"):
+		return resolved
+	var tile_map_layer: TileMapLayer = resolved["tile_map_layer"]
+	var current: TileSet = tile_map_layer.tile_set
+	if current == null:
+		return _tile_set_required(tile_map_layer)
+	var kind_result := _parse_tile_set_layer_kind(params.get("kind", ""))
+	if kind_result.has("_error"):
+		return kind_result
+	var kind: String = kind_result["kind"]
+	var layer_result := _parse_existing_tile_set_layer(
+		params.get("index", null), "index", _tile_set_layer_count(current, kind)
+	)
+	if layer_result.has("_error"):
+		return layer_result
+	var index: int = layer_result["layer"]
+	var updates_result := _parse_tile_set_layer_updates(params.get("properties", null), current, kind, index)
+	if updates_result.has("_error"):
+		return updates_result
+	var updates: Dictionary = updates_result["updates"]
+	var changed := {}
+	for property_name in updates:
+		if _tile_set_layer_value(current, kind, index, property_name) != updates[property_name]:
+			changed[property_name] = updates[property_name]
+	if changed.is_empty():
+		var unchanged := _tile_set_layers_response(tile_map_layer, resolved["scene_root"])
+		unchanged["kind"] = kind
+		unchanged["index"] = index
+		unchanged["changed"] = false
+		unchanged["undoable"] = false
+		return unchanged
+	var replacement_result := _duplicate_tile_set(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: TileSet = replacement_result["tile_set"]
+	_apply_tile_set_layer_updates(replacement, kind, index, changed)
+	_commit_tile_set(
+		tile_map_layer,
+		resolved["scene_root"],
+		replacement,
+		"Update TileSet %s layer on %s" % [kind, tile_map_layer.name]
+	)
+	var result := _tile_set_layers_response(tile_map_layer, resolved["scene_root"])
+	result["kind"] = kind
+	result["index"] = index
+	result["changed"] = true
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func remove_tile_set_layer(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tile_map_layer(params)
+	if resolved.has("_error"):
+		return resolved
+	var tile_map_layer: TileMapLayer = resolved["tile_map_layer"]
+	var current: TileSet = tile_map_layer.tile_set
+	if current == null:
+		return _tile_set_required(tile_map_layer)
+	var kind_result := _parse_tile_set_layer_kind(params.get("kind", ""))
+	if kind_result.has("_error"):
+		return kind_result
+	var kind: String = kind_result["kind"]
+	var layer_result := _parse_existing_tile_set_layer(
+		params.get("index", null), "index", _tile_set_layer_count(current, kind)
+	)
+	if layer_result.has("_error"):
+		return layer_result
+	var index: int = layer_result["layer"]
+	var replacement_result := _duplicate_tile_set(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: TileSet = replacement_result["tile_set"]
+	match kind:
+		"physics":
+			replacement.remove_physics_layer(index)
+		"navigation":
+			replacement.remove_navigation_layer(index)
+		"occlusion":
+			replacement.remove_occlusion_layer(index)
+		"custom_data":
+			replacement.remove_custom_data_layer(index)
+	_commit_tile_set(
+		tile_map_layer,
+		resolved["scene_root"],
+		replacement,
+		"Remove TileSet %s layer on %s" % [kind, tile_map_layer.name]
+	)
+	var result := _tile_set_layers_response(tile_map_layer, resolved["scene_root"])
+	result["kind"] = kind
+	result["index"] = index
+	result["removed"] = true
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
 func create_tile_set_terrain_set(params: Dictionary) -> Dictionary:
 	var resolved := _resolve_tile_map_layer(params)
 	if resolved.has("_error"):
@@ -622,6 +803,73 @@ func create_tile_set_terrain(params: Dictionary) -> Dictionary:
 	var result := _tile_set_layers_response(tile_map_layer, resolved["scene_root"])
 	result["terrain_set"] = terrain_set
 	result["terrain"] = terrain_index
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func remove_tile_set_terrain_set(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tile_map_layer(params)
+	if resolved.has("_error"):
+		return resolved
+	var tile_map_layer: TileMapLayer = resolved["tile_map_layer"]
+	var current: TileSet = tile_map_layer.tile_set
+	if current == null:
+		return _tile_set_required(tile_map_layer)
+	var terrain_set_result := _parse_existing_terrain_set(params, current)
+	if terrain_set_result.has("_error"):
+		return terrain_set_result
+	var terrain_set: int = terrain_set_result["terrain_set"]
+	var replacement_result := _duplicate_tile_set(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: TileSet = replacement_result["tile_set"]
+	replacement.remove_terrain_set(terrain_set)
+	_commit_tile_set(
+		tile_map_layer,
+		resolved["scene_root"],
+		replacement,
+		"Remove TileSet terrain set on %s" % tile_map_layer.name
+	)
+	var result := _tile_set_layers_response(tile_map_layer, resolved["scene_root"])
+	result["terrain_set"] = terrain_set
+	result["removed"] = true
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func remove_tile_set_terrain(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_tile_map_layer(params)
+	if resolved.has("_error"):
+		return resolved
+	var tile_map_layer: TileMapLayer = resolved["tile_map_layer"]
+	var current: TileSet = tile_map_layer.tile_set
+	if current == null:
+		return _tile_set_required(tile_map_layer)
+	var terrain_set_result := _parse_existing_terrain_set(params, current)
+	if terrain_set_result.has("_error"):
+		return terrain_set_result
+	var terrain_set: int = terrain_set_result["terrain_set"]
+	var terrain_result := _parse_existing_terrain(params, current, terrain_set)
+	if terrain_result.has("_error"):
+		return terrain_result
+	var terrain: int = terrain_result["terrain"]
+	var replacement_result := _duplicate_tile_set(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: TileSet = replacement_result["tile_set"]
+	replacement.remove_terrain(terrain_set, terrain)
+	_commit_tile_set(
+		tile_map_layer,
+		resolved["scene_root"],
+		replacement,
+		"Remove TileSet terrain on %s" % tile_map_layer.name
+	)
+	var result := _tile_set_layers_response(tile_map_layer, resolved["scene_root"])
+	result["terrain_set"] = terrain_set
+	result["terrain"] = terrain
+	result["removed"] = true
 	result["undoable"] = true
 	result["_scene_mutated"] = true
 	return result
@@ -955,6 +1203,146 @@ func _parse_boolean(raw_value: Variant, label: String) -> Dictionary:
 	return {"value": raw_value}
 
 
+func _parse_tile_set_layer_kind(raw_value: Variant) -> Dictionary:
+	if not raw_value is String:
+		return Errors.make("INVALID_TILESET_LAYER_KIND", "kind must name a supported TileSet layer")
+	var kind: String = raw_value.strip_edges().to_lower()
+	if kind not in TILE_SET_LAYER_KINDS:
+		return Errors.make(
+			"INVALID_TILESET_LAYER_KIND",
+			"kind must be physics, navigation, occlusion, or custom_data"
+		)
+	return {"kind": kind}
+
+
+func _tile_set_layer_count(tile_set: TileSet, kind: String) -> int:
+	match kind:
+		"physics":
+			return tile_set.get_physics_layers_count()
+		"navigation":
+			return tile_set.get_navigation_layers_count()
+		"occlusion":
+			return tile_set.get_occlusion_layers_count()
+		"custom_data":
+			return tile_set.get_custom_data_layers_count()
+	return 0
+
+
+func _parse_tile_set_layer_updates(
+	raw_properties: Variant, tile_set: TileSet, kind: String, index: int
+) -> Dictionary:
+	var allowed: Array = []
+	match kind:
+		"physics":
+			allowed = ["layers", "masks", "priority"]
+		"navigation":
+			allowed = ["layers"]
+		"occlusion":
+			allowed = ["layers", "sdf_collision"]
+		"custom_data":
+			allowed = ["name", "value_type"]
+	if not raw_properties is Dictionary or raw_properties.is_empty() or raw_properties.size() > allowed.size():
+		return Errors.make(
+			"INVALID_TILESET_LAYER_CONFIGURATION",
+			"properties must be a non-empty object for the selected TileSet layer kind"
+		)
+	var updates := {}
+	for raw_name in raw_properties:
+		if not raw_name is String or raw_name not in allowed:
+			return Errors.make(
+				"INVALID_TILESET_LAYER_CONFIGURATION",
+				"Unsupported %s TileSet layer property: %s" % [kind, str(raw_name)]
+			)
+		var property_name: String = raw_name
+		match property_name:
+			"layers", "masks":
+				var layers_result := _parse_layer_numbers(raw_properties[property_name], property_name)
+				if layers_result.has("_error"):
+					return layers_result
+				updates[property_name] = layers_result["mask"]
+			"priority":
+				var priority_result := _parse_nonnegative_float(raw_properties[property_name], property_name)
+				if priority_result.has("_error"):
+					return priority_result
+				updates[property_name] = priority_result["value"]
+			"sdf_collision":
+				var sdf_result := _parse_boolean(raw_properties[property_name], property_name)
+				if sdf_result.has("_error"):
+					return sdf_result
+				updates[property_name] = sdf_result["value"]
+			"name":
+				var name_result := _parse_tile_set_name(raw_properties[property_name], property_name)
+				if name_result.has("_error"):
+					return name_result
+				var name: String = name_result["value"]
+				if tile_set.has_custom_data_layer_by_name(name) \
+					and tile_set.get_custom_data_layer_name(index) != name:
+					return Errors.make(
+						"CUSTOM_DATA_LAYER_EXISTS", "A custom data layer already uses this name"
+					)
+				updates[property_name] = name
+			"value_type":
+				var type_result := _parse_custom_data_type(raw_properties[property_name])
+				if type_result.has("_error"):
+					return type_result
+				updates[property_name] = type_result["type"]
+	return {"updates": updates}
+
+
+func _tile_set_layer_value(tile_set: TileSet, kind: String, index: int, property_name: String) -> Variant:
+	match kind:
+		"physics":
+			match property_name:
+				"layers":
+					return tile_set.get_physics_layer_collision_layer(index)
+				"masks":
+					return tile_set.get_physics_layer_collision_mask(index)
+				"priority":
+					return tile_set.get_physics_layer_collision_priority(index)
+		"navigation":
+			if property_name == "layers":
+				return tile_set.get_navigation_layer_layers(index)
+		"occlusion":
+			match property_name:
+				"layers":
+					return tile_set.get_occlusion_layer_light_mask(index)
+				"sdf_collision":
+					return tile_set.get_occlusion_layer_sdf_collision(index)
+		"custom_data":
+			match property_name:
+				"name":
+					return tile_set.get_custom_data_layer_name(index)
+				"value_type":
+					return tile_set.get_custom_data_layer_type(index)
+	return null
+
+
+func _apply_tile_set_layer_updates(
+	tile_set: TileSet, kind: String, index: int, updates: Dictionary
+) -> void:
+	match kind:
+		"physics":
+			if updates.has("layers"):
+				tile_set.set_physics_layer_collision_layer(index, updates["layers"])
+			if updates.has("masks"):
+				tile_set.set_physics_layer_collision_mask(index, updates["masks"])
+			if updates.has("priority"):
+				tile_set.set_physics_layer_collision_priority(index, updates["priority"])
+		"navigation":
+			if updates.has("layers"):
+				tile_set.set_navigation_layer_layers(index, updates["layers"])
+		"occlusion":
+			if updates.has("layers"):
+				tile_set.set_occlusion_layer_light_mask(index, updates["layers"])
+			if updates.has("sdf_collision"):
+				tile_set.set_occlusion_layer_sdf_collision(index, updates["sdf_collision"])
+		"custom_data":
+			if updates.has("name"):
+				tile_set.set_custom_data_layer_name(index, updates["name"])
+			if updates.has("value_type"):
+				tile_set.set_custom_data_layer_type(index, updates["value_type"])
+
+
 func _parse_tile_set_name(raw_value: Variant, label: String) -> Dictionary:
 	if not raw_value is String:
 		return Errors.make("INVALID_TILESET_NAME", "%s must be a non-empty string" % label)
@@ -1024,6 +1412,50 @@ func _parse_existing_terrain_set(params: Dictionary, tile_set: TileSet) -> Dicti
 	if terrain_set < 0 or terrain_set >= tile_set.get_terrain_sets_count():
 		return Errors.make("TERRAIN_SET_NOT_FOUND", "terrain_set does not identify a TileSet terrain set")
 	return {"terrain_set": terrain_set}
+
+
+func _parse_existing_terrain(params: Dictionary, tile_set: TileSet, terrain_set: int) -> Dictionary:
+	if not params.has("terrain") or not _is_integral_number(params["terrain"]):
+		return Errors.make("MISSING_PARAMETER", "terrain must be an existing non-negative integer")
+	var terrain := int(params["terrain"])
+	if terrain < 0 or terrain >= tile_set.get_terrains_count(terrain_set):
+		return Errors.make("TERRAIN_NOT_FOUND", "terrain does not identify a terrain in terrain_set")
+	return {"terrain": terrain}
+
+
+func _parse_terrain_paint_strategy(raw_value: Variant) -> Dictionary:
+	if not raw_value is String:
+		return Errors.make("INVALID_TERRAIN_PAINT", "strategy must be connect or path")
+	var strategy: String = raw_value.strip_edges().to_lower()
+	if strategy not in TERRAIN_PAINT_STRATEGIES:
+		return Errors.make("INVALID_TERRAIN_PAINT", "strategy must be connect or path")
+	return {"strategy": strategy}
+
+
+func _validate_terrain_path(tile_map_layer: TileMapLayer, coordinates: Array[Vector2i]) -> Dictionary:
+	for index in range(1, coordinates.size()):
+		if coordinates[index] not in tile_map_layer.get_surrounding_cells(coordinates[index - 1]):
+			return Errors.make(
+				"INVALID_TERRAIN_PATH",
+				"Each path coordinate must be adjacent to the preceding coordinate"
+			)
+	return {}
+
+
+func _terrain_paint_affected_coordinates(
+	tile_map_layer: TileMapLayer, coordinates: Array[Vector2i]
+) -> Array[Vector2i]:
+	var affected: Array[Vector2i] = []
+	var seen := {}
+	for coords in coordinates:
+		if not seen.has(coords):
+			seen[coords] = true
+			affected.append(coords)
+		for neighbor in tile_map_layer.get_surrounding_cells(coords):
+			if not seen.has(neighbor):
+				seen[neighbor] = true
+				affected.append(neighbor)
+	return affected
 
 
 func _resolve_atlas_tile(params: Dictionary, tile_set: TileSet) -> Dictionary:
@@ -1880,6 +2312,20 @@ func _commit_tile_set(
 	if current != null:
 		_undo_redo.add_undo_reference(current)
 	_undo_redo.commit_action()
+
+
+func _add_do_cell_change(tile_map_layer: TileMapLayer, next: Dictionary) -> void:
+	if int(next["source_id"]) < 0:
+		_undo_redo.add_do_method(tile_map_layer, "erase_cell", next["coords"])
+		return
+	_undo_redo.add_do_method(
+		tile_map_layer,
+		"set_cell",
+		next["coords"],
+		next["source_id"],
+		next["atlas_coords"],
+		next["alternative_tile"]
+	)
 
 
 func _add_undo_cell_change(tile_map_layer: TileMapLayer, previous: Dictionary) -> void:

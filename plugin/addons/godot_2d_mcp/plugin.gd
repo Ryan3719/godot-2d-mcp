@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.46.0"
+const PLUGIN_VERSION := "0.47.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 const RUNTIME_AUTOLOAD_NAME := "Godot2DMcpRuntime"
 const RUNTIME_AUTOLOAD_PATH := "res://addons/godot_2d_mcp/runtime/runtime_bridge.gd"
@@ -311,13 +311,18 @@ func _register_handlers() -> void:
 	_dispatcher.register("tile_set_atlas_source_create", tile_map_handler.create_tile_set_atlas_source)
 	_dispatcher.register("tile_set_atlas_tile_create", tile_map_handler.create_tile_set_atlas_tile)
 	_dispatcher.register("tile_map_layer_cells_set", tile_map_handler.set_tile_map_layer_cells)
+	_dispatcher.register("tile_map_layer_terrain_paint", tile_map_handler.paint_tile_map_layer_terrain)
 	_dispatcher.register("tile_map_layer_cells_clear", tile_map_handler.clear_tile_map_layer_cells)
 	_dispatcher.register("tile_set_physics_layer_create", tile_map_handler.create_tile_set_physics_layer)
 	_dispatcher.register("tile_set_navigation_layer_create", tile_map_handler.create_tile_set_navigation_layer)
 	_dispatcher.register("tile_set_occlusion_layer_create", tile_map_handler.create_tile_set_occlusion_layer)
 	_dispatcher.register("tile_set_custom_data_layer_create", tile_map_handler.create_tile_set_custom_data_layer)
+	_dispatcher.register("tile_set_layer_set", tile_map_handler.set_tile_set_layer)
+	_dispatcher.register("tile_set_layer_remove", tile_map_handler.remove_tile_set_layer)
 	_dispatcher.register("tile_set_terrain_set_create", tile_map_handler.create_tile_set_terrain_set)
 	_dispatcher.register("tile_set_terrain_create", tile_map_handler.create_tile_set_terrain)
+	_dispatcher.register("tile_set_terrain_set_remove", tile_map_handler.remove_tile_set_terrain_set)
+	_dispatcher.register("tile_set_terrain_remove", tile_map_handler.remove_tile_set_terrain)
 	_dispatcher.register("tile_set_atlas_alternative_create", tile_map_handler.create_tile_set_atlas_alternative)
 	_dispatcher.register("tile_set_atlas_tile_terrain_set", tile_map_handler.set_tile_set_atlas_tile_terrain)
 	_dispatcher.register("tile_set_atlas_tile_custom_data_set", tile_map_handler.set_tile_set_atlas_tile_custom_data)

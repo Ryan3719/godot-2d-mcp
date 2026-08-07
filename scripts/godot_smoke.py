@@ -185,7 +185,14 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or tile_set_coverage is None
             or tile_set_coverage.get("kind") != "resource"
             or tile_set_coverage.get("category") != "tile_map"
-            or "tile_set_create" not in tile_set_coverage.get("semantic_tools", [])
+            or {
+                "tile_set_create",
+                "tile_set_layer_set",
+                "tile_set_layer_remove",
+                "tile_set_terrain_set_remove",
+                "tile_set_terrain_remove",
+            }
+            - set(tile_set_coverage.get("semantic_tools", []))
         ):
             raise RuntimeError(
                 f"TileSet coverage audit was incomplete: {resource_coverage}"
@@ -5413,6 +5420,50 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             {"index": 0, "name": "damage", "value_type": "int"}
         ]:
             raise RuntimeError("TileSet custom-data layer definition was not applied")
+        updated_physics_layer = await app.service.tile_set_layer_set(
+            tile_map_layer_path,
+            kind="physics",
+            index=0,
+            properties={"layers": [6], "masks": [2, 4], "priority": 0.75},
+            scene_file=scene_file,
+        )
+        if updated_physics_layer["physics_layers"] != [
+            {"index": 0, "layers": [6], "masks": [2, 4], "priority": 0.75}
+        ]:
+            raise RuntimeError("TileSet physics layer update was not applied")
+        updated_navigation_layer = await app.service.tile_set_layer_set(
+            tile_map_layer_path,
+            kind="navigation",
+            index=0,
+            properties={"layers": [7]},
+            scene_file=scene_file,
+        )
+        if updated_navigation_layer["navigation_layers"] != [
+            {"index": 0, "layers": [7]}
+        ]:
+            raise RuntimeError("TileSet navigation layer update was not applied")
+        updated_occlusion_layer = await app.service.tile_set_layer_set(
+            tile_map_layer_path,
+            kind="occlusion",
+            index=0,
+            properties={"layers": [3, 6], "sdf_collision": False},
+            scene_file=scene_file,
+        )
+        if updated_occlusion_layer["occlusion_layers"] != [
+            {"index": 0, "layers": [3, 6], "sdf_collision": False}
+        ]:
+            raise RuntimeError("TileSet occlusion layer update was not applied")
+        updated_custom_data_layer = await app.service.tile_set_layer_set(
+            tile_map_layer_path,
+            kind="custom_data",
+            index=0,
+            properties={"name": "terrain_tag", "value_type": "int"},
+            scene_file=scene_file,
+        )
+        if updated_custom_data_layer["custom_data_layers"] != [
+            {"index": 0, "name": "terrain_tag", "value_type": "int"}
+        ]:
+            raise RuntimeError("TileSet custom-data layer update was not applied")
         terrain_set = await app.service.tile_set_terrain_set_create(
             tile_map_layer_path,
             mode="match_sides",
@@ -5446,6 +5497,58 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             )
         ):
             raise RuntimeError("TileSet terrain definition was not applied")
+        extra_terrain = await app.service.tile_set_terrain_create(
+            tile_map_layer_path,
+            terrain_set=0,
+            name="GroundVariant",
+            scene_file=scene_file,
+        )
+        if extra_terrain["terrain"] != 1:
+            raise RuntimeError("TileSet did not create a second terrain definition")
+        removed_terrain = await app.service.tile_set_terrain_remove(
+            tile_map_layer_path,
+            terrain_set=0,
+            terrain=1,
+            scene_file=scene_file,
+        )
+        if removed_terrain["terrain_sets"][0]["terrain_total"] != 1:
+            raise RuntimeError("TileSet terrain definition was not removed")
+        undo_terrain_remove = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_terrain_remove.get("changed"):
+            raise RuntimeError("TileSet terrain removal was not undoable")
+        restored_terrain_layers = await app.service.tile_set_layers_get(
+            tile_map_layer_path, scene_file=scene_file
+        )
+        if restored_terrain_layers["terrain_sets"][0]["terrain_total"] != 2:
+            raise RuntimeError("Undo did not restore the TileSet terrain definition")
+        redo_terrain_remove = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_terrain_remove.get("changed"):
+            raise RuntimeError("TileSet terrain removal was not redoable")
+        second_terrain_set = await app.service.tile_set_terrain_set_create(
+            tile_map_layer_path,
+            mode="match_corners_and_sides",
+            scene_file=scene_file,
+        )
+        if second_terrain_set["terrain_set"] != 1:
+            raise RuntimeError("TileSet did not create a second terrain set")
+        removed_terrain_set = await app.service.tile_set_terrain_set_remove(
+            tile_map_layer_path,
+            terrain_set=1,
+            scene_file=scene_file,
+        )
+        if removed_terrain_set["terrain_sets_total"] != 1:
+            raise RuntimeError("TileSet terrain set was not removed")
+        undo_terrain_set_remove = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_terrain_set_remove.get("changed"):
+            raise RuntimeError("TileSet terrain set removal was not undoable")
+        restored_terrain_set_layers = await app.service.tile_set_layers_get(
+            tile_map_layer_path, scene_file=scene_file
+        )
+        if restored_terrain_set_layers["terrain_sets_total"] != 2:
+            raise RuntimeError("Undo did not restore the TileSet terrain set")
+        redo_terrain_set_remove = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_terrain_set_remove.get("changed"):
+            raise RuntimeError("TileSet terrain set removal was not redoable")
         await _expect_godot_error(
             app.service.tile_set_atlas_tile_terrain_set(
                 tile_map_layer_path,
@@ -5458,6 +5561,20 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             ),
             "INVALID_TILE_TERRAIN",
         )
+        base_atlas_terrain = await app.service.tile_set_atlas_tile_terrain_set(
+            tile_map_layer_path,
+            source_id=3,
+            atlas_coords={"x": 0, "y": 0},
+            terrain_set=0,
+            terrain=0,
+            scene_file=scene_file,
+        )
+        if (
+            base_atlas_terrain["terrain_set"] != 0
+            or base_atlas_terrain["terrain"] != 0
+            or base_atlas_terrain["peering_bits"] != {}
+        ):
+            raise RuntimeError("TileSet base atlas terrain data was not applied")
         atlas_alternative = await app.service.tile_set_atlas_alternative_create(
             tile_map_layer_path,
             source_id=3,
@@ -5467,6 +5584,15 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )
         if atlas_alternative["alternative_tile"] != 1:
             raise RuntimeError("TileSet atlas alternative was not created")
+        blank_atlas_alternative = await app.service.tile_set_atlas_alternative_create(
+            tile_map_layer_path,
+            source_id=3,
+            atlas_coords={"x": 0, "y": 0},
+            alternative_tile=2,
+            scene_file=scene_file,
+        )
+        if blank_atlas_alternative["alternative_tile"] != 2:
+            raise RuntimeError("TileSet blank atlas alternative was not created")
         atlas_terrain = await app.service.tile_set_atlas_tile_terrain_set(
             tile_map_layer_path,
             source_id=3,
@@ -5485,11 +5611,11 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             tile_map_layer_path,
             source_id=3,
             atlas_coords={"x": 0, "y": 0},
-            values={"damage": 8},
+            values={"terrain_tag": 8},
             alternative_tile=1,
             scene_file=scene_file,
         )
-        if atlas_custom_data["custom_data"] != {"damage": 8}:
+        if atlas_custom_data["custom_data"] != {"terrain_tag": 8}:
             raise RuntimeError("TileSet atlas custom data was not applied")
         undo_tile_custom_data = await app.service.scene_undo(scene_file=scene_file)
         if not undo_tile_custom_data.get("changed"):
@@ -5708,6 +5834,27 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         redo_tile_occlusion_clear = await app.service.scene_redo(scene_file=scene_file)
         if not redo_tile_occlusion_clear.get("changed"):
             raise RuntimeError("TileSet atlas occlusion clear was not redoable")
+        removed_custom_data_layer = await app.service.tile_set_layer_remove(
+            tile_map_layer_path,
+            kind="custom_data",
+            index=0,
+            scene_file=scene_file,
+        )
+        if removed_custom_data_layer["custom_data_layers_total"] != 0:
+            raise RuntimeError("TileSet custom-data layer was not removed")
+        undo_custom_data_layer_remove = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_custom_data_layer_remove.get("changed"):
+            raise RuntimeError("TileSet layer removal was not undoable")
+        restored_custom_data_layers = await app.service.tile_set_layers_get(
+            tile_map_layer_path, scene_file=scene_file
+        )
+        if restored_custom_data_layers["custom_data_layers"] != [
+            {"index": 0, "name": "terrain_tag", "value_type": "int"}
+        ]:
+            raise RuntimeError("Undo did not restore the TileSet custom-data layer")
+        redo_custom_data_layer_remove = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_custom_data_layer_remove.get("changed"):
+            raise RuntimeError("TileSet layer removal was not redoable")
         tile_set_state = await app.service.tile_set_get(
             tile_map_layer_path, scene_file=scene_file
         )
@@ -5722,13 +5869,13 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
                 "coords": {"x": -1, "y": 2},
                 "source_id": 3,
                 "atlas_coords": {"x": 0, "y": 0},
-                "alternative_tile": 0,
+                "alternative_tile": 2,
             },
             {
                 "coords": {"x": 0, "y": 2},
                 "source_id": 3,
                 "atlas_coords": {"x": 0, "y": 0},
-                "alternative_tile": 0,
+                "alternative_tile": 2,
             },
         ]
         tile_cells_update = await app.service.tile_map_layer_cells_set(
@@ -5746,6 +5893,79 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError(
                 "tile_map_layer_cells_get did not return stable cell assignments"
             )
+        terrain_connect = await app.service.tile_map_layer_terrain_paint(
+            tile_map_layer_path,
+            [{"x": -1, "y": 2}],
+            terrain_set=0,
+            terrain=0,
+            strategy="connect",
+            scene_file=scene_file,
+        )
+        if terrain_connect["strategy"] != "connect" or terrain_connect["changed_cells"] < 1:
+            raise RuntimeError("TileMapLayer terrain connect did not change any cells")
+        connected_tile_cells = await app.service.tile_map_layer_cells_get(
+            tile_map_layer_path, limit=10, scene_file=scene_file
+        )
+        if connected_tile_cells["cells"] == tile_cells:
+            raise RuntimeError("TileMapLayer terrain connect did not alter the cell state")
+        undo_terrain_connect = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_terrain_connect.get("changed"):
+            raise RuntimeError("TileMapLayer terrain connect was not undoable")
+        undone_terrain_connect_cells = await app.service.tile_map_layer_cells_get(
+            tile_map_layer_path, limit=10, scene_file=scene_file
+        )
+        if undone_terrain_connect_cells["cells"] != tile_cells:
+            raise RuntimeError("Undo did not restore TileMapLayer terrain connect cells")
+        redo_terrain_connect = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_terrain_connect.get("changed"):
+            raise RuntimeError("TileMapLayer terrain connect was not redoable")
+        redone_terrain_connect_cells = await app.service.tile_map_layer_cells_get(
+            tile_map_layer_path, limit=10, scene_file=scene_file
+        )
+        if redone_terrain_connect_cells["cells"] != connected_tile_cells["cells"]:
+            raise RuntimeError("Redo did not restore TileMapLayer terrain connect cells")
+        terrain_path = await app.service.tile_map_layer_terrain_paint(
+            tile_map_layer_path,
+            [{"x": -1, "y": 2}, {"x": 0, "y": 2}],
+            terrain_set=0,
+            terrain=0,
+            strategy="path",
+            scene_file=scene_file,
+        )
+        if terrain_path["strategy"] != "path" or terrain_path["changed_cells"] < 1:
+            raise RuntimeError("TileMapLayer terrain path did not change any cells")
+        path_tile_cells = await app.service.tile_map_layer_cells_get(
+            tile_map_layer_path, limit=10, scene_file=scene_file
+        )
+        if path_tile_cells["cells"] == connected_tile_cells["cells"]:
+            raise RuntimeError("TileMapLayer terrain path did not alter the cell state")
+        undo_terrain_path = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_terrain_path.get("changed"):
+            raise RuntimeError("TileMapLayer terrain path was not undoable")
+        undone_terrain_path_cells = await app.service.tile_map_layer_cells_get(
+            tile_map_layer_path, limit=10, scene_file=scene_file
+        )
+        if undone_terrain_path_cells["cells"] != connected_tile_cells["cells"]:
+            raise RuntimeError("Undo did not restore TileMapLayer terrain path cells")
+        redo_terrain_path = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_terrain_path.get("changed"):
+            raise RuntimeError("TileMapLayer terrain path was not redoable")
+        redone_terrain_path_cells = await app.service.tile_map_layer_cells_get(
+            tile_map_layer_path, limit=10, scene_file=scene_file
+        )
+        if redone_terrain_path_cells["cells"] != path_tile_cells["cells"]:
+            raise RuntimeError("Redo did not restore TileMapLayer terrain path cells")
+        await _expect_godot_error(
+            app.service.tile_map_layer_terrain_paint(
+                tile_map_layer_path,
+                [{"x": -1, "y": 2}, {"x": 1, "y": 2}],
+                terrain_set=0,
+                terrain=0,
+                strategy="path",
+                scene_file=scene_file,
+            ),
+            "INVALID_TERRAIN_PATH",
+        )
         cleared_tile_cells = await app.service.tile_map_layer_cells_clear(
             tile_map_layer_path,
             [{"x": -1, "y": 2}],

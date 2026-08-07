@@ -2723,6 +2723,42 @@ def create_application(
         )
 
     @mcp.tool(annotations=WRITE)
+    async def tile_set_layer_set(
+        path: str,
+        kind: str,
+        index: int,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically update one existing TileSet layer definition."""
+        return await service.tile_set_layer_set(
+            path=path,
+            kind=kind,
+            index=index,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def tile_set_layer_remove(
+        path: str,
+        kind: str,
+        index: int,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Remove one TileSet layer definition and reindex remaining layer data."""
+        return await service.tile_set_layer_remove(
+            path=path,
+            kind=kind,
+            index=index,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
     async def tile_set_terrain_set_create(
         path: str,
         mode: str = "match_corners_and_sides",
@@ -2752,6 +2788,38 @@ def create_application(
             terrain_set=terrain_set,
             name=name,
             color=color,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def tile_set_terrain_set_remove(
+        path: str,
+        terrain_set: int,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Remove one TileSet terrain set and reindex remaining terrain-set data."""
+        return await service.tile_set_terrain_set_remove(
+            path=path,
+            terrain_set=terrain_set,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def tile_set_terrain_remove(
+        path: str,
+        terrain_set: int,
+        terrain: int,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Remove one terrain definition from an existing TileSet terrain set."""
+        return await service.tile_set_terrain_remove(
+            path=path,
+            terrain_set=terrain_set,
+            terrain=terrain,
             session_id=session_id,
             scene_file=scene_file,
         )
@@ -2907,6 +2975,29 @@ def create_application(
         return await service.tile_map_layer_cells_set(
             path=path,
             cells=cells,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def tile_map_layer_terrain_paint(
+        path: str,
+        coords: list[dict[str, int]],
+        terrain_set: int,
+        terrain: int,
+        strategy: str = "connect",
+        ignore_empty_terrains: bool = True,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Paint configured TileSet terrain into adjacent TileMapLayer cells."""
+        return await service.tile_map_layer_terrain_paint(
+            path=path,
+            coords=coords,
+            terrain_set=terrain_set,
+            terrain=terrain,
+            strategy=strategy,
+            ignore_empty_terrains=ignore_empty_terrains,
             session_id=session_id,
             scene_file=scene_file,
         )
