@@ -159,9 +159,7 @@ def create_application(
         return await service.runtime_screenshot_get(request_id=request_id, session_id=session_id)
 
     @mcp.tool(annotations=READ_ONLY, output_schema=None)
-    async def runtime_screenshot_view(
-        request_id: str, session_id: str | None = None
-    ) -> ToolResult:
+    async def runtime_screenshot_view(request_id: str, session_id: str | None = None) -> ToolResult:
         """Return a completed runtime screenshot as a standard MCP image block."""
         screenshot = await service.runtime_screenshot_get(
             request_id=request_id, session_id=session_id
@@ -321,6 +319,45 @@ def create_application(
     ) -> dict[str, Any]:
         """List a 2D node's signals, typed arguments, and current scene connections."""
         return await service.node_get_signals(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def sprite_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read Sprite2D texture, frame-grid, region, flip, and offset configuration."""
+        return await service.sprite_2d_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def line_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read Line2D points, stroke, caps, joints, and project-local resources."""
+        return await service.line_2d_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def polygon_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read Polygon2D geometry, UVs, colors, texture mapping, and inversion settings."""
+        return await service.polygon_2d_get(
             path=path,
             session_id=session_id,
             scene_file=scene_file,
@@ -912,6 +949,51 @@ def create_application(
     ) -> dict[str, Any]:
         """Atomically set typed public properties, including safe res:// resource references."""
         return await service.node_set_properties(
+            path=path,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def sprite_2d_set(
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically configure a Sprite2D with bounded frames and project-local textures."""
+        return await service.sprite_2d_set(
+            path=path,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def line_2d_set(
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically configure a Line2D with validated geometry and project-local resources."""
+        return await service.line_2d_set(
+            path=path,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def polygon_2d_set(
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically configure a triangulable Polygon2D with bounded visual data."""
+        return await service.polygon_2d_set(
             path=path,
             properties=properties,
             session_id=session_id,

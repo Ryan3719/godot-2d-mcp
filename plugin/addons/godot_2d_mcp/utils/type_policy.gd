@@ -72,6 +72,11 @@ const RESOURCE_COVERAGE_CATALOG := [
 		],
 	},
 	{
+		"base_type": "Curve",
+		"category": "visual",
+		"tools": ["line_2d_get", "line_2d_set"],
+	},
+	{
 		"base_type": "OccluderPolygon2D",
 		"category": "lighting",
 		"tools": ["light_occluder_2d_get", "light_occluder_2d_set", "tile_set_atlas_tile_occlusion_set"],
@@ -118,6 +123,7 @@ const RESOURCE_COVERAGE_CATALOG := [
 		"category": "particles",
 		"tools": [
 			"particle_process_material_2d_gradient_set", "cpu_particles_2d_gradient_set",
+			"line_2d_get", "line_2d_set",
 		],
 	},
 	{
@@ -167,7 +173,10 @@ const RESOURCE_COVERAGE_CATALOG := [
 	{
 		"base_type": "Texture2D",
 		"category": "visual",
-		"tools": ["node_set_properties", "control_theme_item_upsert"],
+		"tools": [
+			"node_set_properties", "control_theme_item_upsert", "sprite_2d_get", "sprite_2d_set",
+			"line_2d_get", "line_2d_set", "polygon_2d_get", "polygon_2d_set",
+		],
 	},
 	{
 		"base_type": "LabelSettings",
@@ -293,6 +302,18 @@ const NODE_SEMANTIC_CATALOG := [
 		"tools": ["light_2d_get", "light_2d_set"],
 	},
 	{
+		"base_type": "Sprite2D",
+		"tools": ["sprite_2d_get", "sprite_2d_set"],
+	},
+	{
+		"base_type": "Line2D",
+		"tools": ["line_2d_get", "line_2d_set"],
+	},
+	{
+		"base_type": "Polygon2D",
+		"tools": ["polygon_2d_get", "polygon_2d_set"],
+	},
+	{
 		"base_type": "LightOccluder2D",
 		"tools": ["light_occluder_2d_get", "light_occluder_2d_set"],
 	},
@@ -342,6 +363,9 @@ const SEMANTIC_SMOKE_COVERED_CLASSES := {
 	"PointLight2D": true,
 	"DirectionalLight2D": true,
 	"LightOccluder2D": true,
+	"Sprite2D": true,
+	"Line2D": true,
+	"Polygon2D": true,
 	"TileMapLayer": true,
 	"Theme": true,
 	"StyleBoxFlat": true,
