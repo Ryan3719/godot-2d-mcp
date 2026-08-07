@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：阶段 0 至阶段 7 已完成。阶段 1 至阶段 5 已交付完整 2D/UI 场景、动画、物理、导航、TileMap、视觉、粒子与控件语义能力；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图、输入模拟、项目 Input Map 动作与键盘/鼠标/手柄绑定编辑、`AudioStreamPlayer2D` 运行时状态/播放/停止/定位控制、受限性能采样、客户端 PNG 内容断言和有总超时/自动清理边界的游戏测试编排；阶段 7 已交付运行时 `ClassDB` 2D 覆盖审计、完整快照、跨版本差异、类型详情反射和全允许节点生命周期验收（v0.52.0）
+状态：阶段 0 至阶段 7 已完成。阶段 1 至阶段 5 已交付完整 2D/UI 场景、动画、物理、导航、TileMap、视觉、粒子与控件语义能力；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图、键盘/鼠标/多点触摸输入模拟、项目 Input Map 动作与键盘/鼠标/手柄绑定编辑、`AudioStreamPlayer2D` 运行时状态/播放/停止/定位控制、受限性能采样、客户端 PNG 内容断言和有总超时/自动清理边界的游戏测试编排；阶段 7 已交付运行时 `ClassDB` 2D 覆盖审计、完整快照、跨版本差异、类型详情反射和全允许节点生命周期验收（v0.53.0）
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -303,7 +303,7 @@ godot-2d-mcp/
 ### 阶段 6：运行反馈
 
 - 运行/停止、编辑器和游戏日志、截图、输入模拟和测试运行。
-- 已交付：`editor_run` 支持安全启动当前、主场景或现有 `res://` 自定义 `PackedScene`；`editor_stop` 可幂等停止运行中的场景。`runtime_get_state`、`runtime_logs_get`、`runtime_screenshot_request/get` 与 `runtime_input_send/result_get` 通过插件托管的 autoload 和 `EditorDebuggerPlugin` 连接真实游戏进程，支持带序号的日志、受 1024 像素/1 MB 上限约束的根视口 PNG/JPEG 截图、以及 action/键盘/鼠标事件注入回执。`runtime_audio_stream_player_2d_control/result_get` 采用相同的请求 ID 轮询模型，限制为活动场景树内的 `AudioStreamPlayer2D` 及 `get`、`play`、`stop`、`seek` 四个动作，结果带回播放状态和 stream 元数据。
+- 已交付：`editor_run` 支持安全启动当前、主场景或现有 `res://` 自定义 `PackedScene`；`editor_stop` 可幂等停止运行中的场景。`runtime_get_state`、`runtime_logs_get`、`runtime_screenshot_request/get` 与 `runtime_input_send/result_get` 通过插件托管的 autoload 和 `EditorDebuggerPlugin` 连接真实游戏进程，支持带序号的日志、受 1024 像素/1 MB 上限约束的根视口 PNG/JPEG 截图、以及 action/键盘/鼠标/多点触摸事件注入回执。触摸支持 0 至 31 的索引、按下/抬起/取消、拖拽相对坐标和可选屏幕相对位移、压感、倾角与手写笔反转，且服务端与游戏端均严格验证固定 JSON 契约；速度由 Godot 的输入管线按时间与相对位移计算，不接受伪造值。`runtime_audio_stream_player_2d_control/result_get` 采用相同的请求 ID 轮询模型，限制为活动场景树内的 `AudioStreamPlayer2D` 及 `get`、`play`、`stop`、`seek` 四个动作，结果带回播放状态和 stream 元数据。
 - 已交付：`runtime_performance_sample_request/result_get` 以 0.1 至 30 秒的有界采样窗口返回实际时长、帧数、估算 FPS、process delta min/mean/max，以及 `Performance.TIME_FPS`、静态内存、对象数量和当帧 draw calls。游戏进程只接受固定 `performance_sample` 调试消息，最多四个并发样本，编辑器仅保存有界轮询结果。
 - 已交付：`runtime_screenshot_assert` 只在 MCP Python 进程中解码已完成的 PNG 截图，不向游戏开放表达式或脚本执行。解析器限制为 1 MB、1024 像素、非交错 8-bit RGB/RGBA PNG，验证 chunk CRC 并支持 PNG filter 0-4；断言限定为 `dimensions`、`pixel`、`region_mean` 与 `color_presence` 四类，每次最多 32 条。
 - 已交付：`runtime_test_run` 将现有受限启动、等待、输入、性能和截图接口编排成一次有总时限的测试。它只能启动 current/main/项目内 custom 场景，等待编辑器运行和 runtime bridge 连接，返回结构化 `passed`/`failed`/`error`，默认停止测试场景。编辑器输出与游戏输出保持独立，绝不将编辑器界面截图冒充为游戏画面。

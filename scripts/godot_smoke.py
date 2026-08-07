@@ -6548,6 +6548,45 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if input_result.get("result", {}).get("applied") != 1:
             raise RuntimeError(f"Runtime input was not applied: {input_result}")
         await _wait_for_runtime_log(app, "GODOT_2D_MCP_RUNTIME_INPUT_RECEIVED")
+        touch_input_request = await app.service.runtime_input_send(
+            [
+                {
+                    "type": "screen_touch",
+                    "index": 1,
+                    "position": {"x": 32, "y": 48},
+                    "pressed": True,
+                    "double_tap": True,
+                },
+                {
+                    "type": "screen_drag",
+                    "index": 1,
+                    "position": {"x": 64, "y": 96},
+                    "relative": {"x": 32, "y": 48},
+                    "screen_relative": {"x": 64, "y": 96},
+                    "pressure": 0.5,
+                    "tilt": {"x": 0.25, "y": -0.25},
+                    "pen_inverted": True,
+                },
+                {
+                    "type": "screen_touch",
+                    "index": 1,
+                    "position": {"x": 64, "y": 96},
+                    "pressed": False,
+                    "canceled": True,
+                },
+            ]
+        )
+        touch_input_result = await _wait_for_runtime_input_result(
+            app, touch_input_request["request_id"]
+        )
+        if touch_input_result.get("result", {}).get("applied") != 3:
+            raise RuntimeError(f"Runtime touch input was not applied: {touch_input_result}")
+        for marker in (
+            "GODOT_2D_MCP_RUNTIME_TOUCH_PRESS_RECEIVED",
+            "GODOT_2D_MCP_RUNTIME_TOUCH_DRAG_RECEIVED",
+            "GODOT_2D_MCP_RUNTIME_TOUCH_RELEASE_RECEIVED",
+        ):
+            await _wait_for_runtime_log(app, marker)
         runtime_stop = await app.service.editor_stop()
         if runtime_stop.get("was_playing") is not True:
             raise RuntimeError("Runtime feedback smoke could not stop its custom scene")

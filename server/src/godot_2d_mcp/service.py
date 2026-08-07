@@ -20,6 +20,7 @@ _COVERAGE_PAGE_LIMIT = 500
 _MAX_COVERAGE_SNAPSHOT_ENTRIES = 2_000
 _INPUT_MAP_PAGE_LIMIT = 500
 _INPUT_MAP_MAX_EVENTS = 64
+_RUNTIME_TOUCH_MAX_INDEX = 31
 _COVERAGE_ENTRY_FIELDS = (
     "parent",
     "kind",
@@ -4243,8 +4244,15 @@ def _validate_runtime_input_events(events: list[dict[str, Any]]) -> None:
             _validate_runtime_mouse_button_event(event)
         elif event_type == "mouse_motion":
             _validate_runtime_mouse_motion_event(event)
+        elif event_type == "screen_touch":
+            _validate_runtime_screen_touch_event(event)
+        elif event_type == "screen_drag":
+            _validate_runtime_screen_drag_event(event)
         else:
-            raise ValueError("input event type must be action, key, mouse_button, or mouse_motion")
+            raise ValueError(
+                "input event type must be action, key, mouse_button, mouse_motion, "
+                "screen_touch, or screen_drag"
+            )
 
 
 def _validate_runtime_action_event(event: dict[str, Any]) -> None:
@@ -4283,6 +4291,76 @@ def _validate_runtime_mouse_button_event(event: dict[str, Any]) -> None:
 def _validate_runtime_mouse_motion_event(event: dict[str, Any]) -> None:
     _validate_runtime_position(event.get("position"), "position")
     _validate_runtime_position(event.get("relative"), "relative")
+
+
+def _validate_runtime_screen_touch_event(event: dict[str, Any]) -> None:
+    _validate_runtime_input_event_fields(
+        event,
+        {"type", "index", "position", "pressed", "double_tap", "canceled"},
+        "screen_touch",
+    )
+    _validate_runtime_touch_index(event.get("index"))
+    _validate_runtime_position(event.get("position"), "position")
+    _validate_boolean(event.get("pressed"), "pressed")
+    for field in ("double_tap", "canceled"):
+        if field in event:
+            _validate_boolean(event[field], field)
+
+
+def _validate_runtime_screen_drag_event(event: dict[str, Any]) -> None:
+    _validate_runtime_input_event_fields(
+        event,
+        {
+            "type",
+            "index",
+            "position",
+            "relative",
+            "screen_relative",
+            "pressure",
+            "tilt",
+            "pen_inverted",
+        },
+        "screen_drag",
+    )
+    _validate_runtime_touch_index(event.get("index"))
+    _validate_runtime_position(event.get("position"), "position")
+    _validate_runtime_position(event.get("relative"), "relative")
+    for field in ("screen_relative",):
+        if field in event:
+            _validate_runtime_position(event[field], field)
+    if "pressure" in event:
+        pressure = event["pressure"]
+        if not _is_finite_number(pressure) or not 0 <= float(pressure) <= 1:
+            raise ValueError("pressure must be a finite number between 0 and 1")
+    if "tilt" in event:
+        _validate_runtime_touch_tilt(event["tilt"])
+    if "pen_inverted" in event:
+        _validate_boolean(event["pen_inverted"], "pen_inverted")
+
+
+def _validate_runtime_input_event_fields(
+    event: dict[str, Any], allowed: set[str], event_type: str
+) -> None:
+    unknown = sorted(set(event) - allowed)
+    if unknown:
+        raise ValueError(
+            f"{event_type} input events contain unsupported fields: {', '.join(unknown)}"
+        )
+
+
+def _validate_runtime_touch_index(value: Any) -> None:
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, int)
+        or not 0 <= value <= _RUNTIME_TOUCH_MAX_INDEX
+    ):
+        raise ValueError(f"index must be an integer between 0 and {_RUNTIME_TOUCH_MAX_INDEX}")
+
+
+def _validate_runtime_touch_tilt(value: Any) -> None:
+    _validate_runtime_position(value, "tilt")
+    if any(abs(float(value[axis])) > 1 for axis in ("x", "y")):
+        raise ValueError("tilt coordinates must be finite numbers between -1 and 1")
 
 
 def _validate_runtime_position(value: Any, label: str) -> None:

@@ -258,7 +258,7 @@ def create_application(
     async def runtime_input_send(
         events: list[dict[str, Any]], session_id: str | None = None
     ) -> dict[str, Any]:
-        """Inject bounded action, keyboard, or mouse events into the game input pipeline."""
+        """Inject bounded action, keyboard, mouse, or screen-touch events into the game."""
         return await service.runtime_input_send(events=events, session_id=session_id)
 
     @mcp.tool(annotations=READ_ONLY)

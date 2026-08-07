@@ -667,6 +667,30 @@ async def test_runtime_feedback_tools_forward_validated_payloads() -> None:
             "position": {"x": 30, "y": 50},
             "relative": {"x": 6, "y": 2},
         },
+        {
+            "type": "screen_touch",
+            "index": 1,
+            "position": {"x": 24, "y": 48},
+            "pressed": True,
+            "double_tap": True,
+        },
+        {
+            "type": "screen_drag",
+            "index": 1,
+            "position": {"x": 48, "y": 72},
+            "relative": {"x": 24, "y": 24},
+            "screen_relative": {"x": 48, "y": 48},
+            "pressure": 0.5,
+            "tilt": {"x": 0.25, "y": -0.25},
+            "pen_inverted": True,
+        },
+        {
+            "type": "screen_touch",
+            "index": 1,
+            "position": {"x": 48, "y": 72},
+            "pressed": False,
+            "canceled": True,
+        },
     ]
 
     await service.runtime_get_state(session_id="project@a1b2")
@@ -754,6 +778,34 @@ async def test_runtime_feedback_tools_reject_invalid_payloads() -> None:
     with pytest.raises(ValueError, match="position"):
         await service.runtime_input_send(
             [{"type": "mouse_button", "button": 1, "pressed": True, "position": {"x": 1}}]
+        )
+    with pytest.raises(ValueError, match="index"):
+        await service.runtime_input_send(
+            [{"type": "screen_touch", "index": -1, "position": {"x": 1, "y": 1}, "pressed": True}]
+        )
+    with pytest.raises(ValueError, match="pressure"):
+        await service.runtime_input_send(
+            [
+                {
+                    "type": "screen_drag",
+                    "index": 0,
+                    "position": {"x": 1, "y": 1},
+                    "relative": {"x": 1, "y": 1},
+                    "pressure": 1.1,
+                }
+            ]
+        )
+    with pytest.raises(ValueError, match="unsupported fields"):
+        await service.runtime_input_send(
+            [
+                {
+                    "type": "screen_touch",
+                    "index": 0,
+                    "position": {"x": 1, "y": 1},
+                    "pressed": True,
+                    "device": 1,
+                }
+            ]
         )
     with pytest.raises(ValueError, match="action"):
         await service.runtime_audio_stream_player_2d_control("/Main/Sound", "resume")
