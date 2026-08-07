@@ -299,6 +299,121 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def animated_sprite_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "animated_sprite_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def sprite_frames_get(
+        self,
+        path: str,
+        animation: str = "",
+        frame_offset: int = 0,
+        frame_limit: int = 100,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_optional_sprite_frames_animation_name(animation, "animation")
+        _validate_sprite_frames_page(frame_offset, frame_limit)
+        return await self.bridge.call(
+            "sprite_frames_get",
+            _scene_params(
+                scene_file,
+                path=path,
+                animation=animation.strip(),
+                frame_offset=frame_offset,
+                frame_limit=frame_limit,
+            ),
+            session_id=session_id,
+        )
+
+    async def animated_sprite_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_animated_sprite_2d_properties(properties)
+        return await self.bridge.call(
+            "animated_sprite_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def sprite_frames_animation_upsert(
+        self,
+        path: str,
+        animation: str,
+        speed: float | None = None,
+        loop_mode: str | None = None,
+        frames: list[dict[str, Any]] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_sprite_frames_animation_name(animation, "animation")
+        _validate_sprite_frames_upsert(speed, loop_mode, frames)
+        params = _scene_params(scene_file, path=path, animation=animation.strip())
+        if speed is not None:
+            params["speed"] = speed
+        if loop_mode is not None:
+            params["loop_mode"] = loop_mode.strip().lower()
+        if frames is not None:
+            params["frames"] = frames
+        return await self.bridge.call(
+            "sprite_frames_animation_upsert", params, session_id=session_id
+        )
+
+    async def sprite_frames_animation_rename(
+        self,
+        path: str,
+        animation: str,
+        new_name: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_sprite_frames_animation_name(animation, "animation")
+        _validate_sprite_frames_animation_name(new_name, "new_name")
+        if animation.strip() == new_name.strip():
+            raise ValueError("animation and new_name must differ")
+        return await self.bridge.call(
+            "sprite_frames_animation_rename",
+            _scene_params(
+                scene_file,
+                path=path,
+                animation=animation.strip(),
+                new_name=new_name.strip(),
+            ),
+            session_id=session_id,
+        )
+
+    async def sprite_frames_animation_remove(
+        self,
+        path: str,
+        animation: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_sprite_frames_animation_name(animation, "animation")
+        return await self.bridge.call(
+            "sprite_frames_animation_remove",
+            _scene_params(scene_file, path=path, animation=animation.strip()),
+            session_id=session_id,
+        )
+
     async def sprite_2d_set(
         self,
         path: str,
@@ -3565,6 +3680,95 @@ def _validate_sprite_2d_properties(properties: dict[str, Any]) -> None:
         _validate_draw_2d_vector2i(properties["frame_coords"], "frame_coords")
     if "region_rect" in properties:
         _validate_draw_2d_rect2(properties["region_rect"], "region_rect")
+
+
+def _validate_animated_sprite_2d_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "sprite_frames_path",
+        "animation",
+        "autoplay",
+        "frame",
+        "frame_progress",
+        "speed_scale",
+        "centered",
+        "offset",
+        "flip_h",
+        "flip_v",
+    }
+    _validate_draw_2d_property_names(properties, allowed, "AnimatedSprite2D")
+    if "sprite_frames_path" in properties:
+        _validate_optional_project_resource_path(
+            properties["sprite_frames_path"], "sprite_frames_path"
+        )
+    if "animation" in properties:
+        _validate_sprite_frames_animation_name(properties["animation"], "animation")
+    if "autoplay" in properties:
+        _validate_optional_sprite_frames_animation_name(properties["autoplay"], "autoplay")
+    if "frame" in properties:
+        _validate_draw_2d_integer(properties["frame"], "frame", minimum=0, maximum=511)
+    for name in {"frame_progress", "speed_scale"} & properties.keys():
+        minimum, maximum = (0.0, 1.0) if name == "frame_progress" else (-64.0, 64.0)
+        _validate_viewport_number(properties[name], name, minimum=minimum, maximum=maximum)
+    for name in {"centered", "flip_h", "flip_v"} & properties.keys():
+        _validate_boolean(properties[name], name)
+    if "offset" in properties:
+        _validate_draw_2d_vector2(properties["offset"], "offset")
+
+
+def _validate_sprite_frames_animation_name(value: Any, label: str) -> None:
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or len(value.strip()) > 128
+        or "/" in value
+        or ":" in value
+    ):
+        raise ValueError(f"{label} must be a non-empty animation name up to 128 characters")
+
+
+def _validate_optional_sprite_frames_animation_name(value: Any, label: str) -> None:
+    if not isinstance(value, str):
+        raise ValueError(f"{label} must be an animation name or an empty string")
+    if value.strip():
+        _validate_sprite_frames_animation_name(value, label)
+
+
+def _validate_sprite_frames_page(frame_offset: int, frame_limit: int) -> None:
+    _validate_draw_2d_integer(frame_offset, "frame_offset", minimum=0, maximum=2**31 - 1)
+    _validate_draw_2d_integer(frame_limit, "frame_limit", minimum=1, maximum=256)
+
+
+def _validate_sprite_frames_upsert(
+    speed: float | None, loop_mode: str | None, frames: list[dict[str, Any]] | None
+) -> None:
+    if speed is not None:
+        _validate_viewport_number(speed, "speed", minimum=0.0, maximum=1_000.0)
+    if loop_mode is not None and (
+        not isinstance(loop_mode, str)
+        or loop_mode.strip().lower() not in {"none", "linear", "pingpong"}
+    ):
+        raise ValueError("loop_mode must be one of: linear, none, pingpong")
+    if frames is None:
+        return
+    if not isinstance(frames, list) or len(frames) > 512:
+        raise ValueError("frames must contain at most 512 entries")
+    for index, frame in enumerate(frames):
+        if (
+            not isinstance(frame, dict)
+            or set(frame) - {"texture_path", "duration"}
+            or "texture_path" not in frame
+        ):
+            raise ValueError(
+                f"frames[{index}] must contain texture_path and optional duration"
+            )
+        _validate_project_resource_path(frame["texture_path"], f"frames[{index}].texture_path")
+        if "duration" in frame:
+            _validate_viewport_number(
+                frame["duration"],
+                f"frames[{index}].duration",
+                minimum=0.001,
+                maximum=3600.0,
+            )
 
 
 def _validate_line_2d_properties(properties: dict[str, Any]) -> None:

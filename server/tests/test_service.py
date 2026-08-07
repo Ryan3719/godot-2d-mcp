@@ -46,6 +46,121 @@ async def test_hierarchy_params_are_forwarded() -> None:
 
 
 @pytest.mark.asyncio
+async def test_animated_sprite_and_sprite_frames_tools_forward_validated_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    frames = [{"texture_path": "res://art/idle.png", "duration": 0.25}]
+
+    await service.animated_sprite_2d_get(
+        "/Main/Actor", scene_file="res://main.tscn", session_id="project@a1b2"
+    )
+    await service.sprite_frames_get(
+        "/Main/Actor",
+        animation=" idle ",
+        frame_offset=2,
+        frame_limit=20,
+        scene_file="res://main.tscn",
+    )
+    await service.animated_sprite_2d_set(
+        "/Main/Actor",
+        {"sprite_frames_path": "res://art/actor_frames.tres", "speed_scale": 1.5},
+        scene_file="res://main.tscn",
+    )
+    await service.sprite_frames_animation_upsert(
+        "/Main/Actor",
+        " idle ",
+        speed=12.0,
+        loop_mode=" PINGPONG ",
+        frames=frames,
+        scene_file="res://main.tscn",
+    )
+    await service.sprite_frames_animation_rename(
+        "/Main/Actor", "idle", "run", scene_file="res://main.tscn"
+    )
+    await service.sprite_frames_animation_remove(
+        "/Main/Actor", "run", scene_file="res://main.tscn"
+    )
+
+    assert bridge.calls == [
+        (
+            "animated_sprite_2d_get",
+            {"path": "/Main/Actor", "scene_file": "res://main.tscn"},
+            "project@a1b2",
+        ),
+        (
+            "sprite_frames_get",
+            {
+                "path": "/Main/Actor",
+                "animation": "idle",
+                "frame_offset": 2,
+                "frame_limit": 20,
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "animated_sprite_2d_set",
+            {
+                "path": "/Main/Actor",
+                "properties": {
+                    "sprite_frames_path": "res://art/actor_frames.tres",
+                    "speed_scale": 1.5,
+                },
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "sprite_frames_animation_upsert",
+            {
+                "path": "/Main/Actor",
+                "animation": "idle",
+                "speed": 12.0,
+                "loop_mode": "pingpong",
+                "frames": frames,
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "sprite_frames_animation_rename",
+            {
+                "path": "/Main/Actor",
+                "animation": "idle",
+                "new_name": "run",
+                "scene_file": "res://main.tscn",
+            },
+            None,
+        ),
+        (
+            "sprite_frames_animation_remove",
+            {"path": "/Main/Actor", "animation": "run", "scene_file": "res://main.tscn"},
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_sprite_frames_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="frame_limit"):
+        await service.sprite_frames_get("/Main/Actor", frame_limit=257)
+    with pytest.raises(ValueError, match="animation"):
+        await service.animated_sprite_2d_set("/Main/Actor", {"animation": "bad/name"})
+    with pytest.raises(ValueError, match="speed"):
+        await service.sprite_frames_animation_upsert("/Main/Actor", "idle", speed=-1.0)
+    with pytest.raises(ValueError, match="loop_mode"):
+        await service.sprite_frames_animation_upsert("/Main/Actor", "idle", loop_mode="once")
+    with pytest.raises(ValueError, match="texture_path"):
+        await service.sprite_frames_animation_upsert(
+            "/Main/Actor", "idle", frames=[{"texture_path": "../outside.png"}]
+        )
+    with pytest.raises(ValueError, match="must differ"):
+        await service.sprite_frames_animation_rename("/Main/Actor", "idle", " idle ")
+
+
+@pytest.mark.asyncio
 async def test_editor_run_and_stop_forward_validated_modes() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

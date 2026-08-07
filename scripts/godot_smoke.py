@@ -81,6 +81,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             )
 
         state = await _wait_for_editor_ready(app)
+        loop_mode = "pingpong" if str(state.get("godot_version", "")).startswith("4.7") else "linear"
         hierarchy = await app.service.scene_get_hierarchy(limit=20)
         classes = await app.service.class_search(query="Button", limit=20)
         coverage = await app.service.class_2d_coverage(
@@ -94,6 +95,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )
         draw_resource_coverage = await app.service.class_2d_coverage(
             query="Curve", scope="resource", limit=20
+        )
+        sprite_frames_coverage = await app.service.class_2d_coverage(
+            query="SpriteFrames", scope="resource", limit=20
         )
 
         if hierarchy.get("total") != 5:
@@ -152,6 +156,22 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             ),
             None,
         )
+        animated_sprite_coverage = next(
+            (
+                entry
+                for entry in draw_coverage.get("entries", [])
+                if entry.get("name") == "AnimatedSprite2D"
+            ),
+            None,
+        )
+        frames_coverage = next(
+            (
+                entry
+                for entry in sprite_frames_coverage.get("entries", [])
+                if entry.get("name") == "SpriteFrames"
+            ),
+            None,
+        )
         if (
             sprite_coverage is None
             or {"sprite_2d_get", "sprite_2d_set"}
@@ -160,6 +180,13 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or curve_coverage is None
             or {"line_2d_get", "line_2d_set"}
             - set(curve_coverage.get("semantic_tools", []))
+            or animated_sprite_coverage is None
+            or {"animated_sprite_2d_get", "sprite_frames_animation_upsert"}
+            - set(animated_sprite_coverage.get("semantic_tools", []))
+            or animated_sprite_coverage.get("test_status") != "semantic_smoke"
+            or frames_coverage is None
+            or {"sprite_frames_get", "sprite_frames_animation_remove"}
+            - set(frames_coverage.get("semantic_tools", []))
         ):
             raise RuntimeError("2D drawing coverage audit was incomplete")
 
@@ -3318,6 +3345,98 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if not redo_semantic_polygon.get("changed"):
             raise RuntimeError("Polygon2D semantic configuration was not redoable")
 
+        animated_sprite = await app.service.node_create(
+            type_name="AnimatedSprite2D",
+            name="AgentAnimatedSprite",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        animated_sprite_path = animated_sprite["path"]
+        await app.service.animated_sprite_2d_set(
+            animated_sprite_path,
+            {
+                "sprite_frames_path": "res://test_sprite_frames.tres",
+                "animation": "default",
+                "autoplay": "default",
+            },
+            scene_file=scene_file,
+        )
+        external_sprite_frames = await app.service.sprite_frames_get(
+            animated_sprite_path,
+            animation="default",
+            scene_file=scene_file,
+        )
+        if (
+            external_sprite_frames["sprite_frames"]["origin"] != "external"
+            or external_sprite_frames["selected_animation"]["frame_count"] != 1
+        ):
+            raise RuntimeError("External SpriteFrames resource was not assigned")
+        copied_sprite_frames = await app.service.sprite_frames_animation_upsert(
+            animated_sprite_path,
+            "idle",
+            speed=12.0,
+            loop_mode=loop_mode,
+            frames=[
+                {"texture_path": "res://test_icon.svg", "duration": 0.5},
+                {"texture_path": "res://test_icon.svg", "duration": 1.0},
+            ],
+            scene_file=scene_file,
+        )
+        if (
+            copied_sprite_frames.get("copied_external_resource") is not True
+            or copied_sprite_frames["sprite_frames"]["origin"] != "embedded"
+            or copied_sprite_frames["selected_animation"]["loop_mode"] != loop_mode
+            or len(copied_sprite_frames["selected_animation"]["frames"]) != 2
+        ):
+            raise RuntimeError("SpriteFrames copy-on-write animation update was not applied")
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("SpriteFrames copy-on-write update was not undoable")
+        restored_external_frames = await app.service.sprite_frames_get(
+            animated_sprite_path, scene_file=scene_file
+        )
+        if restored_external_frames["sprite_frames"]["origin"] != "external":
+            raise RuntimeError("Undo did not restore the external SpriteFrames resource")
+        if not (await app.service.scene_redo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("SpriteFrames copy-on-write update was not redoable")
+        await app.service.animated_sprite_2d_set(
+            animated_sprite_path,
+            {"animation": "idle", "frame": 1, "frame_progress": 0.25, "speed_scale": 1.5},
+            scene_file=scene_file,
+        )
+        renamed_sprite_frames = await app.service.sprite_frames_animation_rename(
+            animated_sprite_path,
+            "idle",
+            "run",
+            scene_file=scene_file,
+        )
+        if (
+            renamed_sprite_frames.get("renamed") is not True
+            or renamed_sprite_frames["configuration"]["animation"] != "run"
+            or renamed_sprite_frames["selected_animation"]["name"] != "run"
+        ):
+            raise RuntimeError("SpriteFrames animation rename was not applied")
+        removed_sprite_frames = await app.service.sprite_frames_animation_remove(
+            animated_sprite_path,
+            "run",
+            scene_file=scene_file,
+        )
+        if (
+            removed_sprite_frames.get("removed") is not True
+            or removed_sprite_frames["configuration"]["animation"] != "default"
+            or removed_sprite_frames["selected_animation"]["name"] != "default"
+        ):
+            raise RuntimeError("SpriteFrames animation removal did not restore a valid selection")
+        await _expect_godot_error(
+            app.service.sprite_frames_animation_remove(
+                animated_sprite_path, "default", scene_file=scene_file
+            ),
+            "SPRITE_FRAMES_LAST_ANIMATION",
+        )
+        await _expect_godot_error(
+            app.service.animated_sprite_2d_get(semantic_line_path, scene_file=scene_file),
+            "ANIMATED_SPRITE_2D_REQUIRED",
+        )
+
         initial_canvas_material = await app.service.canvas_item_material_get(
             canvas_item_path,
             scene_file=scene_file,
@@ -4901,7 +5020,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 52 or _has_node(
+        if final_hierarchy.get("total") != 53 or _has_node(
             final_hierarchy, marker_path
         ):
             raise RuntimeError("Unexpected final hierarchy after write operations")
@@ -4919,6 +5038,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentSpringJoint" not in saved_scene
             or "AgentShapeCast" not in saved_scene
             or "AgentNavigationLink" not in saved_scene
+            or "AgentAnimatedSprite" not in saved_scene
             or "AgentPatrolPath" not in saved_scene
             or "AgentSkeleton" not in saved_scene
             or "AgentRootBone" not in saved_scene

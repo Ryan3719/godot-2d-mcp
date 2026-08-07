@@ -364,6 +364,38 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def animated_sprite_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read AnimatedSprite2D playback selection, presentation, and frame-resource metadata."""
+        return await service.animated_sprite_2d_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def sprite_frames_get(
+        path: str,
+        animation: str = "",
+        frame_offset: int = 0,
+        frame_limit: int = 100,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read SpriteFrames summaries and a bounded frame page from an AnimatedSprite2D."""
+        return await service.sprite_frames_get(
+            path=path,
+            animation=animation,
+            frame_offset=frame_offset,
+            frame_limit=frame_limit,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def animation_list(
         player_path: str,
         session_id: str | None = None,
@@ -996,6 +1028,74 @@ def create_application(
         return await service.polygon_2d_set(
             path=path,
             properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def animated_sprite_2d_set(
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically configure an AnimatedSprite2D using an assigned SpriteFrames resource."""
+        return await service.animated_sprite_2d_set(
+            path=path,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def sprite_frames_animation_upsert(
+        path: str,
+        animation: str,
+        speed: float | None = None,
+        loop_mode: str | None = None,
+        frames: list[dict[str, Any]] | None = None,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Create or replace one SpriteFrames animation using existing project-local textures."""
+        return await service.sprite_frames_animation_upsert(
+            path=path,
+            animation=animation,
+            speed=speed,
+            loop_mode=loop_mode,
+            frames=frames,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def sprite_frames_animation_rename(
+        path: str,
+        animation: str,
+        new_name: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Rename one SpriteFrames animation and preserve matching node animation selections."""
+        return await service.sprite_frames_animation_rename(
+            path=path,
+            animation=animation,
+            new_name=new_name,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def sprite_frames_animation_remove(
+        path: str,
+        animation: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Remove one non-final SpriteFrames animation and restore a valid node selection."""
+        return await service.sprite_frames_animation_remove(
+            path=path,
+            animation=animation,
             session_id=session_id,
             scene_file=scene_file,
         )
