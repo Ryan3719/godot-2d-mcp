@@ -2,7 +2,7 @@
 
 Godot 2D MCP connects Codex, Claude Code, and other MCP clients to a live Godot editor. The project is designed for comprehensive Godot 2D authoring while keeping editor mutations on Godot's main thread and inside its undo/redo system.
 
-The current `0.50.0` preview adds complete, versioned ClassDB 2D coverage snapshots and compatibility diffs between Godot builds. Its real Godot 4.7 smoke test now validates the lifecycle of every current policy-allowed 2D node in an isolated scene: creation, property inspection, save/reopen, deletion, undo, and redo. It also excludes editor-only ClassDB types from game-scene authoring. Existing runtime performance sampling, PNG assertions, one-call runtime tests, NavigationPolygon baking, runtime audio control, strict typed containers, and broad semantic tooling remain available. Agents can build 2D scenes, start a game, inspect real output, run bounded automated checks, and retain Godot-native undo and save behavior.
+The current `0.51.0` preview adds paginated runtime ClassDB descriptions for every policy-supported 2D node and audited resource, including inheritance, public properties, methods, signals, and enums. This lets agents inspect the actual API exposed by the connected Godot build before authoring. It retains complete, versioned 2D coverage snapshots and compatibility diffs, plus real Godot 4.7 lifecycle validation for every allowed 2D node: creation, property inspection, save/reopen, deletion, undo, and redo. Editor-only ClassDB types remain excluded from game-scene authoring. Existing runtime performance sampling, PNG assertions, one-call runtime tests, NavigationPolygon baking, runtime audio control, strict typed containers, and broad semantic tooling remain available. Agents can build 2D scenes, start a game, inspect real output, run bounded automated checks, and retain Godot-native undo and save behavior.
 
 ## Current capabilities
 
@@ -15,6 +15,7 @@ The current `0.50.0` preview adds complete, versioned ClassDB 2D coverage snapsh
 - Paginated `scene_get_hierarchy`.
 - Runtime `class_search` filtered by the centralized 2D type policy.
 - `class_2d_coverage` derives a paginated 2D node/resource inventory from the running Godot `ClassDB`, separating generic support, semantic tools, and direct smoke-test status. `class_2d_coverage_snapshot` returns the complete versioned inventory, and `class_2d_coverage_diff` compares a saved snapshot against the active Godot build.
+- `class_2d_describe` provides paginated runtime reflection for a supported 2D class: inheritance, public properties, methods, signals, and enums.
 - `sprite_2d_get` and `sprite_2d_set` for `Sprite2D` textures, frame grids, regions, flips, centering, and offsets.
 - `line_2d_get` and `line_2d_set` for `Line2D` points, stroke modes, caps, joints, colors, and existing project-local Curve, Gradient, and Texture2D resources.
 - `polygon_2d_get` and `polygon_2d_set` for bounded, non-degenerate `Polygon2D` geometry, UVs, vertex colors, texture mapping, inversion, and offsets.
@@ -98,6 +99,10 @@ The Python process owns MCP, validation, session routing, and request correlatio
 ## Coverage Audit
 
 Call `class_2d_coverage` before choosing a new 2D implementation batch. It accepts `scope` (`all`, `node`, or `resource`), a case-insensitive `query`, and standard pagination. Every entry states whether the current engine can instantiate it, which generic baseline is available, its specialized MCP tools, and whether that exact class has direct semantic smoke coverage. `semantic` means a dedicated workflow exists, not that every public Godot property is exposed; `generic` means only the controlled node read/write and scene-structure workflow is available. Resource entries are an intentionally scoped 2D inventory and `project_resource_reference` only means an existing project resource can be type-checked and bound to a compatible property. Call `class_2d_coverage_snapshot` to obtain one complete, paginated-server-side snapshot with engine metadata; retain that exact result as a baseline. Later call `class_2d_coverage_diff(baseline=...)` against another active editor to receive added, removed, changed, and breaking changes. Breaking changes include a removed class, loss of instantiability or generic capability, a removed semantic tool, and parent/kind changes. Editor-only ClassDB types are deliberately absent because they cannot be serialized safely into gameplay scenes.
+
+## Class API Reflection
+
+Call `class_2d_describe(type_name=..., section=...)` after selecting a supported type. It only exposes types admitted by the same runtime 2D policy as authoring tools. `section` is one of `overview`, `properties`, `methods`, `signals`, or `enums`. Every response includes the class kind, category, parent, complete inheritance chain, instantiability, and Godot API type. Property entries include declared type, class name, hint metadata, read-only status, and getter/setter names. Method and signal entries include typed arguments, the count of trailing default arguments, and flags; enum entries include their integer constants. Results are sorted by name and use `offset` with `limit` (1 through 500); agents must request subsequent pages when `has_more` is true. This is reflection, not an unrestricted invocation surface: use the dedicated authoring tools or controlled generic property workflow to mutate scenes.
 
 ## Editing workflow
 

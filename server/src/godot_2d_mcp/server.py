@@ -336,6 +336,23 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def class_2d_describe(
+        type_name: str,
+        section: str = "overview",
+        session_id: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        """Describe one supported 2D class's inheritance, properties, methods, signals, or enums."""
+        return await service.class_2d_describe(
+            type_name=type_name,
+            section=section,
+            session_id=session_id,
+            offset=offset,
+            limit=limit,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def class_2d_coverage(
         query: str = "",
         scope: str = "all",

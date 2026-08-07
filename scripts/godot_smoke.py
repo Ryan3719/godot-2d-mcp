@@ -92,6 +92,25 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         loop_mode = "pingpong" if str(state.get("godot_version", "")).startswith("4.7") else "linear"
         hierarchy = await app.service.scene_get_hierarchy(limit=20)
         classes = await app.service.class_search(query="Button", limit=20)
+        button_overview = await app.service.class_2d_describe("Button")
+        button_properties = await app.service.class_2d_describe(
+            "Button", section="properties", limit=500
+        )
+        button_methods = await app.service.class_2d_describe(
+            "Button", section="methods", limit=500
+        )
+        button_methods_tail = await app.service.class_2d_describe(
+            "Button", section="methods", offset=500, limit=100
+        )
+        button_signals = await app.service.class_2d_describe(
+            "Button", section="signals", limit=500
+        )
+        button_enums = await app.service.class_2d_describe(
+            "Button", section="enums", limit=500
+        )
+        navigation_polygon_properties = await app.service.class_2d_describe(
+            "NavigationPolygon", section="properties", limit=500
+        )
         coverage = await app.service.class_2d_coverage(
             query="Button", scope="node", limit=20
         )
@@ -124,6 +143,31 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError(f"Unexpected scene node count: {hierarchy.get('total')}")
         if classes.get("total", 0) < 4:
             raise RuntimeError("2D class search returned too few Button types")
+        if (
+            button_overview.get("kind") != "node"
+            or button_overview.get("api_type") != "core"
+            or {"Button", "BaseButton", "Control"}
+            - set(button_overview.get("inheritance", []))
+            or not any(item.get("name") == "text" for item in button_properties.get("items", []))
+            or button_methods.get("has_more") is not True
+            or not any(
+                item.get("name") == "set_text" for item in button_methods_tail.get("items", [])
+            )
+            or not any(item.get("name") == "pressed" for item in button_signals.get("items", []))
+            or button_enums.get("total", 0) < 1
+            or navigation_polygon_properties.get("kind") != "resource"
+            or not any(
+                item.get("name") == "agent_radius"
+                for item in navigation_polygon_properties.get("items", [])
+            )
+        ):
+            raise RuntimeError(
+                "ClassDB 2D reflection details were incomplete: "
+                f"overview={button_overview}, properties={button_properties}, "
+                f"methods={button_methods}, methods_tail={button_methods_tail}, "
+                f"signals={button_signals}, enums={button_enums}, "
+                f"navigation_polygon_properties={navigation_polygon_properties}"
+            )
         button_coverage = next(
             (
                 entry

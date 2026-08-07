@@ -34,6 +34,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "scene_create",
         "scene_open",
         "class_search",
+        "class_2d_describe",
         "class_2d_coverage",
         "class_2d_coverage_snapshot",
         "class_2d_coverage_diff",
@@ -229,6 +230,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["runtime_performance_sample_request"].readOnlyHint is False
     assert annotations["runtime_performance_sample_result_get"].readOnlyHint is True
     assert annotations["runtime_test_run"].readOnlyHint is False
+    assert annotations["class_2d_describe"].readOnlyHint is True
     assert annotations["class_2d_coverage"].readOnlyHint is True
     assert annotations["class_2d_coverage_snapshot"].readOnlyHint is True
     assert annotations["class_2d_coverage_diff"].readOnlyHint is True

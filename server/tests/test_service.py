@@ -836,6 +836,43 @@ async def test_hierarchy_rejects_unbounded_page() -> None:
 
 
 @pytest.mark.asyncio
+async def test_class_2d_describe_forwards_a_bounded_reflection_request() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+
+    result = await service.class_2d_describe(
+        " Button ",
+        section=" SIGNALS ",
+        offset=4,
+        limit=20,
+        session_id="project@a1b2",
+    )
+
+    assert result == {"command": "class_2d_describe"}
+    assert bridge.calls == [
+        (
+            "class_2d_describe",
+            {"type": "Button", "section": "signals", "offset": 4, "limit": 20},
+            "project@a1b2",
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_class_2d_describe_rejects_invalid_filters() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="type"):
+        await service.class_2d_describe(" ")
+    with pytest.raises(ValueError, match="section"):
+        await service.class_2d_describe("Button", section="all")
+    with pytest.raises(ValueError, match="offset"):
+        await service.class_2d_describe("Button", offset=-1)
+    with pytest.raises(ValueError, match="limit"):
+        await service.class_2d_describe("Button", limit=501)
+
+
+@pytest.mark.asyncio
 async def test_class_2d_coverage_forwards_a_bounded_audit_request() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

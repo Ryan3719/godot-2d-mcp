@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：阶段 0 至阶段 7 已完成。阶段 1 至阶段 5 已交付完整 2D/UI 场景、动画、物理、导航、TileMap、视觉、粒子与控件语义能力；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图、输入模拟、`AudioStreamPlayer2D` 运行时状态/播放/停止/定位控制、受限性能采样、客户端 PNG 内容断言和有总超时/自动清理边界的游戏测试编排；阶段 7 已交付运行时 `ClassDB` 2D 覆盖审计、完整快照、跨版本差异和全允许节点生命周期验收（v0.50.0）
+状态：阶段 0 至阶段 7 已完成。阶段 1 至阶段 5 已交付完整 2D/UI 场景、动画、物理、导航、TileMap、视觉、粒子与控件语义能力；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图、输入模拟、`AudioStreamPlayer2D` 运行时状态/播放/停止/定位控制、受限性能采样、客户端 PNG 内容断言和有总超时/自动清理边界的游戏测试编排；阶段 7 已交付运行时 `ClassDB` 2D 覆盖审计、完整快照、跨版本差异、类型详情反射和全允许节点生命周期验收（v0.51.0）
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -101,6 +101,7 @@ Codex / Claude Code / MCP Client
 | `session_activate` | 显式选择目标编辑器会话 |
 | `editor_get_state` | 获取项目、场景、导入和运行状态 |
 | `class_search` | 查询允许创建的 2D 类型及能力 |
+| `class_2d_describe` | 分页读取支持类型的继承、公开属性、方法、信号和枚举 |
 | `scene_get_hierarchy` | 分页读取当前场景树 |
 | `node_get_properties` | 获取节点属性、脚本、分组和信号 |
 | `node_create` | 创建内置节点，可附加兼容项目脚本 |
@@ -304,7 +305,7 @@ godot-2d-mcp/
 
 ### 阶段 7：完整性审计
 
-- 已交付：`class_2d_coverage` 从运行中 Godot 的 `ClassDB` 生成分页的 2D 节点和资源清单。每个条目记录基础支持、专用语义工具、可实例化状态和直接语义烟测状态；资源范围显式限定为当前 2D 工作流涉及的 Shape2D、导航、TileSet、Path、Curve、Gradient、光照、音频、粒子、材质、Shader、Theme、StyleBox、Font、Texture2D、SpriteFrames、ButtonGroup、Shortcut 和 LabelSettings 家族。`class_2d_coverage_snapshot` 在服务端收集完整分页清单并附上引擎元数据；`class_2d_coverage_diff` 接受这个基线并报告新增、移除、字段变化和可能破坏兼容性的变化。编辑器 API 类型会在集中类型策略中排除，避免错误写入游戏场景。
+- 已交付：`class_2d_coverage` 从运行中 Godot 的 `ClassDB` 生成分页的 2D 节点和资源清单。每个条目记录基础支持、专用语义工具、可实例化状态和直接语义烟测状态；资源范围显式限定为当前 2D 工作流涉及的 Shape2D、导航、TileSet、Path、Curve、Gradient、光照、音频、粒子、材质、Shader、Theme、StyleBox、Font、Texture2D、SpriteFrames、ButtonGroup、Shortcut 和 LabelSettings 家族。`class_2d_coverage_snapshot` 在服务端收集完整分页清单并附上引擎元数据；`class_2d_coverage_diff` 接受这个基线并报告新增、移除、字段变化和可能破坏兼容性的变化。`class_2d_describe` 仅对同一类型策略允许的节点和已审计资源返回运行中 Godot 的继承链与分页的公开属性、方法、信号、枚举；属性包含声明类型、类名、提示、只读和 getter/setter，方法/信号包含参数、默认参数数和 flags。编辑器 API 类型会在集中类型策略中排除，避免错误写入游戏场景。
 - 已交付：Godot 4.7 真实编辑器冒烟在隔离场景中对每个当前允许的 2D 节点执行创建、属性读取、保存/重开、删除和一次删除操作的撤销/重做；任何单类失败都会使 CI 失败。
 
 ## 12. 测试与验收

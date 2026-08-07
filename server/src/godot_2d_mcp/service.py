@@ -528,6 +528,34 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def class_2d_describe(
+        self,
+        type_name: str,
+        section: str = "overview",
+        session_id: str | None = None,
+        offset: int = 0,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        if not isinstance(type_name, str) or not type_name.strip() or len(type_name) > 256:
+            raise ValueError("type must be a non-empty string no longer than 256 characters")
+        normalized_section = section.strip().lower() if isinstance(section, str) else ""
+        if normalized_section not in {"overview", "properties", "methods", "signals", "enums"}:
+            raise ValueError("section must be overview, properties, methods, signals, or enums")
+        if offset < 0:
+            raise ValueError("offset must be non-negative")
+        if not 1 <= limit <= 500:
+            raise ValueError("limit must be between 1 and 500")
+        return await self.bridge.call(
+            "class_2d_describe",
+            {
+                "type": type_name.strip(),
+                "section": normalized_section,
+                "offset": offset,
+                "limit": limit,
+            },
+            session_id=session_id,
+        )
+
     async def class_2d_coverage(
         self,
         query: str = "",
