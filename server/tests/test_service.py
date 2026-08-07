@@ -3620,6 +3620,129 @@ async def test_tileset_semantic_tools_forward_atomic_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_tileset_layer_lifecycle_and_terrain_paint_tools_forward_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    path = "/Main/Tiles"
+    scene_file = "res://main.tscn"
+    layer_properties = {"layers": [2], "masks": [1, 3], "priority": 0.5}
+    terrain_coords = [{"x": 3, "y": 4}, {"x": 4, "y": 4}]
+
+    await service.tile_set_layer_set(
+        path,
+        "physics",
+        0,
+        layer_properties,
+        scene_file=scene_file,
+        session_id="project@a1b2",
+    )
+    await service.tile_set_layer_remove(
+        path,
+        "custom_data",
+        1,
+        scene_file=scene_file,
+        session_id="project@a1b2",
+    )
+    await service.tile_set_terrain_set_remove(
+        path,
+        0,
+        scene_file=scene_file,
+        session_id="project@a1b2",
+    )
+    await service.tile_set_terrain_remove(
+        path,
+        1,
+        2,
+        scene_file=scene_file,
+        session_id="project@a1b2",
+    )
+    await service.tile_map_layer_terrain_paint(
+        path,
+        terrain_coords,
+        terrain_set=0,
+        terrain=0,
+        strategy="path",
+        ignore_empty_terrains=False,
+        scene_file=scene_file,
+        session_id="project@a1b2",
+    )
+
+    assert bridge.calls == [
+        (
+            "tile_set_layer_set",
+            {
+                "path": path,
+                "kind": "physics",
+                "index": 0,
+                "properties": layer_properties,
+                "scene_file": scene_file,
+            },
+            "project@a1b2",
+        ),
+        (
+            "tile_set_layer_remove",
+            {"path": path, "kind": "custom_data", "index": 1, "scene_file": scene_file},
+            "project@a1b2",
+        ),
+        (
+            "tile_set_terrain_set_remove",
+            {"path": path, "terrain_set": 0, "scene_file": scene_file},
+            "project@a1b2",
+        ),
+        (
+            "tile_set_terrain_remove",
+            {"path": path, "terrain_set": 1, "terrain": 2, "scene_file": scene_file},
+            "project@a1b2",
+        ),
+        (
+            "tile_map_layer_terrain_paint",
+            {
+                "path": path,
+                "coords": terrain_coords,
+                "terrain_set": 0,
+                "terrain": 0,
+                "strategy": "path",
+                "ignore_empty_terrains": False,
+                "scene_file": scene_file,
+            },
+            "project@a1b2",
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_tileset_layer_lifecycle_and_terrain_paint_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="kind"):
+        await service.tile_set_layer_set("/Main/Tiles", "render", 0, {"layers": [1]})
+    with pytest.raises(ValueError, match="properties"):
+        await service.tile_set_layer_set("/Main/Tiles", "physics", 0, {})
+    with pytest.raises(ValueError, match="priority"):
+        await service.tile_set_layer_set(
+            "/Main/Tiles", "physics", 0, {"priority": -0.1}
+        )
+    with pytest.raises(ValueError, match="index"):
+        await service.tile_set_layer_remove("/Main/Tiles", "navigation", -1)
+    with pytest.raises(ValueError, match="terrain"):
+        await service.tile_set_terrain_remove("/Main/Tiles", 0, -1)
+    with pytest.raises(ValueError, match="coords"):
+        await service.tile_map_layer_terrain_paint("/Main/Tiles", [], terrain_set=0, terrain=0)
+    with pytest.raises(ValueError, match="strategy"):
+        await service.tile_map_layer_terrain_paint(
+            "/Main/Tiles", [{"x": 0, "y": 0}], terrain_set=0, terrain=0, strategy="area"
+        )
+    with pytest.raises(ValueError, match="ignore_empty_terrains"):
+        await service.tile_map_layer_terrain_paint(
+            "/Main/Tiles",
+            [{"x": 0, "y": 0}],
+            terrain_set=0,
+            terrain=0,
+            ignore_empty_terrains=1,
+        )
+
+
+@pytest.mark.asyncio
 async def test_tilemap_tools_reject_invalid_payloads() -> None:
     service = GodotService(SessionRegistry(), FakeBridge())
 
