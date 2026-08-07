@@ -234,6 +234,98 @@ async def test_button_2d_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_container_2d_tools_forward_validated_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    container_properties = {"alignment": " center "}
+    child_properties = {
+        "custom_minimum_size": {"x": 320.0, "y": 48.0},
+        "size_flags_horizontal": ["fill", "expand"],
+        "size_flags_vertical": ["shrink_end"],
+        "size_flags_stretch_ratio": 2.5,
+    }
+
+    await service.container_2d_get(
+        "/Main/Layout",
+        child_offset=2,
+        child_limit=20,
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
+    await service.container_2d_set(
+        "/Main/Layout",
+        container_properties,
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
+    await service.container_child_layout_set(
+        "/Main/Layout",
+        "/Main/Layout/Primary",
+        child_properties,
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
+
+    assert bridge.calls == [
+        (
+            "container_2d_get",
+            {
+                "path": "/Main/Layout",
+                "child_offset": 2,
+                "child_limit": 20,
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        ),
+        (
+            "container_2d_set",
+            {
+                "path": "/Main/Layout",
+                "properties": container_properties,
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        ),
+        (
+            "container_child_layout_set",
+            {
+                "path": "/Main/Layout",
+                "child_path": "/Main/Layout/Primary",
+                "properties": child_properties,
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_container_2d_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="child_offset"):
+        await service.container_2d_get("/Main/Layout", child_offset=-1)
+    with pytest.raises(ValueError, match="unsupported Container property"):
+        await service.container_2d_set("/Main/Layout", {"vertical": True})
+    with pytest.raises(ValueError, match="ratio"):
+        await service.container_2d_set("/Main/Layout", {"ratio": 0.0})
+    with pytest.raises(ValueError, match="split_offsets"):
+        await service.container_2d_set("/Main/Layout", {"split_offsets": [1.5]})
+    with pytest.raises(ValueError, match="size_flags_horizontal"):
+        await service.container_child_layout_set(
+            "/Main/Layout",
+            "/Main/Layout/Primary",
+            {"size_flags_horizontal": ["fill", "fill"]},
+        )
+    with pytest.raises(ValueError, match="custom_minimum_size"):
+        await service.container_child_layout_set(
+            "/Main/Layout",
+            "/Main/Layout/Primary",
+            {"custom_minimum_size": {"x": -1.0, "y": 1.0}},
+        )
+
+
+@pytest.mark.asyncio
 async def test_button_menu_item_tools_forward_validated_payloads() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

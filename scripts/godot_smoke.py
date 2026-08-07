@@ -105,6 +105,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         link_button_coverage = await app.service.class_2d_coverage(
             query="LinkButton", scope="node", limit=20
         )
+        container_coverage = await app.service.class_2d_coverage(
+            query="Container", scope="node", limit=40
+        )
 
         if hierarchy.get("total") != 5:
             raise RuntimeError(f"Unexpected scene node count: {hierarchy.get('total')}")
@@ -227,6 +230,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             ),
             None,
         )
+        container_entries = {
+            entry.get("name"): entry for entry in container_coverage.get("entries", [])
+        }
         if (
             sprite_coverage is None
             or {"sprite_2d_get", "sprite_2d_set"}
@@ -252,6 +258,31 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or link_button_entry.get("test_status") != "semantic_smoke"
         ):
             raise RuntimeError("2D drawing coverage audit was incomplete")
+        for class_name in (
+            "HBoxContainer",
+            "GridContainer",
+            "AspectRatioContainer",
+            "HFlowContainer",
+            "HSplitContainer",
+            "ScrollContainer",
+            "TabContainer",
+            "SubViewportContainer",
+        ):
+            container_entry = container_entries.get(class_name)
+            if (
+                container_entry is None
+                or {
+                    "container_2d_get",
+                    "container_2d_set",
+                    "container_child_layout_set",
+                }
+                - set(container_entry.get("semantic_tools", []))
+                or container_entry.get("test_status") != "semantic_smoke"
+            ):
+                raise RuntimeError(
+                    f"{class_name} container coverage audit was incomplete: "
+                    f"{container_coverage}"
+                )
 
         scene_file = state.get("current_scene", "")
         created_scene_file = "res://generated/agent_created_ui.tscn"
@@ -3762,6 +3793,329 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             "BUTTON_MENU_REQUIRED",
         )
 
+        hbox = await app.service.node_create(
+            type_name="HBoxContainer",
+            name="AgentHBox",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        hbox_path = hbox["path"]
+        hbox_primary = await app.service.node_create(
+            type_name="Label",
+            name="AgentHBoxPrimary",
+            parent_path=hbox_path,
+            scene_file=scene_file,
+        )
+        hbox_primary_path = hbox_primary["path"]
+        await app.service.node_create(
+            type_name="Label",
+            name="AgentHBoxSecondary",
+            parent_path=hbox_path,
+            scene_file=scene_file,
+        )
+        hbox_initial = await app.service.container_2d_get(
+            hbox_path, child_limit=1, scene_file=scene_file
+        )
+        if (
+            hbox_initial["type"] != "HBoxContainer"
+            or hbox_initial["configuration"]["alignment"] != "begin"
+            or hbox_initial["children_total"] != 2
+            or len(hbox_initial["children"]) != 1
+            or hbox_initial["children_truncated"] is not True
+            or "size_flags_horizontal"
+            not in hbox_initial["supported_child_layout_properties"]
+        ):
+            raise RuntimeError("HBoxContainer configuration was not reported")
+        hbox_configuration = await app.service.container_2d_set(
+            hbox_path,
+            {"alignment": "end", "accessibility_region": True},
+            scene_file=scene_file,
+        )
+        if (
+            not hbox_configuration.get("changed")
+            or hbox_configuration["configuration"]["alignment"] != "end"
+            or hbox_configuration["configuration"]["accessibility_region"] is not True
+        ):
+            raise RuntimeError("HBoxContainer configuration was not applied")
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("HBoxContainer configuration was not undoable")
+        restored_hbox = await app.service.container_2d_get(hbox_path, scene_file=scene_file)
+        if (
+            restored_hbox["configuration"]["alignment"] != "begin"
+            or restored_hbox["configuration"]["accessibility_region"] is not False
+        ):
+            raise RuntimeError("Undo did not restore HBoxContainer configuration")
+        if not (await app.service.scene_redo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("HBoxContainer configuration was not redoable")
+        hbox_child_layout = await app.service.container_child_layout_set(
+            hbox_path,
+            hbox_primary_path,
+            {
+                "custom_minimum_size": {"x": 240.0, "y": 48.0},
+                "size_flags_horizontal": ["fill", "expand"],
+                "size_flags_vertical": ["shrink_end"],
+                "size_flags_stretch_ratio": 2.5,
+            },
+            scene_file=scene_file,
+        )
+        if (
+            not hbox_child_layout.get("changed")
+            or hbox_child_layout["child"]["custom_minimum_size"]
+            != {"x": 240.0, "y": 48.0}
+            or hbox_child_layout["child"]["size_flags_horizontal"] != ["fill", "expand"]
+            or hbox_child_layout["child"]["size_flags_vertical"] != ["shrink_end"]
+            or not _is_close(hbox_child_layout["child"]["size_flags_stretch_ratio"], 2.5)
+        ):
+            raise RuntimeError("Container child layout constraints were not applied")
+        await _expect_godot_error(
+            app.service.control_set_layout(
+                hbox_primary_path,
+                offsets={"left": 8.0, "top": 0.0, "right": 8.0, "bottom": 0.0},
+                scene_file=scene_file,
+            ),
+            "CONTAINER_LAYOUT_MANAGED",
+        )
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("Container child layout constraints were not undoable")
+        restored_hbox_child = await app.service.container_2d_get(
+            hbox_path, scene_file=scene_file
+        )
+        if restored_hbox_child["children"][0]["custom_minimum_size"] != {"x": 0.0, "y": 0.0}:
+            raise RuntimeError("Undo did not restore Container child layout constraints")
+        if not (await app.service.scene_redo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("Container child layout constraints were not redoable")
+
+        grid = await app.service.node_create(
+            type_name="GridContainer",
+            name="AgentGrid",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        grid_path = grid["path"]
+        grid_child = await app.service.node_create(
+            type_name="Label",
+            name="AgentGridChild",
+            parent_path=grid_path,
+            scene_file=scene_file,
+        )
+        grid_configuration = await app.service.container_2d_set(
+            grid_path, {"columns": 3}, scene_file=scene_file
+        )
+        if grid_configuration["configuration"]["columns"] != 3:
+            raise RuntimeError("GridContainer columns were not applied")
+        await _expect_godot_error(
+            app.service.container_child_layout_set(
+                hbox_path,
+                grid_child["path"],
+                {"size_flags_horizontal": ["expand"]},
+                scene_file=scene_file,
+            ),
+            "CONTAINER_CHILD_NOT_DIRECT",
+        )
+
+        aspect = await app.service.node_create(
+            type_name="AspectRatioContainer",
+            name="AgentAspect",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        aspect_configuration = await app.service.container_2d_set(
+            aspect["path"],
+            {
+                "ratio": 1.5,
+                "stretch_mode": "cover",
+                "alignment_horizontal": "end",
+                "alignment_vertical": "center",
+            },
+            scene_file=scene_file,
+        )
+        if (
+            not _is_close(aspect_configuration["configuration"]["ratio"], 1.5)
+            or aspect_configuration["configuration"]["stretch_mode"] != "cover"
+            or aspect_configuration["configuration"]["alignment_horizontal"] != "end"
+            or aspect_configuration["configuration"]["alignment_vertical"] != "center"
+        ):
+            raise RuntimeError("AspectRatioContainer configuration was not applied")
+
+        flow = await app.service.node_create(
+            type_name="HFlowContainer",
+            name="AgentFlow",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        flow_configuration = await app.service.container_2d_set(
+            flow["path"],
+            {
+                "alignment": "end",
+                "last_wrap_alignment": "center",
+                "reverse_fill": True,
+            },
+            scene_file=scene_file,
+        )
+        if (
+            flow_configuration["configuration"]["alignment"] != "end"
+            or flow_configuration["configuration"]["last_wrap_alignment"] != "center"
+            or flow_configuration["configuration"]["reverse_fill"] is not True
+        ):
+            raise RuntimeError("HFlowContainer configuration was not applied")
+
+        split = await app.service.node_create(
+            type_name="HSplitContainer",
+            name="AgentSplit",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        split_path = split["path"]
+        await app.service.node_create(
+            type_name="Label",
+            name="AgentSplitLeft",
+            parent_path=split_path,
+            scene_file=scene_file,
+        )
+        await app.service.node_create(
+            type_name="Label",
+            name="AgentSplitRight",
+            parent_path=split_path,
+            scene_file=scene_file,
+        )
+        split_configuration = await app.service.container_2d_set(
+            split_path,
+            {
+                "split_offsets": [32],
+                "collapsed": True,
+                "dragging_enabled": False,
+                "dragger_visibility": "hidden",
+                "touch_dragger_enabled": True,
+                "drag_nested_intersections": True,
+                "drag_area_margin_begin": 4,
+                "drag_area_margin_end": 5,
+                "drag_area_offset": 6,
+                "drag_area_highlight_in_editor": False,
+            },
+            scene_file=scene_file,
+        )
+        split_state = split_configuration["configuration"]
+        if (
+            split_state["split_offsets"] != [32]
+            or split_state["collapsed"] is not True
+            or split_state["dragging_enabled"] is not False
+            or split_state["dragger_visibility"] != "hidden"
+            or split_state["touch_dragger_enabled"] is not True
+            or split_state["drag_nested_intersections"] is not True
+            or split_state["drag_area_margin_begin"] != 4
+            or split_state["drag_area_margin_end"] != 5
+            or split_state["drag_area_offset"] != 6
+            or split_state["drag_area_highlight_in_editor"] is not False
+        ):
+            raise RuntimeError("HSplitContainer configuration was not applied")
+
+        scroll = await app.service.node_create(
+            type_name="ScrollContainer",
+            name="AgentScroll",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        scroll_configuration = await app.service.container_2d_set(
+            scroll["path"],
+            {
+                "follow_focus": False,
+                "draw_focus_border": False,
+                "scroll_horizontal_custom_step": 24.0,
+                "scroll_vertical_custom_step": 12.0,
+                "horizontal_scroll_mode": "always_show",
+                "vertical_scroll_mode": "reserve",
+                "scroll_horizontal_by_default": True,
+                "scroll_deadzone": 8,
+                "scroll_hint_mode": "all",
+                "tile_scroll_hint": True,
+            },
+            scene_file=scene_file,
+        )
+        scroll_state = scroll_configuration["configuration"]
+        if (
+            scroll_state["follow_focus"] is not False
+            or scroll_state["draw_focus_border"] is not False
+            or not _is_close(scroll_state["scroll_horizontal_custom_step"], 24.0)
+            or not _is_close(scroll_state["scroll_vertical_custom_step"], 12.0)
+            or scroll_state["horizontal_scroll_mode"] != "always_show"
+            or scroll_state["vertical_scroll_mode"] != "reserve"
+            or scroll_state["scroll_horizontal_by_default"] is not True
+            or scroll_state["scroll_deadzone"] != 8
+            or scroll_state["scroll_hint_mode"] != "all"
+            or scroll_state["tile_scroll_hint"] is not True
+        ):
+            raise RuntimeError("ScrollContainer configuration was not applied")
+
+        tabs = await app.service.node_create(
+            type_name="TabContainer",
+            name="AgentTabs",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        tabs_path = tabs["path"]
+        await app.service.node_create(
+            type_name="Label",
+            name="AgentTabOne",
+            parent_path=tabs_path,
+            scene_file=scene_file,
+        )
+        await app.service.node_create(
+            type_name="Label",
+            name="AgentTabTwo",
+            parent_path=tabs_path,
+            scene_file=scene_file,
+        )
+        tabs_configuration = await app.service.container_2d_set(
+            tabs_path,
+            {
+                "tab_alignment": "center",
+                "current_tab": 1,
+                "tabs_position": "bottom",
+                "clip_tabs": False,
+                "tabs_visible": False,
+                "switch_on_drag_hover": True,
+                "drag_to_rearrange_enabled": True,
+                "tabs_rearrange_group": 9,
+                "use_hidden_tabs_for_min_size": True,
+                "tab_focus_mode": "all",
+                "deselect_enabled": True,
+            },
+            scene_file=scene_file,
+        )
+        tabs_state = tabs_configuration["configuration"]
+        if (
+            tabs_state["tab_alignment"] != "center"
+            or tabs_state["current_tab"] != 1
+            or tabs_state["tabs_position"] != "bottom"
+            or tabs_state["clip_tabs"] is not False
+            or tabs_state["tabs_visible"] is not False
+            or tabs_state["switch_on_drag_hover"] is not True
+            or tabs_state["drag_to_rearrange_enabled"] is not True
+            or tabs_state["tabs_rearrange_group"] != 9
+            or tabs_state["use_hidden_tabs_for_min_size"] is not True
+            or tabs_state["tab_focus_mode"] != "all"
+            or tabs_state["deselect_enabled"] is not True
+        ):
+            raise RuntimeError("TabContainer configuration was not applied")
+
+        subviewport_container = await app.service.node_create(
+            type_name="SubViewportContainer",
+            name="AgentSubViewportContainer",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        subviewport_configuration = await app.service.container_2d_set(
+            subviewport_container["path"],
+            {"stretch": True, "stretch_shrink": 2, "mouse_target": False},
+            scene_file=scene_file,
+        )
+        if (
+            subviewport_configuration["configuration"]["stretch"] is not True
+            or subviewport_configuration["configuration"]["stretch_shrink"] != 2
+            or subviewport_configuration["configuration"]["mouse_target"] is not False
+        ):
+            raise RuntimeError("SubViewportContainer configuration was not applied")
+
         initial_canvas_material = await app.service.canvas_item_material_get(
             canvas_item_path,
             scene_file=scene_file,
@@ -5345,7 +5699,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 58 or _has_node(
+        if final_hierarchy.get("total") != 73 or _has_node(
             final_hierarchy, marker_path
         ):
             raise RuntimeError("Unexpected final hierarchy after write operations")
@@ -5370,6 +5724,14 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "https://docs.godotengine.org/en/latest/" not in saved_scene
             or "AgentOptionMenu" not in saved_scene
             or "AgentMenuButton" not in saved_scene
+            or "AgentHBox" not in saved_scene
+            or "AgentGrid" not in saved_scene
+            or "AgentAspect" not in saved_scene
+            or "AgentFlow" not in saved_scene
+            or "AgentSplit" not in saved_scene
+            or "AgentScroll" not in saved_scene
+            or "AgentTabs" not in saved_scene
+            or "AgentSubViewportContainer" not in saved_scene
             or "Easy" not in saved_scene
             or "Show Grid" not in saved_scene
             or "Quality" not in saved_scene

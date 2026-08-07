@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.44.0"
+const PLUGIN_VERSION := "0.45.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 const RUNTIME_AUTOLOAD_NAME := "Godot2DMcpRuntime"
 const RUNTIME_AUTOLOAD_PATH := "res://addons/godot_2d_mcp/runtime/runtime_bridge.gd"
@@ -16,6 +16,7 @@ const ClassHandlerScript := preload("res://addons/godot_2d_mcp/handlers/class_ha
 const SignalHandlerScript := preload("res://addons/godot_2d_mcp/handlers/signal_handler.gd")
 const AnimationHandlerScript := preload("res://addons/godot_2d_mcp/handlers/animation_handler.gd")
 const UiHandlerScript := preload("res://addons/godot_2d_mcp/handlers/ui_handler.gd")
+const ContainerHandlerScript := preload("res://addons/godot_2d_mcp/handlers/container_handler.gd")
 const ThemeHandlerScript := preload("res://addons/godot_2d_mcp/handlers/theme_handler.gd")
 const PhysicsHandlerScript := preload("res://addons/godot_2d_mcp/handlers/physics_handler.gd")
 const TileMapHandlerScript := preload("res://addons/godot_2d_mcp/handlers/tilemap_handler.gd")
@@ -98,6 +99,7 @@ func _register_handlers() -> void:
 	var signal_handler: RefCounted = SignalHandlerScript.new(get_undo_redo())
 	var animation_handler: RefCounted = AnimationHandlerScript.new(get_undo_redo())
 	var ui_handler: RefCounted = UiHandlerScript.new(get_undo_redo())
+	var container_handler: RefCounted = ContainerHandlerScript.new(get_undo_redo())
 	var theme_handler: RefCounted = ThemeHandlerScript.new(get_undo_redo())
 	var physics_handler: RefCounted = PhysicsHandlerScript.new(get_undo_redo())
 	var tile_map_handler: RefCounted = TileMapHandlerScript.new(get_undo_redo())
@@ -119,7 +121,7 @@ func _register_handlers() -> void:
 	var runtime_handler: RefCounted = RuntimeHandlerScript.new(_runtime_debugger)
 	_handlers.assign([
 		editor_handler, scene_handler, node_handler, class_handler, signal_handler, animation_handler,
-		ui_handler, theme_handler, physics_handler, tile_map_handler, lighting_handler, viewport_handler,
+		ui_handler, container_handler, theme_handler, physics_handler, tile_map_handler, lighting_handler, viewport_handler,
 		path_handler, skeleton_handler, audio_handler, gpu_particles_handler, particle_process_material_handler,
 		particle_process_material_resources_handler,
 		canvas_item_material_handler,
@@ -157,6 +159,7 @@ func _register_handlers() -> void:
 	_dispatcher.register("animation_list", animation_handler.list_animations)
 	_dispatcher.register("animation_get", animation_handler.get_animation)
 	_dispatcher.register("control_get_layout", ui_handler.get_layout)
+	_dispatcher.register("container_2d_get", container_handler.get_container)
 	_dispatcher.register("control_get_styleboxes", ui_handler.get_styleboxes)
 	_dispatcher.register("control_theme_get", theme_handler.get_theme)
 	_dispatcher.register("collision_shape_get", physics_handler.get_collision_shape)
@@ -217,6 +220,8 @@ func _register_handlers() -> void:
 	_dispatcher.register("animation_key_upsert", animation_handler.upsert_key)
 	_dispatcher.register("animation_key_delete", animation_handler.delete_key)
 	_dispatcher.register("control_set_layout", ui_handler.set_layout)
+	_dispatcher.register("container_2d_set", container_handler.set_container)
+	_dispatcher.register("container_child_layout_set", container_handler.set_child_layout)
 	_dispatcher.register("control_set_layout_preset", ui_handler.set_layout_preset)
 	_dispatcher.register("control_stylebox_flat_upsert", ui_handler.upsert_stylebox_flat)
 	_dispatcher.register("control_stylebox_override_clear", ui_handler.clear_stylebox_override)

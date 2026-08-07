@@ -43,6 +43,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "animation_list",
         "animation_get",
         "control_get_layout",
+        "container_2d_get",
         "control_get_styleboxes",
         "control_theme_get",
         "collision_shape_get",
@@ -106,6 +107,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "animation_key_upsert",
         "animation_key_delete",
         "control_set_layout",
+        "container_2d_set",
+        "container_child_layout_set",
         "control_set_layout_preset",
         "control_stylebox_flat_upsert",
         "control_stylebox_override_clear",
@@ -220,6 +223,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["animation_list"].readOnlyHint is True
     assert annotations["animation_get"].readOnlyHint is True
     assert annotations["control_get_layout"].readOnlyHint is True
+    assert annotations["container_2d_get"].readOnlyHint is True
     assert annotations["control_get_styleboxes"].readOnlyHint is True
     assert annotations["control_theme_get"].readOnlyHint is True
     assert annotations["collision_shape_get"].readOnlyHint is True
@@ -363,6 +367,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["polygon_2d_set"].readOnlyHint is False
     assert annotations["animated_sprite_2d_set"].readOnlyHint is False
     assert annotations["button_2d_set"].readOnlyHint is False
+    assert annotations["container_2d_set"].readOnlyHint is False
+    assert annotations["container_child_layout_set"].readOnlyHint is False
     assert annotations["button_menu_items_set"].readOnlyHint is False
     assert annotations["button_menu_items_clear"].destructiveHint is True
     assert annotations["sprite_frames_animation_upsert"].readOnlyHint is False

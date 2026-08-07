@@ -319,7 +319,7 @@ func _require_manually_positionable(control: Control) -> Variant:
 			"CONTAINER_LAYOUT_MANAGED",
 			"Control '%s' is positioned by parent Container '%s'" % [control.name, parent.name],
 			false,
-			"Configure the parent's container settings or target a Control outside a Container."
+			"Use container_2d_set or container_child_layout_set, or target a Control outside a Container."
 		)
 	return null
 
