@@ -62,7 +62,12 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
     output = b""
     failure: BaseException | None = None
     try:
-        for _ in range(int(EDITOR_CONNECTION_TIMEOUT_SECONDS / EDITOR_CONNECTION_POLL_INTERVAL_SECONDS)):
+        for _ in range(
+            int(
+                EDITOR_CONNECTION_TIMEOUT_SECONDS
+                / EDITOR_CONNECTION_POLL_INTERVAL_SECONDS
+            )
+        ):
             sessions = await app.registry.list_sessions()
             if sessions:
                 break
@@ -78,9 +83,17 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         state = await _wait_for_editor_ready(app)
         hierarchy = await app.service.scene_get_hierarchy(limit=20)
         classes = await app.service.class_search(query="Button", limit=20)
-        coverage = await app.service.class_2d_coverage(query="Button", scope="node", limit=20)
+        coverage = await app.service.class_2d_coverage(
+            query="Button", scope="node", limit=20
+        )
         resource_coverage = await app.service.class_2d_coverage(
             query="TileSet", scope="resource", limit=20
+        )
+        draw_coverage = await app.service.class_2d_coverage(
+            query="Sprite2D", scope="node", limit=20
+        )
+        draw_resource_coverage = await app.service.class_2d_coverage(
+            query="Curve", scope="resource", limit=20
         )
 
         if hierarchy.get("total") != 5:
@@ -88,7 +101,12 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if classes.get("total", 0) < 4:
             raise RuntimeError("2D class search returned too few Button types")
         button_coverage = next(
-            (entry for entry in coverage.get("entries", []) if entry.get("name") == "Button"), None
+            (
+                entry
+                for entry in coverage.get("entries", [])
+                if entry.get("name") == "Button"
+            ),
+            None,
         )
         if (
             coverage.get("audit_version") != 1
@@ -101,7 +119,12 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         ):
             raise RuntimeError(f"Button coverage audit was incomplete: {coverage}")
         tile_set_coverage = next(
-            (entry for entry in resource_coverage.get("entries", []) if entry.get("name") == "TileSet"), None
+            (
+                entry
+                for entry in resource_coverage.get("entries", [])
+                if entry.get("name") == "TileSet"
+            ),
+            None,
         )
         if (
             resource_coverage.get("scope") != "resource"
@@ -110,7 +133,35 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or tile_set_coverage.get("category") != "tile_map"
             or "tile_set_create" not in tile_set_coverage.get("semantic_tools", [])
         ):
-            raise RuntimeError(f"TileSet coverage audit was incomplete: {resource_coverage}")
+            raise RuntimeError(
+                f"TileSet coverage audit was incomplete: {resource_coverage}"
+            )
+        sprite_coverage = next(
+            (
+                entry
+                for entry in draw_coverage.get("entries", [])
+                if entry.get("name") == "Sprite2D"
+            ),
+            None,
+        )
+        curve_coverage = next(
+            (
+                entry
+                for entry in draw_resource_coverage.get("entries", [])
+                if entry.get("name") == "Curve"
+            ),
+            None,
+        )
+        if (
+            sprite_coverage is None
+            or {"sprite_2d_get", "sprite_2d_set"}
+            - set(sprite_coverage.get("semantic_tools", []))
+            or sprite_coverage.get("test_status") != "semantic_smoke"
+            or curve_coverage is None
+            or {"line_2d_get", "line_2d_set"}
+            - set(curve_coverage.get("semantic_tools", []))
+        ):
+            raise RuntimeError("2D drawing coverage audit was incomplete")
 
         scene_file = state.get("current_scene", "")
         created_scene_file = "res://generated/agent_created_ui.tscn"
@@ -154,20 +205,29 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         created_save = await app.service.scene_save(scene_file=created_scene_file)
         if not created_save.get("saved"):
             raise RuntimeError("Newly created scene could not be saved")
-        generated_scene = (project_path / "generated" / "agent_created_ui.tscn").read_text(
-            encoding="utf-8"
-        )
-        if "AgentCreatedUI" not in generated_scene or "AgentCreatedButton" not in generated_scene:
+        generated_scene = (
+            project_path / "generated" / "agent_created_ui.tscn"
+        ).read_text(encoding="utf-8")
+        if (
+            "AgentCreatedUI" not in generated_scene
+            or "AgentCreatedButton" not in generated_scene
+        ):
             raise RuntimeError("Newly created scene was not persisted")
         await _expect_godot_error(
             app.service.scene_open("res://packed_scene_3d.tscn"),
             "UNSUPPORTED_2D_TYPE",
         )
         reopened_scene = await app.service.scene_open(scene_file)
-        if not reopened_scene.get("opened") or reopened_scene.get("scene_file") != scene_file:
+        if (
+            not reopened_scene.get("opened")
+            or reopened_scene.get("scene_file") != scene_file
+        ):
             raise RuntimeError("scene_open did not return to the original scene")
         reopened_hierarchy = await app.service.scene_get_hierarchy(limit=20)
-        if reopened_hierarchy.get("scene_file") != scene_file or reopened_hierarchy.get("total") != 5:
+        if (
+            reopened_hierarchy.get("scene_file") != scene_file
+            or reopened_hierarchy.get("total") != 5
+        ):
             raise RuntimeError("scene_open did not restore the original scene")
         initial_revision = state["meta"]["scene_revision"]
         await _expect_godot_error(
@@ -211,11 +271,14 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         scripted_path = scripted_node["path"]
         scripted_hierarchy = await app.service.scene_get_hierarchy(limit=20)
         if not any(
-            item["path"] == scripted_path and item["script_path"] == "res://test_node_2d.gd"
+            item["path"] == scripted_path
+            and item["script_path"] == "res://test_node_2d.gd"
             for item in scripted_hierarchy["nodes"]
         ):
             raise RuntimeError("Scripted node was not persisted in the scene hierarchy")
-        cleared_script = await app.service.node_script_clear(scripted_path, scene_file=scene_file)
+        cleared_script = await app.service.node_script_clear(
+            scripted_path, scene_file=scene_file
+        )
         if not cleared_script.get("cleared"):
             raise RuntimeError("node_script_clear did not detach the script")
         undone_script_clear = await app.service.scene_undo(scene_file=scene_file)
@@ -223,7 +286,8 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("node_script_clear was not undoable")
         restored_script_hierarchy = await app.service.scene_get_hierarchy(limit=20)
         if not any(
-            item["path"] == scripted_path and item["script_path"] == "res://test_node_2d.gd"
+            item["path"] == scripted_path
+            and item["script_path"] == "res://test_node_2d.gd"
             for item in restored_script_hierarchy["nodes"]
         ):
             raise RuntimeError("Undo did not restore the detached script")
@@ -233,21 +297,29 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         if (
-            _property_data(typed_container_properties, "accent_colors").get("container_type")
+            _property_data(typed_container_properties, "accent_colors").get(
+                "container_type"
+            )
             != {"kind": "array", "element": {"type": "Color"}}
-            or _property_data(typed_container_properties, "color_labels").get("container_type")
+            or _property_data(typed_container_properties, "color_labels").get(
+                "container_type"
+            )
             != {
                 "kind": "dictionary",
                 "key": {"type": "String"},
                 "value": {"type": "Color"},
             }
-            or _property_data(typed_container_properties, "color_lookup").get("container_type")
+            or _property_data(typed_container_properties, "color_lookup").get(
+                "container_type"
+            )
             != {
                 "kind": "dictionary",
                 "key": {"type": "Color"},
                 "value": {"type": "String"},
             }
-            or _property_data(typed_container_properties, "icon_textures").get("container_type")
+            or _property_data(typed_container_properties, "icon_textures").get(
+                "container_type"
+            )
             != {
                 "kind": "array",
                 "element": {"type": "Object", "class_name": "Texture2D"},
@@ -285,11 +357,15 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         color_labels = _property_value(typed_container_values, "color_labels")
         color_lookup = _property_value(typed_container_values, "color_lookup")
         icon_textures = _property_value(typed_container_values, "icon_textures")
-        color_lookup_entries = color_lookup.get("entries") if isinstance(color_lookup, dict) else None
+        color_lookup_entries = (
+            color_lookup.get("entries") if isinstance(color_lookup, dict) else None
+        )
         if (
             not isinstance(accent_colors, list)
             or len(accent_colors) != 2
-            or not _color_matches(accent_colors[0], {"r": 0.1, "g": 0.2, "b": 0.3, "a": 0.4})
+            or not _color_matches(
+                accent_colors[0], {"r": 0.1, "g": 0.2, "b": 0.3, "a": 0.4}
+            )
             or not isinstance(color_labels, dict)
             or not _color_matches(
                 color_labels.get("primary"), {"r": 0.2, "g": 0.4, "b": 0.6, "a": 1.0}
@@ -297,7 +373,8 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or not isinstance(color_lookup_entries, list)
             or len(color_lookup_entries) != 1
             or not _color_matches(
-                color_lookup_entries[0].get("key"), {"r": 0.9, "g": 0.1, "b": 0.2, "a": 1.0}
+                color_lookup_entries[0].get("key"),
+                {"r": 0.9, "g": 0.1, "b": 0.2, "a": 1.0},
             )
             or color_lookup_entries[0].get("value") != "danger"
             or not isinstance(icon_textures, list)
@@ -324,18 +401,28 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             "accent_colors",
         )
         if unchanged_accent_colors != accent_colors:
-            raise RuntimeError("Invalid typed container batch partially changed an earlier property")
+            raise RuntimeError(
+                "Invalid typed container batch partially changed an earlier property"
+            )
         undo_typed_containers = await app.service.scene_undo(scene_file=scene_file)
         if not undo_typed_containers.get("changed"):
             raise RuntimeError("Typed container update was not undoable")
-        if _property_value(
-            await app.service.node_get_properties(
-                scripted_path,
-                fields=["accent_colors", "color_labels", "color_lookup", "icon_textures"],
-                scene_file=scene_file,
-            ),
-            "accent_colors",
-        ) != []:
+        if (
+            _property_value(
+                await app.service.node_get_properties(
+                    scripted_path,
+                    fields=[
+                        "accent_colors",
+                        "color_labels",
+                        "color_lookup",
+                        "icon_textures",
+                    ],
+                    scene_file=scene_file,
+                ),
+                "accent_colors",
+            )
+            != []
+        ):
             raise RuntimeError("Undo did not restore typed container defaults")
         redo_typed_containers = await app.service.scene_redo(scene_file=scene_file)
         if not redo_typed_containers.get("changed"):
@@ -356,7 +443,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             script_path="res://test_node_2d.gd",
             scene_file=scene_file,
         )
-        if not bound_script.get("changed") or bound_script["script"]["resource_path"] != "res://test_node_2d.gd":
+        if (
+            not bound_script.get("changed")
+            or bound_script["script"]["resource_path"] != "res://test_node_2d.gd"
+        ):
             raise RuntimeError("node_script_bind did not attach a compatible script")
         unchanged_script = await app.service.node_script_bind(
             path=marker_path,
@@ -379,14 +469,18 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             replace_existing=True,
             scene_file=scene_file,
         )
-        if replaced_script["script"]["resource_path"] != "res://test_node_2d_alternate.gd":
+        if (
+            replaced_script["script"]["resource_path"]
+            != "res://test_node_2d_alternate.gd"
+        ):
             raise RuntimeError("node_script_bind did not replace the existing script")
         undo_script_replace = await app.service.scene_undo(scene_file=scene_file)
         if not undo_script_replace.get("changed"):
             raise RuntimeError("Script replacement was not undoable")
         undo_replace_hierarchy = await app.service.scene_get_hierarchy(limit=20)
         if not any(
-            item["path"] == marker_path and item["script_path"] == "res://test_node_2d.gd"
+            item["path"] == marker_path
+            and item["script_path"] == "res://test_node_2d.gd"
             for item in undo_replace_hierarchy["nodes"]
         ):
             raise RuntimeError("Undo did not restore the previous script")
@@ -460,7 +554,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or packed_instance["subtree_node_count"] != 2
             or packed_instance["type"] != "Node2D"
         ):
-            raise RuntimeError("PackedScene instance metadata was not reported correctly")
+            raise RuntimeError(
+                "PackedScene instance metadata was not reported correctly"
+            )
         undo_packed_instance = await app.service.scene_undo(scene_file=scene_file)
         if not undo_packed_instance.get("changed"):
             raise RuntimeError("PackedScene instance was not undoable")
@@ -495,7 +591,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             not reparented_packed_instance.get("packed_scene_instance")
             or reparented_packed_instance.get("migrated_animation_tracks") != 0
         ):
-            raise RuntimeError("PackedScene instance reparenting lost its instance boundary")
+            raise RuntimeError(
+                "PackedScene instance reparenting lost its instance boundary"
+            )
         undo_packed_reparent = await app.service.scene_undo(scene_file=scene_file)
         if not undo_packed_reparent.get("changed"):
             raise RuntimeError("PackedScene instance reparenting was not undoable")
@@ -513,7 +611,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or packed_instance_copy.get("scene_path") != "res://packed_scene_2d.tscn"
             or packed_instance_copy.get("copied_node_count") != 2
         ):
-            raise RuntimeError("PackedScene instance duplication did not preserve the source boundary")
+            raise RuntimeError(
+                "PackedScene instance duplication did not preserve the source boundary"
+            )
         await _expect_godot_error(
             app.service.node_duplicate(
                 f"{packed_instance_path}/PackedSceneInternalSprite",
@@ -527,7 +627,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         if not moved_packed_copy.get("packed_scene_instance"):
-            raise RuntimeError("Duplicated PackedScene instance could not be reparented")
+            raise RuntimeError(
+                "Duplicated PackedScene instance could not be reparented"
+            )
 
         transform_parent = await app.service.node_create(
             type_name="Node2D",
@@ -587,7 +689,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             fields=["remote_path"],
             scene_file=scene_file,
         )
-        if _property_value(follower_properties, "remote_path") != "../UI/Panel/RenamedButton":
+        if (
+            _property_value(follower_properties, "remote_path")
+            != "../UI/Panel/RenamedButton"
+        ):
             raise RuntimeError("Rename did not update the RemoteTransform2D path")
 
         undo_rename = await app.service.scene_undo(scene_file=scene_file)
@@ -598,7 +703,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             fields=["remote_path"],
             scene_file=scene_file,
         )
-        if _property_value(follower_properties, "remote_path") != "../UI/Panel/StartButton":
+        if (
+            _property_value(follower_properties, "remote_path")
+            != "../UI/Panel/StartButton"
+        ):
             raise RuntimeError("Undo did not restore the renamed NodePath")
         redo_rename = await app.service.scene_redo(scene_file=scene_file)
         if not redo_rename.get("changed"):
@@ -613,7 +721,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if reparented_button_path != "/Main/UI/RenamedButton":
             raise RuntimeError(f"Unexpected reparented path: {reparented_button_path}")
         if not reparented_button.get("kept_global_transform"):
-            raise RuntimeError("Reparent did not preserve the default global transform policy")
+            raise RuntimeError(
+                "Reparent did not preserve the default global transform policy"
+            )
         if (
             reparented_button["migrated_node_paths"] < 1
             or reparented_button["migrated_animation_tracks"] < 1
@@ -642,7 +752,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             fields=["remote_path"],
             scene_file=scene_file,
         )
-        if _property_value(follower_properties, "remote_path") != "../UI/Panel/RenamedButton":
+        if (
+            _property_value(follower_properties, "remote_path")
+            != "../UI/Panel/RenamedButton"
+        ):
             raise RuntimeError("Undo did not restore the reparented NodePath")
         redo_reparent = await app.service.scene_redo(scene_file=scene_file)
         if not redo_reparent.get("changed"):
@@ -659,7 +772,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if not _has_animation_track(
             existing_animation["animation"], reparented_button_path, "modulate"
         ):
-            raise RuntimeError("Animation track target was not resolved after reparenting")
+            raise RuntimeError(
+                "Animation track target was not resolved after reparenting"
+            )
         await _expect_godot_error(
             app.service.animation_track_upsert(
                 player_path="/Main/ButtonAnimations",
@@ -705,7 +820,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             hover_animation["animation"], reparented_button_path, "scale"
         )
         if hover_track["key_count"] != 2 or hover_track["interpolation"] != "cubic":
-            raise RuntimeError("Animation track did not retain its keyframe configuration")
+            raise RuntimeError(
+                "Animation track did not retain its keyframe configuration"
+            )
         key_update = await app.service.animation_key_upsert(
             player_path="/Main/ButtonAnimations",
             animation="button_hover",
@@ -865,14 +982,13 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         normal_style = style_update["style"]
-        if (
-            normal_style["effective_type"] != "StyleBoxFlat"
-            or not _color_matches(
-                normal_style["flat_properties"].get("bg_color"),
-                {"r": 0.08, "g": 0.3, "b": 0.55, "a": 1.0},
-            )
+        if normal_style["effective_type"] != "StyleBoxFlat" or not _color_matches(
+            normal_style["flat_properties"].get("bg_color"),
+            {"r": 0.08, "g": 0.3, "b": 0.55, "a": 1.0},
         ):
-            raise RuntimeError("StyleBoxFlat override did not retain requested properties")
+            raise RuntimeError(
+                "StyleBoxFlat override did not retain requested properties"
+            )
         undo_style = await app.service.scene_undo(scene_file=scene_file)
         if not undo_style.get("changed"):
             raise RuntimeError("StyleBoxFlat update was not undoable")
@@ -921,7 +1037,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             base_scale=1.25,
             scene_file=scene_file,
         )
-        themed_state = await app.service.control_theme_get(styled_button_path, scene_file=scene_file)
+        themed_state = await app.service.control_theme_get(
+            styled_button_path, scene_file=scene_file
+        )
         defaults = themed_state["theme"]["defaults"]
         if (
             defaults["font"]["resource_type"] != "SystemFont"
@@ -932,8 +1050,12 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         undo_theme_defaults = await app.service.scene_undo(scene_file=scene_file)
         if not undo_theme_defaults.get("changed"):
             raise RuntimeError("Theme default settings were not undoable")
-        themed_state = await app.service.control_theme_get(styled_button_path, scene_file=scene_file)
-        if any(value is not None for value in themed_state["theme"]["defaults"].values()):
+        themed_state = await app.service.control_theme_get(
+            styled_button_path, scene_file=scene_file
+        )
+        if any(
+            value is not None for value in themed_state["theme"]["defaults"].values()
+        ):
             raise RuntimeError("Undo did not clear newly-created Theme defaults")
         redo_theme_defaults = await app.service.scene_redo(scene_file=scene_file)
         if not redo_theme_defaults.get("changed"):
@@ -969,7 +1091,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         if theme_font_size["item"]["value"] != 20:
-            raise RuntimeError("Theme font size item did not retain the requested value")
+            raise RuntimeError(
+                "Theme font size item did not retain the requested value"
+            )
         theme_font = await app.service.control_theme_item_upsert(
             styled_button_path,
             item_type="font",
@@ -1006,7 +1130,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )
         if theme_style["item"]["value"]["resource"]["resource_type"] != "StyleBoxFlat":
             raise RuntimeError("Theme StyleBoxFlat item was not created")
-        themed_state = await app.service.control_theme_get(styled_button_path, scene_file=scene_file)
+        themed_state = await app.service.control_theme_get(
+            styled_button_path, scene_file=scene_file
+        )
         if (
             _theme_item(themed_state, "colors", "Button", "font_color") is None
             or _theme_item(themed_state, "constants", "Button", "outline_size") is None
@@ -1042,7 +1168,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         if external_theme["theme"]["resource_path"] != "res://test_theme.tres":
-            raise RuntimeError("External Theme assignment did not retain its project path")
+            raise RuntimeError(
+                "External Theme assignment did not retain its project path"
+            )
         await _expect_godot_error(
             app.service.control_theme_defaults_set(
                 styled_button_path,
@@ -1054,7 +1182,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         undo_external_theme = await app.service.scene_undo(scene_file=scene_file)
         if not undo_external_theme.get("changed"):
             raise RuntimeError("External Theme assignment was not undoable")
-        restored_theme = await app.service.control_theme_get(styled_button_path, scene_file=scene_file)
+        restored_theme = await app.service.control_theme_get(
+            styled_button_path, scene_file=scene_file
+        )
         if restored_theme["theme"]["resource_name"] != "SmokeUiTheme":
             raise RuntimeError("Undo did not restore the embedded Theme assignment")
         cleared_theme_assignment = await app.service.control_theme_assign(
@@ -1069,7 +1199,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Theme assignment clear was not undoable")
         await app.service.scene_save(scene_file=scene_file)
         saved_scene = (project_path / "test_scene.tscn").read_text(encoding="utf-8")
-        if "SmokeUiTheme" not in saved_scene or 'theme = SubResource("Theme_' not in saved_scene:
+        if (
+            "SmokeUiTheme" not in saved_scene
+            or 'theme = SubResource("Theme_' not in saved_scene
+        ):
             raise RuntimeError("Embedded Theme was not saved in the scene")
 
         button_signals = await app.service.node_get_signals(
@@ -1124,7 +1257,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             and connection.get("one_shot")
             for connection in pressed_signal.get("connections", [])
         ):
-            raise RuntimeError("Signal connection flags were not returned by node_get_signals")
+            raise RuntimeError(
+                "Signal connection flags were not returned by node_get_signals"
+            )
         undo_connect = await app.service.scene_undo(scene_file=scene_file)
         if not undo_connect.get("changed"):
             raise RuntimeError("Signal connection was not undoable")
@@ -1191,7 +1326,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if _property_value(copy_label_properties, "text") != "Nested node":
             raise RuntimeError("Duplicate did not retain child properties")
         await _expect_godot_error(
-            app.service.node_rename(marker_copy_path, "AgentMarker", scene_file=scene_file),
+            app.service.node_rename(
+                marker_copy_path, "AgentMarker", scene_file=scene_file
+            ),
             "NODE_NAME_CONFLICT",
         )
         await _expect_godot_error(
@@ -1202,7 +1339,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             ),
             "NODE_CYCLE",
         )
-        moved_copy = await app.service.node_move(marker_copy_path, index=0, scene_file=scene_file)
+        moved_copy = await app.service.node_move(
+            marker_copy_path, index=0, scene_file=scene_file
+        )
         if moved_copy.get("index") != 0:
             raise RuntimeError("Move did not report the requested sibling index")
         reordered = await app.service.scene_get_hierarchy(limit=30)
@@ -1290,7 +1429,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         if initial_wall_shape["shape"] is not None:
-            raise RuntimeError("New CollisionShape2D unexpectedly had a Shape2D resource")
+            raise RuntimeError(
+                "New CollisionShape2D unexpectedly had a Shape2D resource"
+            )
         await _expect_godot_error(
             app.service.collision_shape_set(
                 wall_shape_path,
@@ -1356,7 +1497,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             )
             if shape_update["shape"]["resource_type"] != expected_type:
                 raise RuntimeError(f"{shape_type} did not create {expected_type}")
-        cleared_shape = await app.service.collision_shape_clear(wall_shape_path, scene_file=scene_file)
+        cleared_shape = await app.service.collision_shape_clear(
+            wall_shape_path, scene_file=scene_file
+        )
         if not cleared_shape["cleared"]:
             raise RuntimeError("CollisionShape2D clear did not report a change")
         undo_shape_clear = await app.service.scene_undo(scene_file=scene_file)
@@ -1368,7 +1511,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )
         if restored_wall_shape["shape"]["resource_type"] != "ConcavePolygonShape2D":
             raise RuntimeError("Undo did not restore the collision shape resource")
-        initial_layers = await app.service.collision_object_get_layers(wall_path, scene_file=scene_file)
+        initial_layers = await app.service.collision_object_get_layers(
+            wall_path, scene_file=scene_file
+        )
         if initial_layers["layers"] != [1] or initial_layers["masks"] != [1]:
             raise RuntimeError("StaticBody2D did not expose default collision layers")
         updated_layers = await app.service.collision_object_set_layers(
@@ -1382,7 +1527,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         undo_layers = await app.service.scene_undo(scene_file=scene_file)
         if not undo_layers.get("changed"):
             raise RuntimeError("Collision layer update was not undoable")
-        restored_layers = await app.service.collision_object_get_layers(wall_path, scene_file=scene_file)
+        restored_layers = await app.service.collision_object_get_layers(
+            wall_path, scene_file=scene_file
+        )
         if restored_layers["layers"] != [1] or restored_layers["masks"] != [1]:
             raise RuntimeError("Undo did not restore collision layer values")
         redo_layers = await app.service.scene_redo(scene_file=scene_file)
@@ -1440,13 +1587,17 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             },
             scene_file=scene_file,
         )
-        if static_update["body_kind"] != "StaticBody2D" or static_update["configuration"][
-            "constant_linear_velocity"
-        ] != {"x": 24.0, "y": 0.0}:
+        if static_update["body_kind"] != "StaticBody2D" or static_update[
+            "configuration"
+        ]["constant_linear_velocity"] != {"x": 24.0, "y": 0.0}:
             raise RuntimeError("StaticBody2D configuration was not applied")
-        static_state = await app.service.physics_body_2d_get(wall_path, scene_file=scene_file)
+        static_state = await app.service.physics_body_2d_get(
+            wall_path, scene_file=scene_file
+        )
         if static_state["configuration"]["constant_angular_velocity"] != 0.5:
-            raise RuntimeError("physics_body_2d_get did not return the current StaticBody2D configuration")
+            raise RuntimeError(
+                "physics_body_2d_get did not return the current StaticBody2D configuration"
+            )
 
         animated_body = await app.service.node_create(
             type_name="AnimatableBody2D",
@@ -1565,10 +1716,19 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or pin_update["node_b_path"] != wall_path
             or pin_update["configuration"]["angular_limit_enabled"] is not True
         ):
-            raise RuntimeError("PinJoint2D configuration or endpoint path was not applied")
-        pin_state = await app.service.joint_2d_get(pin_joint_path, scene_file=scene_file)
-        if pin_state["node_a_path"] != rigid_body_path or pin_state["configuration"]["softness"] != 0.5:
-            raise RuntimeError("joint_2d_get did not return the current PinJoint2D configuration")
+            raise RuntimeError(
+                "PinJoint2D configuration or endpoint path was not applied"
+            )
+        pin_state = await app.service.joint_2d_get(
+            pin_joint_path, scene_file=scene_file
+        )
+        if (
+            pin_state["node_a_path"] != rigid_body_path
+            or pin_state["configuration"]["softness"] != 0.5
+        ):
+            raise RuntimeError(
+                "joint_2d_get did not return the current PinJoint2D configuration"
+            )
 
         groove_joint = await app.service.node_create(
             type_name="GrooveJoint2D",
@@ -1622,7 +1782,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         ray_cast_path = ray_cast["path"]
-        initial_ray_cast = await app.service.ray_cast_2d_get(ray_cast_path, scene_file=scene_file)
+        initial_ray_cast = await app.service.ray_cast_2d_get(
+            ray_cast_path, scene_file=scene_file
+        )
         if initial_ray_cast["masks"] != [1]:
             raise RuntimeError("RayCast2D did not expose its default collision mask")
         ray_cast_update = await app.service.ray_cast_2d_set(
@@ -1640,7 +1802,8 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )
         if (
             ray_cast_update["masks"] != [2, 4]
-            or ray_cast_update["configuration"]["target_position"] != {"x": 96.0, "y": 24.0}
+            or ray_cast_update["configuration"]["target_position"]
+            != {"x": 96.0, "y": 24.0}
             or ray_cast_update["configuration"]["hit_from_inside"] is not True
         ):
             raise RuntimeError("RayCast2D configuration was not applied")
@@ -1694,7 +1857,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         undo_shape_cast_clear = await app.service.scene_undo(scene_file=scene_file)
         if not undo_shape_cast_clear.get("changed"):
             raise RuntimeError("ShapeCast2D clear was not undoable")
-        restored_shape_cast = await app.service.shape_cast_2d_get(shape_cast_path, scene_file=scene_file)
+        restored_shape_cast = await app.service.shape_cast_2d_get(
+            shape_cast_path, scene_file=scene_file
+        )
         if restored_shape_cast["shape"]["resource_type"] != "CircleShape2D":
             raise RuntimeError("Undo did not restore the ShapeCast2D Shape2D resource")
 
@@ -1732,7 +1897,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             navigation_region_path, scene_file=scene_file
         )
         if initial_navigation_polygon["navigation_polygon"] is not None:
-            raise RuntimeError("New NavigationRegion2D unexpectedly had a NavigationPolygon resource")
+            raise RuntimeError(
+                "New NavigationRegion2D unexpectedly had a NavigationPolygon resource"
+            )
         await _expect_godot_error(
             app.service.navigation_polygon_geometry_set(
                 navigation_region_path,
@@ -1754,18 +1921,21 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             agent_radius=8.0,
             scene_file=scene_file,
         )
-        if (
-            direct_navigation_polygon["navigation_polygon"]["agent_radius"] != 8.0
-            or direct_navigation_polygon["navigation_polygon"]["polygons"] != [[0, 1, 2, 3]]
-        ):
+        if direct_navigation_polygon["navigation_polygon"][
+            "agent_radius"
+        ] != 8.0 or direct_navigation_polygon["navigation_polygon"]["polygons"] != [
+            [0, 1, 2, 3]
+        ]:
             raise RuntimeError("NavigationPolygon direct geometry was not applied")
         outlined_navigation_polygon = await app.service.navigation_polygon_outline_set(
             navigation_region_path, navigation_polygon_vertices, scene_file=scene_file
         )
         if outlined_navigation_polygon["outline_index"] != 0:
             raise RuntimeError("NavigationPolygon outline was not appended")
-        baked_navigation_polygon = await app.service.navigation_polygon_make_from_outlines(
-            navigation_region_path, scene_file=scene_file
+        baked_navigation_polygon = (
+            await app.service.navigation_polygon_make_from_outlines(
+                navigation_region_path, scene_file=scene_file
+            )
         )
         if not baked_navigation_polygon["navigation_polygon"]["polygons"]:
             raise RuntimeError("NavigationPolygon did not build polygons from outlines")
@@ -1790,7 +1960,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )
         if cleared_navigation_polygon["navigation_polygon"] is not None:
             raise RuntimeError("NavigationPolygon resource was not detached")
-        undo_navigation_polygon_clear = await app.service.scene_undo(scene_file=scene_file)
+        undo_navigation_polygon_clear = await app.service.scene_undo(
+            scene_file=scene_file
+        )
         if not undo_navigation_polygon_clear.get("changed"):
             raise RuntimeError("NavigationPolygon clear was not undoable")
         restored_navigation_polygon = await app.service.navigation_polygon_get(
@@ -1861,10 +2033,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             },
             scene_file=scene_file,
         )
-        if (
-            obstacle_update["configuration"]["radius"] != 16.0
-            or obstacle_update["configuration"]["avoidance_layers"] != [2]
-        ):
+        if obstacle_update["configuration"]["radius"] != 16.0 or obstacle_update[
+            "configuration"
+        ]["avoidance_layers"] != [2]:
             raise RuntimeError("NavigationObstacle2D configuration was not applied")
 
         navigation_link = await app.service.node_create(
@@ -1895,8 +2066,13 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         navigation_link_state = await app.service.navigation_2d_get(
             navigation_link_path, scene_file=scene_file
         )
-        if navigation_link_state["configuration"]["end_position"] != {"x": 128.0, "y": 32.0}:
-            raise RuntimeError("navigation_2d_get did not return the current NavigationLink2D configuration")
+        if navigation_link_state["configuration"]["end_position"] != {
+            "x": 128.0,
+            "y": 32.0,
+        }:
+            raise RuntimeError(
+                "navigation_2d_get did not return the current NavigationLink2D configuration"
+            )
         undo_navigation_link = await app.service.scene_undo(scene_file=scene_file)
         if not undo_navigation_link.get("changed"):
             raise RuntimeError("NavigationLink2D configuration was not undoable")
@@ -1914,7 +2090,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         initial_patrol_path = await app.service.path_2d_get(
             patrol_path_path, scene_file=scene_file
         )
-        if initial_patrol_path["curve"] is not None or initial_patrol_path["total_points"] != 0:
+        if (
+            initial_patrol_path["curve"] is not None
+            or initial_patrol_path["total_points"] != 0
+        ):
             raise RuntimeError("New Path2D unexpectedly had a Curve2D resource")
         patrol_points = [
             {
@@ -1945,7 +2124,8 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             patrol_path_path, offset=1, limit=1, scene_file=scene_file
         )
         if (
-            paged_patrol_path["points"] != [
+            paged_patrol_path["points"]
+            != [
                 {
                     "index": 1,
                     "position": {"x": 128.0, "y": 64.0},
@@ -1962,7 +2142,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             index=1,
             scene_file=scene_file,
         )
-        if inserted_patrol_point["point_index"] != 1 or inserted_patrol_point["total_points"] != 4:
+        if (
+            inserted_patrol_point["point_index"] != 1
+            or inserted_patrol_point["total_points"] != 4
+        ):
             raise RuntimeError("Path2D Curve2D point insertion was not applied")
         updated_patrol_point = await app.service.path_2d_curve_point_set(
             patrol_path_path,
@@ -1985,7 +2168,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         removed_patrol_point = await app.service.path_2d_curve_point_remove(
             patrol_path_path, 0, scene_file=scene_file
         )
-        if removed_patrol_point["removed_point_index"] != 0 or removed_patrol_point["total_points"] != 3:
+        if (
+            removed_patrol_point["removed_point_index"] != 0
+            or removed_patrol_point["total_points"] != 3
+        ):
             raise RuntimeError("Path2D Curve2D point removal was not applied")
         undo_patrol_point_remove = await app.service.scene_undo(scene_file=scene_file)
         if not undo_patrol_point_remove.get("changed"):
@@ -2009,7 +2195,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         restored_patrol_curve = await app.service.path_2d_get(
             patrol_path_path, scene_file=scene_file
         )
-        if restored_patrol_curve["curve"] is None or restored_patrol_curve["total_points"] != 3:
+        if (
+            restored_patrol_curve["curve"] is None
+            or restored_patrol_curve["total_points"] != 3
+        ):
             raise RuntimeError("Undo did not restore the Path2D Curve2D resource")
 
         skeleton = await app.service.node_create(
@@ -2019,7 +2208,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         skeleton_path = skeleton["path"]
-        empty_skeleton = await app.service.skeleton_2d_get(skeleton_path, scene_file=scene_file)
+        empty_skeleton = await app.service.skeleton_2d_get(
+            skeleton_path, scene_file=scene_file
+        )
         if empty_skeleton["bone_count"] != 0 or empty_skeleton["bones"]:
             raise RuntimeError("New Skeleton2D did not report an empty bone hierarchy")
         root_bone = await app.service.skeleton_2d_bone_create(
@@ -2040,13 +2231,20 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         child_bone_path = child_bone["path"]
-        initial_skeleton = await app.service.skeleton_2d_get(skeleton_path, scene_file=scene_file)
+        initial_skeleton = await app.service.skeleton_2d_get(
+            skeleton_path, scene_file=scene_file
+        )
         if initial_skeleton["bone_count"] != 2 or {
             bone["path"] for bone in initial_skeleton["bones"]
         } != {root_bone_path, child_bone_path}:
             raise RuntimeError("Skeleton2D did not discover its Bone2D hierarchy")
-        initial_root_bone = await app.service.bone_2d_get(root_bone_path, scene_file=scene_file)
-        if not initial_root_bone["valid_hierarchy"] or initial_root_bone["skeleton_path"] != skeleton_path:
+        initial_root_bone = await app.service.bone_2d_get(
+            root_bone_path, scene_file=scene_file
+        )
+        if (
+            not initial_root_bone["valid_hierarchy"]
+            or initial_root_bone["skeleton_path"] != skeleton_path
+        ):
             raise RuntimeError("Bone2D hierarchy metadata was not resolved")
         root_rest = {
             "x": {"x": 1.0, "y": 0.0},
@@ -2075,15 +2273,23 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )
         if not reset_skeleton.get("changed"):
             raise RuntimeError("Skeleton2D reset-to-rest was not applied")
-        reset_root_bone = await app.service.bone_2d_get(root_bone_path, scene_file=scene_file)
+        reset_root_bone = await app.service.bone_2d_get(
+            root_bone_path, scene_file=scene_file
+        )
         if reset_root_bone["transform"] != root_rest:
-            raise RuntimeError("Skeleton2D reset-to-rest did not restore the Bone2D transform")
+            raise RuntimeError(
+                "Skeleton2D reset-to-rest did not restore the Bone2D transform"
+            )
         undo_skeleton_reset = await app.service.scene_undo(scene_file=scene_file)
         if not undo_skeleton_reset.get("changed"):
             raise RuntimeError("Skeleton2D reset-to-rest was not undoable")
-        restored_root_transform = await app.service.bone_2d_get(root_bone_path, scene_file=scene_file)
+        restored_root_transform = await app.service.bone_2d_get(
+            root_bone_path, scene_file=scene_file
+        )
         if restored_root_transform["transform"] == root_rest:
-            raise RuntimeError("Undo did not restore the Bone2D transform before reset-to-rest")
+            raise RuntimeError(
+                "Undo did not restore the Bone2D transform before reset-to-rest"
+            )
         redo_skeleton_reset = await app.service.scene_redo(scene_file=scene_file)
         if not redo_skeleton_reset.get("changed"):
             raise RuntimeError("Skeleton2D reset-to-rest was not redoable")
@@ -2097,13 +2303,19 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )
         if not made_rest.get("changed"):
             raise RuntimeError("Skeleton2D make-rest-from-current was not applied")
-        current_rest_root_bone = await app.service.bone_2d_get(root_bone_path, scene_file=scene_file)
+        current_rest_root_bone = await app.service.bone_2d_get(
+            root_bone_path, scene_file=scene_file
+        )
         if current_rest_root_bone["rest"]["origin"] != {"x": 64.0, "y": 16.0}:
-            raise RuntimeError("Skeleton2D did not copy the current Bone2D transform to rest")
+            raise RuntimeError(
+                "Skeleton2D did not copy the current Bone2D transform to rest"
+            )
         undo_make_rest = await app.service.scene_undo(scene_file=scene_file)
         if not undo_make_rest.get("changed"):
             raise RuntimeError("Skeleton2D make-rest-from-current was not undoable")
-        restored_rest_root_bone = await app.service.bone_2d_get(root_bone_path, scene_file=scene_file)
+        restored_rest_root_bone = await app.service.bone_2d_get(
+            root_bone_path, scene_file=scene_file
+        )
         if restored_rest_root_bone["rest"] != root_rest:
             raise RuntimeError("Undo did not restore the previous Skeleton2D rest pose")
         redo_make_rest = await app.service.scene_redo(scene_file=scene_file)
@@ -2124,7 +2336,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             initial_audio_player["configuration"]["stream_path"] != ""
             or "Master" not in initial_audio_player["available_buses"]
         ):
-            raise RuntimeError("New AudioStreamPlayer2D had unexpected stream or bus state")
+            raise RuntimeError(
+                "New AudioStreamPlayer2D had unexpected stream or bus state"
+            )
         await _expect_godot_error(
             app.service.audio_stream_player_2d_set(
                 audio_player_path,
@@ -2173,7 +2387,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             audio_player_path, scene_file=scene_file
         )
         if restored_audio_player["configuration"]["stream_path"] != "":
-            raise RuntimeError("Undo did not clear the AudioStreamPlayer2D stream binding")
+            raise RuntimeError(
+                "Undo did not clear the AudioStreamPlayer2D stream binding"
+            )
         redo_audio_update = await app.service.scene_redo(scene_file=scene_file)
         if not redo_audio_update.get("changed"):
             raise RuntimeError("AudioStreamPlayer2D configuration was not redoable")
@@ -2190,8 +2406,13 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         restored_audio_stream = await app.service.audio_stream_player_2d_get(
             audio_player_path, scene_file=scene_file
         )
-        if restored_audio_stream["configuration"]["stream_path"] != "res://test_audio.tres":
-            raise RuntimeError("Undo did not restore the AudioStreamPlayer2D stream binding")
+        if (
+            restored_audio_stream["configuration"]["stream_path"]
+            != "res://test_audio.tres"
+        ):
+            raise RuntimeError(
+                "Undo did not restore the AudioStreamPlayer2D stream binding"
+            )
 
         sparks = await app.service.node_create(
             type_name="GPUParticles2D",
@@ -2207,7 +2428,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         fire_path = fire["path"]
-        initial_fire = await app.service.gpu_particles_2d_get(fire_path, scene_file=scene_file)
+        initial_fire = await app.service.gpu_particles_2d_get(
+            fire_path, scene_file=scene_file
+        )
         if (
             initial_fire["configuration"]["texture_path"] != ""
             or initial_fire["configuration"]["process_material_path"] != ""
@@ -2281,7 +2504,8 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or fire_configuration["sub_emitter_path"] != sparks_path
             or fire_configuration["texture_path"] != "res://test_icon.svg"
             or fire_configuration["texture_type"] == ""
-            or fire_configuration["process_material_path"] != "res://test_particles.tres"
+            or fire_configuration["process_material_path"]
+            != "res://test_particles.tres"
             or fire_configuration["process_material_type"] != "ParticleProcessMaterial"
             or not _is_close(fire_configuration["lifetime"], 2.5)
             or not _is_close(fire_configuration["interp_to_end"], 0.25)
@@ -2309,7 +2533,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         undo_fire_update = await app.service.scene_undo(scene_file=scene_file)
         if not undo_fire_update.get("changed"):
             raise RuntimeError("GPUParticles2D configuration was not undoable")
-        restored_fire = await app.service.gpu_particles_2d_get(fire_path, scene_file=scene_file)
+        restored_fire = await app.service.gpu_particles_2d_get(
+            fire_path, scene_file=scene_file
+        )
         if (
             restored_fire["configuration"]["texture_path"] != ""
             or restored_fire["configuration"]["process_material_path"] != ""
@@ -2341,10 +2567,12 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             fire_path, scene_file=scene_file
         )
         if (
-            restored_fire_bindings["configuration"]["texture_path"] != "res://test_icon.svg"
+            restored_fire_bindings["configuration"]["texture_path"]
+            != "res://test_icon.svg"
             or restored_fire_bindings["configuration"]["process_material_path"]
             != "res://test_particles.tres"
-            or restored_fire_bindings["configuration"]["sub_emitter_path"] != sparks_path
+            or restored_fire_bindings["configuration"]["sub_emitter_path"]
+            != sparks_path
         ):
             raise RuntimeError("Undo did not restore GPUParticles2D resource bindings")
 
@@ -2362,9 +2590,13 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or sparks_material["configuration"] is None
             or sparks_material["configuration"]["disable_z"] is not True
         ):
-            raise RuntimeError("ParticleProcessMaterial was not created as an embedded 2D material")
+            raise RuntimeError(
+                "ParticleProcessMaterial was not created as an embedded 2D material"
+            )
         await _expect_godot_error(
-            app.service.particle_process_material_2d_create(sparks_path, scene_file=scene_file),
+            app.service.particle_process_material_2d_create(
+                sparks_path, scene_file=scene_file
+            ),
             "PROCESS_MATERIAL_ALREADY_ASSIGNED",
         )
         undo_sparks_material = await app.service.scene_undo(scene_file=scene_file)
@@ -2374,7 +2606,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             sparks_path, scene_file=scene_file
         )
         if restored_sparks_material["material"]["assigned"]:
-            raise RuntimeError("Undo did not remove the created ParticleProcessMaterial")
+            raise RuntimeError(
+                "Undo did not remove the created ParticleProcessMaterial"
+            )
         redo_sparks_material = await app.service.scene_redo(scene_file=scene_file)
         if not redo_sparks_material.get("changed"):
             raise RuntimeError("ParticleProcessMaterial creation was not redoable")
@@ -2384,10 +2618,14 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )
         if (
             initial_fire_material["material"]["origin"] != "external"
-            or initial_fire_material["material"]["resource_path"] != "res://test_particles.tres"
-            or initial_fire_material["configuration"]["direction"] != {"x": 1.0, "y": 0.0}
+            or initial_fire_material["material"]["resource_path"]
+            != "res://test_particles.tres"
+            or initial_fire_material["configuration"]["direction"]
+            != {"x": 1.0, "y": 0.0}
         ):
-            raise RuntimeError("External ParticleProcessMaterial was not reported accurately")
+            raise RuntimeError(
+                "External ParticleProcessMaterial was not reported accurately"
+            )
         await _expect_godot_error(
             app.service.particle_process_material_2d_set(
                 fire_path,
@@ -2472,7 +2710,8 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or not _is_close(process_configuration["initial_velocity_max"], 64.0)
             or process_configuration["gravity"] != {"x": 0.0, "y": 98.0}
             or not _color_matches(
-                process_configuration["color"], {"r": 1.0, "g": 0.5, "b": 0.25, "a": 0.8}
+                process_configuration["color"],
+                {"r": 1.0, "g": 0.5, "b": 0.25, "a": 0.8},
             )
             or process_configuration["collision_mode"] != "rigid"
             or process_configuration["sub_emitter_mode"] != "at_collision"
@@ -2487,24 +2726,36 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )
         if (
             restored_fire_material["material"]["origin"] != "external"
-            or restored_fire_material["material"]["resource_path"] != "res://test_particles.tres"
-            or restored_fire_material["configuration"]["direction"] != {"x": 1.0, "y": 0.0}
+            or restored_fire_material["material"]["resource_path"]
+            != "res://test_particles.tres"
+            or restored_fire_material["configuration"]["direction"]
+            != {"x": 1.0, "y": 0.0}
         ):
-            raise RuntimeError("Undo did not restore the untouched external ParticleProcessMaterial")
+            raise RuntimeError(
+                "Undo did not restore the untouched external ParticleProcessMaterial"
+            )
         redo_process_material = await app.service.scene_redo(scene_file=scene_file)
         if not redo_process_material.get("changed"):
             raise RuntimeError("ParticleProcessMaterial update was not redoable")
 
-        undo_process_material_resources = await app.service.scene_undo(scene_file=scene_file)
+        undo_process_material_resources = await app.service.scene_undo(
+            scene_file=scene_file
+        )
         if not undo_process_material_resources.get("changed"):
-            raise RuntimeError("ParticleProcessMaterial resource setup did not restore the external material")
-        initial_process_curve = await app.service.particle_process_material_2d_curve_get(
-            fire_path,
-            "scale",
-            scene_file=scene_file,
+            raise RuntimeError(
+                "ParticleProcessMaterial resource setup did not restore the external material"
+            )
+        initial_process_curve = (
+            await app.service.particle_process_material_2d_curve_get(
+                fire_path,
+                "scale",
+                scene_file=scene_file,
+            )
         )
         if initial_process_curve["resource"]["assigned"]:
-            raise RuntimeError("External ParticleProcessMaterial unexpectedly had a scale CurveTexture")
+            raise RuntimeError(
+                "External ParticleProcessMaterial unexpectedly had a scale CurveTexture"
+            )
         await _expect_godot_error(
             app.service.particle_process_material_2d_curve_bind(
                 fire_path,
@@ -2528,7 +2779,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or bound_process_curve["resource"]["resource_path"]
             != "res://test_particle_curve_texture.tres"
         ):
-            raise RuntimeError("ParticleProcessMaterial CurveTexture was not bound safely")
+            raise RuntimeError(
+                "ParticleProcessMaterial CurveTexture was not bound safely"
+            )
         process_curve_update = await app.service.particle_process_material_2d_curve_set(
             fire_path,
             "scale",
@@ -2559,45 +2812,70 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or len(process_curve_configuration["curve"]["points"]) != 2
             or process_curve_update["resource"]["origin"] != "embedded"
         ):
-            raise RuntimeError("ParticleProcessMaterial CurveTexture configuration was not applied")
+            raise RuntimeError(
+                "ParticleProcessMaterial CurveTexture configuration was not applied"
+            )
         undo_process_curve_update = await app.service.scene_undo(scene_file=scene_file)
         if not undo_process_curve_update.get("changed"):
-            raise RuntimeError("ParticleProcessMaterial CurveTexture update was not undoable")
-        restored_process_curve = await app.service.particle_process_material_2d_curve_get(
-            fire_path,
-            "scale",
-            scene_file=scene_file,
+            raise RuntimeError(
+                "ParticleProcessMaterial CurveTexture update was not undoable"
+            )
+        restored_process_curve = (
+            await app.service.particle_process_material_2d_curve_get(
+                fire_path,
+                "scale",
+                scene_file=scene_file,
+            )
         )
-        if restored_process_curve["resource"]["resource_path"] != "res://test_particle_curve_texture.tres":
-            raise RuntimeError("Undo did not restore the external ParticleProcessMaterial CurveTexture")
+        if (
+            restored_process_curve["resource"]["resource_path"]
+            != "res://test_particle_curve_texture.tres"
+        ):
+            raise RuntimeError(
+                "Undo did not restore the external ParticleProcessMaterial CurveTexture"
+            )
         redo_process_curve_update = await app.service.scene_redo(scene_file=scene_file)
         if not redo_process_curve_update.get("changed"):
-            raise RuntimeError("ParticleProcessMaterial CurveTexture update was not redoable")
-        cleared_process_curve = await app.service.particle_process_material_2d_curve_clear(
-            fire_path,
-            "scale",
-            scene_file=scene_file,
+            raise RuntimeError(
+                "ParticleProcessMaterial CurveTexture update was not redoable"
+            )
+        cleared_process_curve = (
+            await app.service.particle_process_material_2d_curve_clear(
+                fire_path,
+                "scale",
+                scene_file=scene_file,
+            )
         )
         if cleared_process_curve["resource"]["assigned"]:
             raise RuntimeError("ParticleProcessMaterial CurveTexture was not cleared")
         undo_process_curve_clear = await app.service.scene_undo(scene_file=scene_file)
         if not undo_process_curve_clear.get("changed"):
-            raise RuntimeError("ParticleProcessMaterial CurveTexture clear was not undoable")
-        restored_embedded_process_curve = await app.service.particle_process_material_2d_curve_get(
-            fire_path,
-            "scale",
-            scene_file=scene_file,
+            raise RuntimeError(
+                "ParticleProcessMaterial CurveTexture clear was not undoable"
+            )
+        restored_embedded_process_curve = (
+            await app.service.particle_process_material_2d_curve_get(
+                fire_path,
+                "scale",
+                scene_file=scene_file,
+            )
         )
         if restored_embedded_process_curve["resource"]["origin"] != "embedded":
-            raise RuntimeError("Undo did not restore the embedded ParticleProcessMaterial CurveTexture")
+            raise RuntimeError(
+                "Undo did not restore the embedded ParticleProcessMaterial CurveTexture"
+            )
 
-        initial_process_gradient = await app.service.particle_process_material_2d_gradient_get(
-            fire_path,
-            "color",
-            scene_file=scene_file,
+        initial_process_gradient = (
+            await app.service.particle_process_material_2d_gradient_get(
+                fire_path,
+                "color",
+                scene_file=scene_file,
+            )
         )
         if initial_process_gradient["resource"]["assigned"]:
-            raise RuntimeError("ParticleProcessMaterial unexpectedly had a color GradientTexture1D")
+            raise RuntimeError(
+                "ParticleProcessMaterial unexpectedly had a color GradientTexture1D"
+            )
         await _expect_godot_error(
             app.service.particle_process_material_2d_gradient_bind(
                 fire_path,
@@ -2607,11 +2885,13 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             ),
             "RESOURCE_TYPE_MISMATCH",
         )
-        bound_process_gradient = await app.service.particle_process_material_2d_gradient_bind(
-            fire_path,
-            "color",
-            "res://test_particle_gradient_texture.tres",
-            scene_file=scene_file,
+        bound_process_gradient = (
+            await app.service.particle_process_material_2d_gradient_bind(
+                fire_path,
+                "color",
+                "res://test_particle_gradient_texture.tres",
+                scene_file=scene_file,
+            )
         )
         if (
             not bound_process_gradient.get("undoable")
@@ -2619,22 +2899,35 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or bound_process_gradient["resource"]["resource_path"]
             != "res://test_particle_gradient_texture.tres"
         ):
-            raise RuntimeError("ParticleProcessMaterial GradientTexture1D was not bound safely")
-        process_gradient_update = await app.service.particle_process_material_2d_gradient_set(
-            fire_path,
-            "color",
-            {
-                "width": 512,
-                "use_hdr": True,
-                "points": [
-                    {"offset": 0.0, "color": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0}},
-                    {"offset": 0.5, "color": {"r": 0.0, "g": 1.0, "b": 0.0, "a": 0.8}},
-                    {"offset": 1.0, "color": {"r": 0.0, "g": 0.0, "b": 1.0, "a": 0.5}},
-                ],
-                "interpolation_mode": "cubic",
-                "interpolation_color_space": "oklab",
-            },
-            scene_file=scene_file,
+            raise RuntimeError(
+                "ParticleProcessMaterial GradientTexture1D was not bound safely"
+            )
+        process_gradient_update = (
+            await app.service.particle_process_material_2d_gradient_set(
+                fire_path,
+                "color",
+                {
+                    "width": 512,
+                    "use_hdr": True,
+                    "points": [
+                        {
+                            "offset": 0.0,
+                            "color": {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0},
+                        },
+                        {
+                            "offset": 0.5,
+                            "color": {"r": 0.0, "g": 1.0, "b": 0.0, "a": 0.8},
+                        },
+                        {
+                            "offset": 1.0,
+                            "color": {"r": 0.0, "g": 0.0, "b": 1.0, "a": 0.5},
+                        },
+                    ],
+                    "interpolation_mode": "cubic",
+                    "interpolation_color_space": "oklab",
+                },
+                scene_file=scene_file,
+            )
         )
         process_gradient_configuration = process_gradient_update["configuration"]
         if (
@@ -2642,8 +2935,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or process_gradient_update.get("copied_external_resource") is not True
             or process_gradient_configuration["width"] != 512
             or process_gradient_configuration["use_hdr"] is not True
-            or process_gradient_configuration["gradient"]["interpolation_mode"] != "cubic"
-            or process_gradient_configuration["gradient"]["interpolation_color_space"] != "oklab"
+            or process_gradient_configuration["gradient"]["interpolation_mode"]
+            != "cubic"
+            or process_gradient_configuration["gradient"]["interpolation_color_space"]
+            != "oklab"
             or len(process_gradient_configuration["gradient"]["points"]) != 3
             or not _color_matches(
                 process_gradient_configuration["gradient"]["points"][1]["color"],
@@ -2651,37 +2946,66 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             )
             or process_gradient_update["resource"]["origin"] != "embedded"
         ):
-            raise RuntimeError("ParticleProcessMaterial GradientTexture1D configuration was not applied")
-        undo_process_gradient_update = await app.service.scene_undo(scene_file=scene_file)
-        if not undo_process_gradient_update.get("changed"):
-            raise RuntimeError("ParticleProcessMaterial GradientTexture1D update was not undoable")
-        restored_process_gradient = await app.service.particle_process_material_2d_gradient_get(
-            fire_path,
-            "color",
-            scene_file=scene_file,
+            raise RuntimeError(
+                "ParticleProcessMaterial GradientTexture1D configuration was not applied"
+            )
+        undo_process_gradient_update = await app.service.scene_undo(
+            scene_file=scene_file
         )
-        if restored_process_gradient["resource"]["resource_path"] != "res://test_particle_gradient_texture.tres":
-            raise RuntimeError("Undo did not restore the external ParticleProcessMaterial GradientTexture1D")
-        redo_process_gradient_update = await app.service.scene_redo(scene_file=scene_file)
+        if not undo_process_gradient_update.get("changed"):
+            raise RuntimeError(
+                "ParticleProcessMaterial GradientTexture1D update was not undoable"
+            )
+        restored_process_gradient = (
+            await app.service.particle_process_material_2d_gradient_get(
+                fire_path,
+                "color",
+                scene_file=scene_file,
+            )
+        )
+        if (
+            restored_process_gradient["resource"]["resource_path"]
+            != "res://test_particle_gradient_texture.tres"
+        ):
+            raise RuntimeError(
+                "Undo did not restore the external ParticleProcessMaterial GradientTexture1D"
+            )
+        redo_process_gradient_update = await app.service.scene_redo(
+            scene_file=scene_file
+        )
         if not redo_process_gradient_update.get("changed"):
-            raise RuntimeError("ParticleProcessMaterial GradientTexture1D update was not redoable")
-        cleared_process_gradient = await app.service.particle_process_material_2d_gradient_clear(
-            fire_path,
-            "color",
-            scene_file=scene_file,
+            raise RuntimeError(
+                "ParticleProcessMaterial GradientTexture1D update was not redoable"
+            )
+        cleared_process_gradient = (
+            await app.service.particle_process_material_2d_gradient_clear(
+                fire_path,
+                "color",
+                scene_file=scene_file,
+            )
         )
         if cleared_process_gradient["resource"]["assigned"]:
-            raise RuntimeError("ParticleProcessMaterial GradientTexture1D was not cleared")
-        undo_process_gradient_clear = await app.service.scene_undo(scene_file=scene_file)
+            raise RuntimeError(
+                "ParticleProcessMaterial GradientTexture1D was not cleared"
+            )
+        undo_process_gradient_clear = await app.service.scene_undo(
+            scene_file=scene_file
+        )
         if not undo_process_gradient_clear.get("changed"):
-            raise RuntimeError("ParticleProcessMaterial GradientTexture1D clear was not undoable")
-        restored_embedded_process_gradient = await app.service.particle_process_material_2d_gradient_get(
-            fire_path,
-            "color",
-            scene_file=scene_file,
+            raise RuntimeError(
+                "ParticleProcessMaterial GradientTexture1D clear was not undoable"
+            )
+        restored_embedded_process_gradient = (
+            await app.service.particle_process_material_2d_gradient_get(
+                fire_path,
+                "color",
+                scene_file=scene_file,
+            )
         )
         if restored_embedded_process_gradient["resource"]["origin"] != "embedded":
-            raise RuntimeError("Undo did not restore the embedded ParticleProcessMaterial GradientTexture1D")
+            raise RuntimeError(
+                "Undo did not restore the embedded ParticleProcessMaterial GradientTexture1D"
+            )
         expected_process_curve_names = {
             "angle",
             "angular_velocity",
@@ -2701,15 +3025,23 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             "anim_offset",
             "turbulence_influence_over_life",
         }
-        if (
-            set(restored_embedded_process_curve["curve_names"]) != expected_process_curve_names
-            or set(restored_embedded_process_gradient["gradient_names"]) != {"color", "initial_color"}
-        ):
-            raise RuntimeError("ParticleProcessMaterial resource slots were not enumerated")
+        if set(
+            restored_embedded_process_curve["curve_names"]
+        ) != expected_process_curve_names or set(
+            restored_embedded_process_gradient["gradient_names"]
+        ) != {"color", "initial_color"}:
+            raise RuntimeError(
+                "ParticleProcessMaterial resource slots were not enumerated"
+            )
         scalar_process_curve = await app.service.particle_process_material_2d_curve_set(
             fire_path,
             "alpha",
-            {"points": [{"position": {"x": 0.0, "y": 1.0}}, {"position": {"x": 1.0, "y": 0.0}}]},
+            {
+                "points": [
+                    {"position": {"x": 0.0, "y": 1.0}},
+                    {"position": {"x": 1.0, "y": 0.0}},
+                ]
+            },
             scene_file=scene_file,
         )
         if (
@@ -2717,24 +3049,36 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or scalar_process_curve["resource"]["origin"] != "embedded"
             or set(scalar_process_curve["curve_names"]) != expected_process_curve_names
         ):
-            raise RuntimeError("ParticleProcessMaterial direct CurveTexture slot was not configured")
-        initial_color_gradient = await app.service.particle_process_material_2d_gradient_set(
-            fire_path,
-            "initial_color",
-            {
-                "points": [
-                    {"offset": 0.0, "color": {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0}},
-                    {"offset": 1.0, "color": {"r": 0.0, "g": 0.0, "b": 0.0, "a": 0.0}},
-                ]
-            },
-            scene_file=scene_file,
+            raise RuntimeError(
+                "ParticleProcessMaterial direct CurveTexture slot was not configured"
+            )
+        initial_color_gradient = (
+            await app.service.particle_process_material_2d_gradient_set(
+                fire_path,
+                "initial_color",
+                {
+                    "points": [
+                        {
+                            "offset": 0.0,
+                            "color": {"r": 1.0, "g": 1.0, "b": 1.0, "a": 1.0},
+                        },
+                        {
+                            "offset": 1.0,
+                            "color": {"r": 0.0, "g": 0.0, "b": 0.0, "a": 0.0},
+                        },
+                    ]
+                },
+                scene_file=scene_file,
+            )
         )
         if (
             initial_color_gradient.get("created") is not True
             or initial_color_gradient["resource"]["origin"] != "embedded"
             or len(initial_color_gradient["configuration"]["gradient"]["points"]) != 2
         ):
-            raise RuntimeError("ParticleProcessMaterial initial_color GradientTexture1D was not configured")
+            raise RuntimeError(
+                "ParticleProcessMaterial initial_color GradientTexture1D was not configured"
+            )
 
         canvas_item = await app.service.node_create(
             type_name="Sprite2D",
@@ -2776,15 +3120,212 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         if _property_value(restored_sprite_texture, "texture") is not None:
-            raise RuntimeError("Undo did not clear the generic project Texture2D binding")
+            raise RuntimeError(
+                "Undo did not clear the generic project Texture2D binding"
+            )
         redo_sprite_texture = await app.service.scene_redo(scene_file=scene_file)
         if not redo_sprite_texture.get("changed"):
             raise RuntimeError("Generic project Texture2D binding was not redoable")
+
+        semantic_sprite = await app.service.node_create(
+            type_name="Sprite2D",
+            name="AgentSpriteSemantic",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        semantic_sprite_path = semantic_sprite["path"]
+        sprite_configuration = await app.service.sprite_2d_set(
+            semantic_sprite_path,
+            {
+                "texture_path": "res://test_icon.svg",
+                "centered": False,
+                "offset": {"x": 12.0, "y": -6.0},
+                "flip_h": True,
+                "hframes": 2,
+                "vframes": 2,
+                "frame_coords": {"x": 1, "y": 1},
+                "region_enabled": True,
+                "region_rect": {
+                    "position": {"x": 1.0, "y": 2.0},
+                    "size": {"x": 12.0, "y": 14.0},
+                },
+            },
+            scene_file=scene_file,
+        )
+        sprite_state = sprite_configuration["configuration"]
+        if (
+            not sprite_configuration.get("changed")
+            or not sprite_configuration.get("undoable")
+            or sprite_state["texture_path"] != "res://test_icon.svg"
+            or sprite_state["frame_coords"] != {"x": 1, "y": 1}
+            or sprite_state["region_rect"]["size"] != {"x": 12.0, "y": 14.0}
+        ):
+            raise RuntimeError("Sprite2D semantic configuration was not applied")
+        await _expect_godot_error(
+            app.service.sprite_2d_set(
+                semantic_sprite_path,
+                {"texture_path": "res://test_cpu_curve.tres"},
+                scene_file=scene_file,
+            ),
+            "RESOURCE_TYPE_MISMATCH",
+        )
+        undo_semantic_sprite = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_semantic_sprite.get("changed"):
+            raise RuntimeError("Sprite2D semantic configuration was not undoable")
+        restored_semantic_sprite = await app.service.sprite_2d_get(
+            semantic_sprite_path, scene_file=scene_file
+        )
+        if restored_semantic_sprite["configuration"]["texture_path"]:
+            raise RuntimeError("Undo did not restore the Sprite2D texture")
+        redo_semantic_sprite = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_semantic_sprite.get("changed"):
+            raise RuntimeError("Sprite2D semantic configuration was not redoable")
+
+        semantic_line = await app.service.node_create(
+            type_name="Line2D",
+            name="AgentLineSemantic",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        semantic_line_path = semantic_line["path"]
+        line_configuration = await app.service.line_2d_set(
+            semantic_line_path,
+            {
+                "points": [
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 16.0, "y": 8.0},
+                    {"x": 32.0, "y": 0.0},
+                ],
+                "closed": True,
+                "width": 3.0,
+                "width_curve_path": "res://test_cpu_curve.tres",
+                "default_color": {"r": 0.9, "g": 0.3, "b": 0.1, "a": 1.0},
+                "gradient_path": "res://test_cpu_gradient.tres",
+                "texture_path": "res://test_icon.svg",
+                "texture_mode": "tile",
+                "joint_mode": "round",
+                "begin_cap_mode": "round",
+                "end_cap_mode": "box",
+                "sharp_limit": 2.0,
+                "round_precision": 12,
+                "antialiased": True,
+            },
+            scene_file=scene_file,
+        )
+        line_state = line_configuration["configuration"]
+        if (
+            not line_configuration.get("changed")
+            or line_state["width_curve_path"] != "res://test_cpu_curve.tres"
+            or line_state["gradient_path"] != "res://test_cpu_gradient.tres"
+            or line_state["texture_mode"] != "tile"
+            or line_state["joint_mode"] != "round"
+            or line_state["points"][1] != {"x": 16.0, "y": 8.0}
+        ):
+            raise RuntimeError("Line2D semantic configuration was not applied")
+        await _expect_godot_error(
+            app.service.line_2d_set(
+                semantic_line_path,
+                {"gradient_path": "res://test_cpu_curve.tres"},
+                scene_file=scene_file,
+            ),
+            "RESOURCE_TYPE_MISMATCH",
+        )
+        undo_semantic_line = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_semantic_line.get("changed"):
+            raise RuntimeError("Line2D semantic configuration was not undoable")
+        if (await app.service.line_2d_get(semantic_line_path, scene_file=scene_file))[
+            "configuration"
+        ]["points"]:
+            raise RuntimeError("Undo did not restore Line2D points")
+        redo_semantic_line = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_semantic_line.get("changed"):
+            raise RuntimeError("Line2D semantic configuration was not redoable")
+
+        semantic_polygon = await app.service.node_create(
+            type_name="Polygon2D",
+            name="AgentPolygonSemantic",
+            parent_path="/Main",
+            scene_file=scene_file,
+        )
+        semantic_polygon_path = semantic_polygon["path"]
+        polygon_configuration = await app.service.polygon_2d_set(
+            semantic_polygon_path,
+            {
+                "polygon": [
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 48.0, "y": 0.0},
+                    {"x": 24.0, "y": 36.0},
+                ],
+                "uv": [
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 1.0, "y": 0.0},
+                    {"x": 0.5, "y": 1.0},
+                ],
+                "vertex_colors": [
+                    {"r": 1.0, "g": 0.0, "b": 0.0, "a": 1.0},
+                    {"r": 0.0, "g": 1.0, "b": 0.0, "a": 1.0},
+                    {"r": 0.0, "g": 0.0, "b": 1.0, "a": 1.0},
+                ],
+                "color": {"r": 0.8, "g": 0.8, "b": 0.8, "a": 1.0},
+                "texture_path": "res://test_icon.svg",
+                "texture_offset": {"x": 4.0, "y": -2.0},
+                "texture_rotation": 12.0,
+                "texture_scale": {"x": 1.5, "y": 0.75},
+                "invert_enabled": True,
+                "invert_border": 6.0,
+                "antialiased": True,
+                "offset": {"x": 8.0, "y": 4.0},
+            },
+            scene_file=scene_file,
+        )
+        polygon_state = polygon_configuration["configuration"]
+        if (
+            not polygon_configuration.get("changed")
+            or polygon_state["texture_path"] != "res://test_icon.svg"
+            or len(polygon_state["polygon"]) != 3
+            or len(polygon_state["vertex_colors"]) != 3
+            or polygon_state["invert_enabled"] is not True
+        ):
+            raise RuntimeError("Polygon2D semantic configuration was not applied")
+        await _expect_godot_error(
+            app.service.polygon_2d_set(
+                semantic_polygon_path,
+                {
+                    "polygon": [
+                        {"x": 0.0, "y": 0.0},
+                        {"x": 12.0, "y": 0.0},
+                        {"x": 24.0, "y": 0.0},
+                    ]
+                },
+                scene_file=scene_file,
+            ),
+            "INVALID_DRAW_2D_CONFIGURATION",
+        )
+        await _expect_godot_error(
+            app.service.sprite_2d_get(semantic_line_path, scene_file=scene_file),
+            "SPRITE_2D_REQUIRED",
+        )
+        undo_semantic_polygon = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_semantic_polygon.get("changed"):
+            raise RuntimeError("Polygon2D semantic configuration was not undoable")
+        if (
+            await app.service.polygon_2d_get(
+                semantic_polygon_path, scene_file=scene_file
+            )
+        )["configuration"]["polygon"]:
+            raise RuntimeError("Undo did not restore Polygon2D geometry")
+        redo_semantic_polygon = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_semantic_polygon.get("changed"):
+            raise RuntimeError("Polygon2D semantic configuration was not redoable")
+
         initial_canvas_material = await app.service.canvas_item_material_get(
             canvas_item_path,
             scene_file=scene_file,
         )
-        if initial_canvas_material["material"]["assigned"] or initial_canvas_material["configuration"] is not None:
+        if (
+            initial_canvas_material["material"]["assigned"]
+            or initial_canvas_material["configuration"] is not None
+        ):
             raise RuntimeError("New CanvasItem unexpectedly had a material")
         canvas_material = await app.service.canvas_item_material_create(
             canvas_item_path,
@@ -2795,12 +3336,18 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or canvas_material["material"]["origin"] != "embedded"
             or canvas_material["configuration"]["blend_mode"] != "mix"
         ):
-            raise RuntimeError("CanvasItemMaterial was not created as an embedded resource")
+            raise RuntimeError(
+                "CanvasItemMaterial was not created as an embedded resource"
+            )
         await _expect_godot_error(
-            app.service.canvas_item_material_create(canvas_item_path, scene_file=scene_file),
+            app.service.canvas_item_material_create(
+                canvas_item_path, scene_file=scene_file
+            ),
             "CANVAS_ITEM_MATERIAL_ALREADY_ASSIGNED",
         )
-        undo_canvas_material_create = await app.service.scene_undo(scene_file=scene_file)
+        undo_canvas_material_create = await app.service.scene_undo(
+            scene_file=scene_file
+        )
         if not undo_canvas_material_create.get("changed"):
             raise RuntimeError("CanvasItemMaterial creation was not undoable")
         restored_empty_canvas_material = await app.service.canvas_item_material_get(
@@ -2809,7 +3356,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )
         if restored_empty_canvas_material["material"]["assigned"]:
             raise RuntimeError("Undo did not remove the CanvasItemMaterial")
-        redo_canvas_material_create = await app.service.scene_redo(scene_file=scene_file)
+        redo_canvas_material_create = await app.service.scene_redo(
+            scene_file=scene_file
+        )
         if not redo_canvas_material_create.get("changed"):
             raise RuntimeError("CanvasItemMaterial creation was not redoable")
         await _expect_godot_error(
@@ -2829,7 +3378,8 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             not bound_canvas_material.get("undoable")
             or bound_canvas_material.get("bound_external_resource") is not True
             or bound_canvas_material["material"]["origin"] != "external"
-            or bound_canvas_material["material"]["resource_path"] != "res://test_canvas_item_material.tres"
+            or bound_canvas_material["material"]["resource_path"]
+            != "res://test_canvas_item_material.tres"
         ):
             raise RuntimeError("External CanvasItemMaterial was not bound")
         canvas_material_update = await app.service.canvas_item_material_set(
@@ -2857,16 +3407,23 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or canvas_material_configuration["particles_anim_loop"] is not True
         ):
             raise RuntimeError("CanvasItemMaterial configuration was not applied")
-        undo_canvas_material_update = await app.service.scene_undo(scene_file=scene_file)
+        undo_canvas_material_update = await app.service.scene_undo(
+            scene_file=scene_file
+        )
         if not undo_canvas_material_update.get("changed"):
             raise RuntimeError("CanvasItemMaterial update was not undoable")
         restored_external_canvas_material = await app.service.canvas_item_material_get(
             canvas_item_path,
             scene_file=scene_file,
         )
-        if restored_external_canvas_material["material"]["resource_path"] != "res://test_canvas_item_material.tres":
+        if (
+            restored_external_canvas_material["material"]["resource_path"]
+            != "res://test_canvas_item_material.tres"
+        ):
             raise RuntimeError("Undo did not restore the external CanvasItemMaterial")
-        redo_canvas_material_update = await app.service.scene_redo(scene_file=scene_file)
+        redo_canvas_material_update = await app.service.scene_redo(
+            scene_file=scene_file
+        )
         if not redo_canvas_material_update.get("changed"):
             raise RuntimeError("CanvasItemMaterial update was not redoable")
         cleared_canvas_material = await app.service.canvas_item_material_clear(
@@ -2890,7 +3447,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         if initial_canvas_shader["material"]["is_shader_material"]:
-            raise RuntimeError("CanvasItem unexpectedly had a ShaderMaterial before shader creation")
+            raise RuntimeError(
+                "CanvasItem unexpectedly had a ShaderMaterial before shader creation"
+            )
         shader_source = (
             "shader_type canvas_item;\n\n"
             "void fragment() {\n"
@@ -2909,7 +3468,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         await _expect_godot_error(
             app.service.canvas_item_shader_create(
                 canvas_item_path,
-                source="shader_type canvas_item;\n#include \"res://shared.gdshaderinc\"\n",
+                source='shader_type canvas_item;\n#include "res://shared.gdshaderinc"\n',
                 replace_existing=True,
                 scene_file=scene_file,
             ),
@@ -2940,12 +3499,18 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         undo_canvas_shader_create = await app.service.scene_undo(scene_file=scene_file)
         if not undo_canvas_shader_create.get("changed"):
             raise RuntimeError("CanvasItem shader creation was not undoable")
-        restored_canvas_material_after_shader_undo = await app.service.canvas_item_material_get(
-            canvas_item_path,
-            scene_file=scene_file,
+        restored_canvas_material_after_shader_undo = (
+            await app.service.canvas_item_material_get(
+                canvas_item_path,
+                scene_file=scene_file,
+            )
         )
-        if not restored_canvas_material_after_shader_undo["material"]["is_canvas_item_material"]:
-            raise RuntimeError("Undo did not restore the CanvasItemMaterial after shader creation")
+        if not restored_canvas_material_after_shader_undo["material"][
+            "is_canvas_item_material"
+        ]:
+            raise RuntimeError(
+                "Undo did not restore the CanvasItemMaterial after shader creation"
+            )
         redo_canvas_shader_create = await app.service.scene_redo(scene_file=scene_file)
         if not redo_canvas_shader_create.get("changed"):
             raise RuntimeError("CanvasItem shader creation was not redoable")
@@ -2991,19 +3556,31 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or external_uniform_update["material"]["origin"] != "embedded"
             or external_uniforms["external_amount"]["value"] != 0.75
         ):
-            raise RuntimeError("External CanvasItem ShaderMaterial uniform was not copy-on-write updated")
-        undo_external_uniform_update = await app.service.scene_undo(scene_file=scene_file)
+            raise RuntimeError(
+                "External CanvasItem ShaderMaterial uniform was not copy-on-write updated"
+            )
+        undo_external_uniform_update = await app.service.scene_undo(
+            scene_file=scene_file
+        )
         if not undo_external_uniform_update.get("changed"):
-            raise RuntimeError("External CanvasItem ShaderMaterial uniform update was not undoable")
-        restored_external_canvas_shader_after_uniform_update = await app.service.canvas_item_shader_get(
-            canvas_item_path,
-            scene_file=scene_file,
+            raise RuntimeError(
+                "External CanvasItem ShaderMaterial uniform update was not undoable"
+            )
+        restored_external_canvas_shader_after_uniform_update = (
+            await app.service.canvas_item_shader_get(
+                canvas_item_path,
+                scene_file=scene_file,
+            )
         )
         if (
-            restored_external_canvas_shader_after_uniform_update["material"]["resource_path"]
+            restored_external_canvas_shader_after_uniform_update["material"][
+                "resource_path"
+            ]
             != "res://test_canvas_item_shader_material.tres"
         ):
-            raise RuntimeError("Undo did not restore external CanvasItem ShaderMaterial after uniform update")
+            raise RuntimeError(
+                "Undo did not restore external CanvasItem ShaderMaterial after uniform update"
+            )
         updated_shader_source = (
             "shader_type canvas_item;\n\n"
             "uniform float amount = 0.5;\n\n"
@@ -3026,12 +3603,20 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or canvas_shader_update["shader"]["origin"] != "embedded"
             or canvas_shader_update["shader"]["source"] != updated_shader_source
         ):
-            raise RuntimeError("CanvasItem ShaderMaterial source was not copy-on-write updated")
-        shader_uniforms = {uniform["name"]: uniform for uniform in canvas_shader_update["uniforms"]}
+            raise RuntimeError(
+                "CanvasItem ShaderMaterial source was not copy-on-write updated"
+            )
+        shader_uniforms = {
+            uniform["name"]: uniform for uniform in canvas_shader_update["uniforms"]
+        }
         if set(shader_uniforms) != {"amount", "uv_offset", "tint", "overlay_texture"}:
-            raise RuntimeError("CanvasItem ShaderMaterial did not expose declared uniforms")
+            raise RuntimeError(
+                "CanvasItem ShaderMaterial did not expose declared uniforms"
+            )
         if not all(uniform["supported"] for uniform in shader_uniforms.values()):
-            raise RuntimeError("CanvasItem ShaderMaterial did not support a standard 2D uniform type")
+            raise RuntimeError(
+                "CanvasItem ShaderMaterial did not support a standard 2D uniform type"
+            )
         undo_canvas_shader_update = await app.service.scene_undo(scene_file=scene_file)
         if not undo_canvas_shader_update.get("changed"):
             raise RuntimeError("CanvasItem ShaderMaterial update was not undoable")
@@ -3039,8 +3624,13 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             canvas_item_path,
             scene_file=scene_file,
         )
-        if restored_external_canvas_shader["material"]["resource_path"] != "res://test_canvas_item_shader_material.tres":
-            raise RuntimeError("Undo did not restore the external CanvasItem ShaderMaterial")
+        if (
+            restored_external_canvas_shader["material"]["resource_path"]
+            != "res://test_canvas_item_shader_material.tres"
+        ):
+            raise RuntimeError(
+                "Undo did not restore the external CanvasItem ShaderMaterial"
+            )
         redo_canvas_shader_update = await app.service.scene_redo(scene_file=scene_file)
         if not redo_canvas_shader_update.get("changed"):
             raise RuntimeError("CanvasItem ShaderMaterial update was not redoable")
@@ -3052,18 +3642,21 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             ),
             "CANVAS_ITEM_SHADER_UNIFORM_NOT_FOUND",
         )
-        canvas_shader_uniform_update = await app.service.canvas_item_shader_uniforms_set(
-            canvas_item_path,
-            {
-                "amount": 0.75,
-                "uv_offset": {"x": 0.125, "y": -0.25},
-                "tint": {"r": 1.0, "g": 0.5, "b": 0.25, "a": 0.8},
-                "overlay_texture": "res://test_icon.svg",
-            },
-            scene_file=scene_file,
+        canvas_shader_uniform_update = (
+            await app.service.canvas_item_shader_uniforms_set(
+                canvas_item_path,
+                {
+                    "amount": 0.75,
+                    "uv_offset": {"x": 0.125, "y": -0.25},
+                    "tint": {"r": 1.0, "g": 0.5, "b": 0.25, "a": 0.8},
+                    "overlay_texture": "res://test_icon.svg",
+                },
+                scene_file=scene_file,
+            )
         )
         updated_uniforms = {
-            uniform["name"]: uniform for uniform in canvas_shader_uniform_update["uniforms"]
+            uniform["name"]: uniform
+            for uniform in canvas_shader_uniform_update["uniforms"]
         }
         if (
             not canvas_shader_uniform_update.get("undoable")
@@ -3076,53 +3669,75 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
                 updated_uniforms["tint"]["value"],
                 {"r": 1.0, "g": 0.5, "b": 0.25, "a": 0.8},
             )
-            or updated_uniforms["overlay_texture"]["value"].get("resource_path") != "res://test_icon.svg"
+            or updated_uniforms["overlay_texture"]["value"].get("resource_path")
+            != "res://test_icon.svg"
         ):
             raise RuntimeError(
                 "CanvasItem ShaderMaterial uniforms were not copy-on-write updated: "
                 f"{canvas_shader_uniform_update}"
             )
-        undo_canvas_shader_uniform_update = await app.service.scene_undo(scene_file=scene_file)
+        undo_canvas_shader_uniform_update = await app.service.scene_undo(
+            scene_file=scene_file
+        )
         if not undo_canvas_shader_uniform_update.get("changed"):
-            raise RuntimeError("CanvasItem ShaderMaterial uniform update was not undoable")
+            raise RuntimeError(
+                "CanvasItem ShaderMaterial uniform update was not undoable"
+            )
         restored_default_uniforms = await app.service.canvas_item_shader_get(
             canvas_item_path,
             scene_file=scene_file,
         )
         restored_default_uniforms_by_name = {
-            uniform["name"]: uniform for uniform in restored_default_uniforms["uniforms"]
+            uniform["name"]: uniform
+            for uniform in restored_default_uniforms["uniforms"]
         }
         if restored_default_uniforms_by_name["amount"]["has_override"]:
             raise RuntimeError("Undo did not restore the default shader uniform values")
-        redo_canvas_shader_uniform_update = await app.service.scene_redo(scene_file=scene_file)
+        redo_canvas_shader_uniform_update = await app.service.scene_redo(
+            scene_file=scene_file
+        )
         if not redo_canvas_shader_uniform_update.get("changed"):
-            raise RuntimeError("CanvasItem ShaderMaterial uniform update was not redoable")
-        cleared_canvas_shader_uniforms = await app.service.canvas_item_shader_uniforms_clear(
-            canvas_item_path,
-            ["amount", "tint"],
-            scene_file=scene_file,
+            raise RuntimeError(
+                "CanvasItem ShaderMaterial uniform update was not redoable"
+            )
+        cleared_canvas_shader_uniforms = (
+            await app.service.canvas_item_shader_uniforms_clear(
+                canvas_item_path,
+                ["amount", "tint"],
+                scene_file=scene_file,
+            )
         )
         cleared_uniforms_by_name = {
-            uniform["name"]: uniform for uniform in cleared_canvas_shader_uniforms["uniforms"]
+            uniform["name"]: uniform
+            for uniform in cleared_canvas_shader_uniforms["uniforms"]
         }
         if (
             cleared_canvas_shader_uniforms.get("cleared_uniforms") != ["amount", "tint"]
             or cleared_uniforms_by_name["amount"]["has_override"]
             or cleared_uniforms_by_name["tint"]["has_override"]
         ):
-            raise RuntimeError("CanvasItem ShaderMaterial uniform overrides were not cleared")
-        undo_canvas_shader_uniform_clear = await app.service.scene_undo(scene_file=scene_file)
+            raise RuntimeError(
+                "CanvasItem ShaderMaterial uniform overrides were not cleared"
+            )
+        undo_canvas_shader_uniform_clear = await app.service.scene_undo(
+            scene_file=scene_file
+        )
         if not undo_canvas_shader_uniform_clear.get("changed"):
-            raise RuntimeError("CanvasItem ShaderMaterial uniform clear was not undoable")
+            raise RuntimeError(
+                "CanvasItem ShaderMaterial uniform clear was not undoable"
+            )
         restored_canvas_shader_uniforms = await app.service.canvas_item_shader_get(
             canvas_item_path,
             scene_file=scene_file,
         )
         restored_canvas_shader_uniforms_by_name = {
-            uniform["name"]: uniform for uniform in restored_canvas_shader_uniforms["uniforms"]
+            uniform["name"]: uniform
+            for uniform in restored_canvas_shader_uniforms["uniforms"]
         }
         if restored_canvas_shader_uniforms_by_name["amount"]["value"] != 0.75:
-            raise RuntimeError("Undo did not restore the CanvasItem ShaderMaterial uniform override")
+            raise RuntimeError(
+                "Undo did not restore the CanvasItem ShaderMaterial uniform override"
+            )
         cleared_canvas_shader = await app.service.canvas_item_shader_clear(
             canvas_item_path,
             scene_file=scene_file,
@@ -3137,7 +3752,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         if restored_embedded_canvas_shader["material"]["origin"] != "embedded":
-            raise RuntimeError("Undo did not restore the embedded CanvasItem ShaderMaterial")
+            raise RuntimeError(
+                "Undo did not restore the embedded CanvasItem ShaderMaterial"
+            )
 
         cpu_particles = await app.service.node_create(
             type_name="CPUParticles2D",
@@ -3259,7 +3876,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             cpu_particles_path, scene_file=scene_file
         )
         if restored_cpu_particles["configuration"]["texture_path"] != "":
-            raise RuntimeError("Undo did not restore the CPUParticles2D texture binding")
+            raise RuntimeError(
+                "Undo did not restore the CPUParticles2D texture binding"
+            )
         redo_cpu_particles_update = await app.service.scene_redo(scene_file=scene_file)
         if not redo_cpu_particles_update.get("changed"):
             raise RuntimeError("CPUParticles2D configuration was not redoable")
@@ -3276,16 +3895,26 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         restored_cpu_texture = await app.service.cpu_particles_2d_get(
             cpu_particles_path, scene_file=scene_file
         )
-        if restored_cpu_texture["configuration"]["texture_path"] != "res://test_icon.svg":
-            raise RuntimeError("Undo did not restore the CPUParticles2D texture binding")
+        if (
+            restored_cpu_texture["configuration"]["texture_path"]
+            != "res://test_icon.svg"
+        ):
+            raise RuntimeError(
+                "Undo did not restore the CPUParticles2D texture binding"
+            )
 
         initial_cpu_curve = await app.service.cpu_particles_2d_curve_get(
             cpu_particles_path,
             "initial_velocity",
             scene_file=scene_file,
         )
-        if initial_cpu_curve["resource"]["assigned"] or initial_cpu_curve["configuration"] is not None:
-            raise RuntimeError("New CPUParticles2D unexpectedly had an initial velocity Curve")
+        if (
+            initial_cpu_curve["resource"]["assigned"]
+            or initial_cpu_curve["configuration"] is not None
+        ):
+            raise RuntimeError(
+                "New CPUParticles2D unexpectedly had an initial velocity Curve"
+            )
         await _expect_godot_error(
             app.service.cpu_particles_2d_curve_bind(
                 cpu_particles_path,
@@ -3304,7 +3933,8 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if (
             not bound_cpu_curve.get("bound_external_resource")
             or bound_cpu_curve["resource"]["origin"] != "external"
-            or bound_cpu_curve["resource"]["resource_path"] != "res://test_cpu_curve.tres"
+            or bound_cpu_curve["resource"]["resource_path"]
+            != "res://test_cpu_curve.tres"
         ):
             raise RuntimeError(
                 "CPUParticles2D Curve was not bound as an external resource"
@@ -3364,9 +3994,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
                 },
             ]
         ):
-            raise RuntimeError(
-                "CPUParticles2D Curve configuration was not applied"
-            )
+            raise RuntimeError("CPUParticles2D Curve configuration was not applied")
         undo_cpu_curve_update = await app.service.scene_undo(scene_file=scene_file)
         if not undo_cpu_curve_update.get("changed"):
             raise RuntimeError("CPUParticles2D Curve update was not undoable")
@@ -3375,7 +4003,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             "initial_velocity",
             scene_file=scene_file,
         )
-        if restored_cpu_curve["resource"]["resource_path"] != "res://test_cpu_curve.tres":
+        if (
+            restored_cpu_curve["resource"]["resource_path"]
+            != "res://test_cpu_curve.tres"
+        ):
             raise RuntimeError("Undo did not restore the external CPUParticles2D Curve")
         redo_cpu_curve_update = await app.service.scene_redo(scene_file=scene_file)
         if not redo_cpu_curve_update.get("changed"):
@@ -3403,7 +4034,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             "color",
             scene_file=scene_file,
         )
-        if initial_cpu_gradient["resource"]["assigned"] or initial_cpu_gradient["configuration"] is not None:
+        if (
+            initial_cpu_gradient["resource"]["assigned"]
+            or initial_cpu_gradient["configuration"] is not None
+        ):
             raise RuntimeError("New CPUParticles2D unexpectedly had a color Gradient")
         await _expect_godot_error(
             app.service.cpu_particles_2d_gradient_bind(
@@ -3423,9 +4057,12 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if (
             not bound_cpu_gradient.get("bound_external_resource")
             or bound_cpu_gradient["resource"]["origin"] != "external"
-            or bound_cpu_gradient["resource"]["resource_path"] != "res://test_cpu_gradient.tres"
+            or bound_cpu_gradient["resource"]["resource_path"]
+            != "res://test_cpu_gradient.tres"
         ):
-            raise RuntimeError("CPUParticles2D Gradient was not bound as an external resource")
+            raise RuntimeError(
+                "CPUParticles2D Gradient was not bound as an external resource"
+            )
         cpu_gradient_update = await app.service.cpu_particles_2d_gradient_set(
             cpu_particles_path,
             "color",
@@ -3462,8 +4099,13 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             "color",
             scene_file=scene_file,
         )
-        if restored_cpu_gradient["resource"]["resource_path"] != "res://test_cpu_gradient.tres":
-            raise RuntimeError("Undo did not restore the external CPUParticles2D Gradient")
+        if (
+            restored_cpu_gradient["resource"]["resource_path"]
+            != "res://test_cpu_gradient.tres"
+        ):
+            raise RuntimeError(
+                "Undo did not restore the external CPUParticles2D Gradient"
+            )
         redo_cpu_gradient_update = await app.service.scene_redo(scene_file=scene_file)
         if not redo_cpu_gradient_update.get("changed"):
             raise RuntimeError("CPUParticles2D Gradient update was not redoable")
@@ -3483,7 +4125,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         if restored_embedded_gradient["resource"]["origin"] != "embedded":
-            raise RuntimeError("Undo did not restore the embedded CPUParticles2D Gradient")
+            raise RuntimeError(
+                "Undo did not restore the embedded CPUParticles2D Gradient"
+            )
 
         viewport = await app.service.node_create(
             type_name="SubViewport",
@@ -3499,7 +4143,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         camera_path = camera["path"]
-        initial_camera = await app.service.camera_2d_get(camera_path, scene_file=scene_file)
+        initial_camera = await app.service.camera_2d_get(
+            camera_path, scene_file=scene_file
+        )
         if initial_camera["configuration"]["custom_viewport_path"] != "":
             raise RuntimeError("New Camera2D unexpectedly had a custom viewport")
         camera_update = await app.service.camera_2d_set(
@@ -3547,7 +4193,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         undo_camera = await app.service.scene_undo(scene_file=scene_file)
         if not undo_camera.get("changed"):
             raise RuntimeError("Camera2D configuration was not undoable")
-        restored_camera = await app.service.camera_2d_get(camera_path, scene_file=scene_file)
+        restored_camera = await app.service.camera_2d_get(
+            camera_path, scene_file=scene_file
+        )
         if restored_camera["configuration"]["custom_viewport_path"] != "":
             raise RuntimeError("Undo did not restore Camera2D viewport binding")
         redo_camera = await app.service.scene_redo(scene_file=scene_file)
@@ -3790,7 +4438,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         initial_tile_map = await app.service.tile_map_layer_get(
             tile_map_layer_path, scene_file=scene_file
         )
-        if initial_tile_map["tile_set"] is not None or initial_tile_map["used_cells"] != 0:
+        if (
+            initial_tile_map["tile_set"] is not None
+            or initial_tile_map["used_cells"] != 0
+        ):
             raise RuntimeError("New TileMapLayer unexpectedly had TileSet data")
         await _expect_godot_error(
             app.service.tile_map_layer_cells_set(
@@ -3819,7 +4470,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         if atlas_source["source_id"] != 3:
-            raise RuntimeError("TileSetAtlasSource did not retain its requested source ID")
+            raise RuntimeError(
+                "TileSetAtlasSource did not retain its requested source ID"
+            )
         created_atlas_tile = await app.service.tile_set_atlas_tile_create(
             tile_map_layer_path,
             source_id=3,
@@ -3841,7 +4494,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
                 "terrain_sets_total",
             )
         ):
-            raise RuntimeError("New TileSet unexpectedly had semantic layer definitions")
+            raise RuntimeError(
+                "New TileSet unexpectedly had semantic layer definitions"
+            )
         physics_layer = await app.service.tile_set_physics_layer_create(
             tile_map_layer_path,
             layers=[2],
@@ -3849,11 +4504,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             priority=0.5,
             scene_file=scene_file,
         )
-        if (
-            physics_layer["physics_layer_index"] != 0
-            or physics_layer["physics_layers"][0]
-            != {"index": 0, "layers": [2], "masks": [1, 3], "priority": 0.5}
-        ):
+        if physics_layer["physics_layer_index"] != 0 or physics_layer["physics_layers"][
+            0
+        ] != {"index": 0, "layers": [2], "masks": [1, 3], "priority": 0.5}:
             raise RuntimeError("TileSet physics layer definition was not applied")
         navigation_layer = await app.service.tile_set_navigation_layer_create(
             tile_map_layer_path,
@@ -3887,7 +4540,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             mode="match_sides",
             scene_file=scene_file,
         )
-        if terrain_set["terrain_set"] != 0 or terrain_set["terrain_sets"][0]["mode"] != "match_sides":
+        if (
+            terrain_set["terrain_set"] != 0
+            or terrain_set["terrain_sets"][0]["mode"] != "match_sides"
+        ):
             raise RuntimeError("TileSet terrain set definition was not applied")
         terrain = await app.service.tile_set_terrain_create(
             tile_map_layer_path,
@@ -3903,7 +4559,12 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or terrain_definition["name"] != "Ground"
             or any(
                 abs(terrain_color[channel] - expected) > 0.0001
-                for channel, expected in {"r": 0.2, "g": 0.7, "b": 0.3, "a": 1.0}.items()
+                for channel, expected in {
+                    "r": 0.2,
+                    "g": 0.7,
+                    "b": 0.3,
+                    "a": 1.0,
+                }.items()
             )
         ):
             raise RuntimeError("TileSet terrain definition was not applied")
@@ -4083,15 +4744,16 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             scene_file=scene_file,
         )
         if (
-            atlas_tile_state["physics_layers"] != [
-                {"index": 0, "collision_polygons": collision_polygons}
-            ]
+            atlas_tile_state["physics_layers"]
+            != [{"index": 0, "collision_polygons": collision_polygons}]
             or atlas_tile_state["navigation_layers"]
             != [{"index": 0, "navigation_polygon": navigation_polygon}]
             or atlas_tile_state["occlusion_layers"]
             != [{"index": 0, "occluder_polygons": occlusion_polygons}]
         ):
-            raise RuntimeError("tile_set_atlas_tile_get did not return TileData geometry")
+            raise RuntimeError(
+                "tile_set_atlas_tile_get did not return TileData geometry"
+            )
         await _expect_godot_error(
             app.service.tile_set_atlas_tile_navigation_set(
                 tile_map_layer_path,
@@ -4131,7 +4793,10 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             alternative_tile=1,
             scene_file=scene_file,
         )
-        if restored_atlas_tile["navigation_layers"][0]["navigation_polygon"] != navigation_polygon:
+        if (
+            restored_atlas_tile["navigation_layers"][0]["navigation_polygon"]
+            != navigation_polygon
+        ):
             raise RuntimeError("Undo did not restore TileSet atlas navigation geometry")
         redo_tile_navigation_clear = await app.service.scene_redo(scene_file=scene_file)
         if not redo_tile_navigation_clear.get("changed"):
@@ -4157,12 +4822,17 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             alternative_tile=1,
             scene_file=scene_file,
         )
-        if restored_atlas_tile["occlusion_layers"][0]["occluder_polygons"] != occlusion_polygons:
+        if (
+            restored_atlas_tile["occlusion_layers"][0]["occluder_polygons"]
+            != occlusion_polygons
+        ):
             raise RuntimeError("Undo did not restore TileSet atlas occlusion geometry")
         redo_tile_occlusion_clear = await app.service.scene_redo(scene_file=scene_file)
         if not redo_tile_occlusion_clear.get("changed"):
             raise RuntimeError("TileSet atlas occlusion clear was not redoable")
-        tile_set_state = await app.service.tile_set_get(tile_map_layer_path, scene_file=scene_file)
+        tile_set_state = await app.service.tile_set_get(
+            tile_map_layer_path, scene_file=scene_file
+        )
         if (
             tile_set_state["total"] != 1
             or tile_set_state["sources"][0]["type"] != "TileSetAtlasSource"
@@ -4186,19 +4856,27 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         tile_cells_update = await app.service.tile_map_layer_cells_set(
             tile_map_layer_path, tile_cells, scene_file=scene_file
         )
-        if tile_cells_update["changed_cells"] != 2 or tile_cells_update["used_cells"] != 2:
+        if (
+            tile_cells_update["changed_cells"] != 2
+            or tile_cells_update["used_cells"] != 2
+        ):
             raise RuntimeError("TileMapLayer cells were not assigned")
         tile_cells_state = await app.service.tile_map_layer_cells_get(
             tile_map_layer_path, limit=10, scene_file=scene_file
         )
         if tile_cells_state["total"] != 2 or tile_cells_state["cells"] != tile_cells:
-            raise RuntimeError("tile_map_layer_cells_get did not return stable cell assignments")
+            raise RuntimeError(
+                "tile_map_layer_cells_get did not return stable cell assignments"
+            )
         cleared_tile_cells = await app.service.tile_map_layer_cells_clear(
             tile_map_layer_path,
             [{"x": -1, "y": 2}],
             scene_file=scene_file,
         )
-        if cleared_tile_cells["cleared_cells"] != 1 or cleared_tile_cells["used_cells"] != 1:
+        if (
+            cleared_tile_cells["cleared_cells"] != 1
+            or cleared_tile_cells["used_cells"] != 1
+        ):
             raise RuntimeError("TileMapLayer cell clear was not applied")
         undo_tile_cell_clear = await app.service.scene_undo(scene_file=scene_file)
         if not undo_tile_cell_clear.get("changed"):
@@ -4208,18 +4886,24 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )
         if restored_tile_cells["total"] != 2:
             raise RuntimeError("Undo did not restore TileMapLayer cells")
-        cleared_tile_set = await app.service.tile_set_clear(tile_map_layer_path, scene_file=scene_file)
+        cleared_tile_set = await app.service.tile_set_clear(
+            tile_map_layer_path, scene_file=scene_file
+        )
         if cleared_tile_set["tile_set"] is not None:
             raise RuntimeError("TileSet resource was not detached")
         undo_tile_set_clear = await app.service.scene_undo(scene_file=scene_file)
         if not undo_tile_set_clear.get("changed"):
             raise RuntimeError("TileSet clear was not undoable")
-        restored_tile_set = await app.service.tile_set_get(tile_map_layer_path, scene_file=scene_file)
+        restored_tile_set = await app.service.tile_set_get(
+            tile_map_layer_path, scene_file=scene_file
+        )
         if restored_tile_set["tile_set"] is None or restored_tile_set["total"] != 1:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 49 or _has_node(final_hierarchy, marker_path):
+        if final_hierarchy.get("total") != 52 or _has_node(
+            final_hierarchy, marker_path
+        ):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
@@ -4244,6 +4928,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentSparks" not in saved_scene
             or "AgentFire" not in saved_scene
             or "AgentCanvasItem" not in saved_scene
+            or "AgentSpriteSemantic" not in saved_scene
+            or "AgentLineSemantic" not in saved_scene
+            or "AgentPolygonSemantic" not in saved_scene
             or "AgentPackedVisual" not in saved_scene
             or "AgentPackedVisualCopy" not in saved_scene
             or "packed_scene_2d.tscn" not in saved_scene
@@ -4275,7 +4962,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Saved scene does not contain the created Button")
 
         await _expect_godot_error(
-            app.service.editor_run(mode="custom", scene_file="res://missing_scene.tscn"),
+            app.service.editor_run(
+                mode="custom", scene_file="res://missing_scene.tscn"
+            ),
             "RUN_SCENE_NOT_FOUND",
         )
         for mode in ("current", "custom", "main"):
@@ -4284,11 +4973,17 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
                 run_kwargs["scene_file"] = scene_file
             run_result = await app.service.editor_run(**run_kwargs)
             if run_result.get("requested_scene") != scene_file:
-                raise RuntimeError(f"editor_run({mode}) did not target the expected scene")
+                raise RuntimeError(
+                    f"editor_run({mode}) did not target the expected scene"
+                )
             playing_state = await _wait_for_play_state(app, "playing")
             if playing_state.get("playing_scene") != scene_file:
-                raise RuntimeError(f"editor_run({mode}) did not report the running scene")
-            await _expect_godot_error(app.service.editor_run(mode="main"), "SCENE_ALREADY_PLAYING")
+                raise RuntimeError(
+                    f"editor_run({mode}) did not report the running scene"
+                )
+            await _expect_godot_error(
+                app.service.editor_run(mode="main"), "SCENE_ALREADY_PLAYING"
+            )
             stop_result = await app.service.editor_stop()
             if stop_result.get("was_playing") is not True:
                 raise RuntimeError(f"editor_stop did not observe editor_run({mode})")
@@ -4300,24 +4995,31 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("editor_stop was not idempotent after the scene stopped")
 
         runtime_scene_file = "res://runtime_smoke.tscn"
-        runtime_run = await app.service.editor_run(mode="custom", scene_file=runtime_scene_file)
+        runtime_run = await app.service.editor_run(
+            mode="custom", scene_file=runtime_scene_file
+        )
         if runtime_run.get("requested_scene") != runtime_scene_file:
             raise RuntimeError("runtime feedback smoke did not start its custom scene")
         await _wait_for_play_state(app, "playing")
         runtime_state = await _wait_for_runtime_connected(app)
         if runtime_state.get("autoload", {}).get("available") is not True:
             raise RuntimeError("Runtime bridge did not report its managed autoload")
-        missing_audio_request = await app.service.runtime_audio_stream_player_2d_control(
-            "/RuntimeSmoke/MissingSound", "get"
+        missing_audio_request = (
+            await app.service.runtime_audio_stream_player_2d_control(
+                "/RuntimeSmoke/MissingSound", "get"
+            )
         )
         missing_audio_result = await _wait_for_runtime_audio_control_result(
             app, missing_audio_request["request_id"]
         )
         if (
             missing_audio_result.get("status") != "error"
-            or missing_audio_result.get("result", {}).get("code") != "RUNTIME_AUDIO_NODE_NOT_FOUND"
+            or missing_audio_result.get("result", {}).get("code")
+            != "RUNTIME_AUDIO_NODE_NOT_FOUND"
         ):
-            raise RuntimeError(f"Runtime audio missing-node error was not reported: {missing_audio_result}")
+            raise RuntimeError(
+                f"Runtime audio missing-node error was not reported: {missing_audio_result}"
+            )
         audio_state_request = await app.service.runtime_audio_stream_player_2d_control(
             "/RuntimeSmoke/RuntimeSound", "get"
         )
@@ -4335,52 +5037,75 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         audio_play_request = await app.service.runtime_audio_stream_player_2d_control(
             "/RuntimeSmoke/RuntimeSound", "play"
         )
-        audio_play = await _wait_for_runtime_audio_control_result(app, audio_play_request["request_id"])
+        audio_play = await _wait_for_runtime_audio_control_result(
+            app, audio_play_request["request_id"]
+        )
         if (
             audio_play.get("status") != "ready"
             or audio_play.get("result", {}).get("action") != "play"
-            or audio_play.get("result", {}).get("player", {}).get("is_playing") is not True
+            or audio_play.get("result", {}).get("player", {}).get("is_playing")
+            is not True
         ):
             raise RuntimeError(f"Runtime audio did not start playing: {audio_play}")
         audio_seek_request = await app.service.runtime_audio_stream_player_2d_control(
             "/RuntimeSmoke/RuntimeSound", "seek", position_seconds=0.02
         )
-        audio_seek = await _wait_for_runtime_audio_control_result(app, audio_seek_request["request_id"])
+        audio_seek = await _wait_for_runtime_audio_control_result(
+            app, audio_seek_request["request_id"]
+        )
         if (
             audio_seek.get("status") != "ready"
             or audio_seek.get("result", {}).get("action") != "seek"
-            or not _is_close(audio_seek.get("result", {}).get("requested_position_seconds"), 0.02)
+            or not _is_close(
+                audio_seek.get("result", {}).get("requested_position_seconds"), 0.02
+            )
         ):
             raise RuntimeError(f"Runtime audio seek was not applied: {audio_seek}")
         audio_stop_request = await app.service.runtime_audio_stream_player_2d_control(
             "/RuntimeSmoke/RuntimeSound", "stop"
         )
-        audio_stop = await _wait_for_runtime_audio_control_result(app, audio_stop_request["request_id"])
+        audio_stop = await _wait_for_runtime_audio_control_result(
+            app, audio_stop_request["request_id"]
+        )
         if (
             audio_stop.get("status") != "ready"
             or audio_stop.get("result", {}).get("action") != "stop"
-            or audio_stop.get("result", {}).get("player", {}).get("is_playing") is not False
+            or audio_stop.get("result", {}).get("player", {}).get("is_playing")
+            is not False
         ):
             raise RuntimeError(f"Runtime audio did not stop playing: {audio_stop}")
         screenshot_request = await app.service.runtime_screenshot_request(
             format="png", max_width=128, max_height=128
         )
-        screenshot = await _wait_for_runtime_screenshot(app, screenshot_request["request_id"])
+        screenshot = await _wait_for_runtime_screenshot(
+            app, screenshot_request["request_id"]
+        )
         screenshot_result = screenshot.get("result", {})
         if screenshot_result.get("ok") is not True:
             raise RuntimeError(f"Runtime screenshot failed: {screenshot_result}")
-        screenshot_bytes = base64.b64decode(screenshot_result["data_base64"], validate=True)
+        screenshot_bytes = base64.b64decode(
+            screenshot_result["data_base64"], validate=True
+        )
         if screenshot_bytes[:8] != b"\x89PNG\r\n\x1a\n":
             raise RuntimeError("Runtime screenshot was not PNG data")
-        if (screenshot_result.get("width"), screenshot_result.get("height")) != (128, 72):
-            raise RuntimeError(f"Runtime screenshot had unexpected dimensions: {screenshot_result}")
+        if (screenshot_result.get("width"), screenshot_result.get("height")) != (
+            128,
+            72,
+        ):
+            raise RuntimeError(
+                f"Runtime screenshot had unexpected dimensions: {screenshot_result}"
+            )
         red, green, blue = _png_top_left_rgb(screenshot_bytes)
         if red < 128 or green > 128 or blue > 128:
-            raise RuntimeError("Runtime screenshot did not contain the rendered smoke-scene background")
+            raise RuntimeError(
+                "Runtime screenshot did not contain the rendered smoke-scene background"
+            )
         input_request = await app.service.runtime_input_send(
             [{"type": "action", "action": "godot_2d_mcp_smoke", "pressed": True}]
         )
-        input_result = await _wait_for_runtime_input_result(app, input_request["request_id"])
+        input_result = await _wait_for_runtime_input_result(
+            app, input_request["request_id"]
+        )
         if input_result.get("result", {}).get("applied") != 1:
             raise RuntimeError(f"Runtime input was not applied: {input_result}")
         await _wait_for_runtime_log(app, "GODOT_2D_MCP_RUNTIME_INPUT_RECEIVED")
@@ -4407,7 +5132,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             output, _ = await process.communicate()
         await app.bridge.stop()
         if failure is not None and output:
-            print("Godot output after smoke failure:\n" + output.decode(errors="replace"))
+            print(
+                "Godot output after smoke failure:\n" + output.decode(errors="replace")
+            )
 
     editor_output = output.decode(errors="replace")
     fatal_markers = ("SCRIPT ERROR", "Parse Error", "ERROR: Failed to load script")
@@ -4415,7 +5142,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         raise RuntimeError(f"Godot reported script errors:\n{editor_output}")
 
 
-def _signal_process_group(process: asyncio.subprocess.Process, signal_number: int) -> None:
+def _signal_process_group(
+    process: asyncio.subprocess.Process, signal_number: int
+) -> None:
     if os.name == "nt":
         if process.returncode is None:
             if signal_number == signal.SIGTERM:
@@ -4460,7 +5189,9 @@ async def _wait_for_play_state(
     )
 
 
-async def _wait_for_runtime_connected(app: object, timeout_seconds: float = 10.0) -> dict:
+async def _wait_for_runtime_connected(
+    app: object, timeout_seconds: float = 10.0
+) -> dict:
     attempts = int(timeout_seconds / 0.1)
     state: dict = {}
     for _ in range(attempts):
@@ -4512,7 +5243,9 @@ async def _wait_for_runtime_audio_control_result(
     attempts = int(timeout_seconds / 0.1)
     result: dict = {}
     for _ in range(attempts):
-        result = await app.service.runtime_audio_stream_player_2d_control_result_get(request_id)
+        result = await app.service.runtime_audio_stream_player_2d_control_result_get(
+            request_id
+        )
         if result.get("status") != "pending":
             return result
         await asyncio.sleep(0.1)
@@ -4529,7 +5262,10 @@ async def _wait_for_runtime_log(
     logs: dict = {}
     for _ in range(attempts):
         logs = await app.service.runtime_logs_get(limit=200)
-        if any(message in str(entry.get("message", "")) for entry in logs.get("entries", [])):
+        if any(
+            message in str(entry.get("message", ""))
+            for entry in logs.get("entries", [])
+        ):
             return logs
         await asyncio.sleep(0.1)
     raise RuntimeError(
@@ -4548,7 +5284,9 @@ def _png_top_left_rgb(data: bytes) -> tuple[int, int, int]:
         chunk_data = data[position + 8 : position + 8 + length]
         position += 12 + length
         if chunk_type == b"IHDR":
-            width, height, bit_depth, color_type, _, _, _ = struct.unpack(">IIBBBBB", chunk_data)
+            width, height, bit_depth, color_type, _, _, _ = struct.unpack(
+                ">IIBBBBB", chunk_data
+            )
         elif chunk_type == b"IDAT":
             compressed.extend(chunk_data)
         elif chunk_type == b"IEND":
@@ -4612,23 +5350,31 @@ def _signal_data(result: dict, name: str) -> dict | None:
 def _has_animation(result: dict, library: str, name: str) -> bool:
     return any(
         item.get("name") == library
-        and any(animation.get("name") == name for animation in item.get("animations", []))
+        and any(
+            animation.get("name") == name for animation in item.get("animations", [])
+        )
         for item in result.get("libraries", [])
     )
 
 
 def _has_animation_track(animation: dict, target_path: str, property_name: str) -> bool:
     return any(
-        track.get("target_path") == target_path and track.get("property") == property_name
+        track.get("target_path") == target_path
+        and track.get("property") == property_name
         for track in animation.get("tracks", [])
     )
 
 
 def _animation_track(animation: dict, target_path: str, property_name: str) -> dict:
     for track in animation.get("tracks", []):
-        if track.get("target_path") == target_path and track.get("property") == property_name:
+        if (
+            track.get("target_path") == target_path
+            and track.get("property") == property_name
+        ):
             return track
-    raise RuntimeError(f"Animation track was not returned: {target_path}:{property_name}")
+    raise RuntimeError(
+        f"Animation track was not returned: {target_path}:{property_name}"
+    )
 
 
 def _layout_sides_match(actual: object, expected: dict[str, float]) -> bool:
@@ -4672,7 +5418,9 @@ async def _expect_godot_error(call: Awaitable[object], expected_code: str) -> No
     except GodotCommandError as error:
         if error.code == expected_code:
             return
-        raise RuntimeError(f"Expected {expected_code}, received {error.code}") from error
+        raise RuntimeError(
+            f"Expected {expected_code}, received {error.code}"
+        ) from error
     raise RuntimeError(f"Expected Godot command error: {expected_code}")
 
 

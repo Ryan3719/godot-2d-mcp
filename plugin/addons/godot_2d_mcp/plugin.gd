@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.39.0"
+const PLUGIN_VERSION := "0.40.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 const RUNTIME_AUTOLOAD_NAME := "Godot2DMcpRuntime"
 const RUNTIME_AUTOLOAD_PATH := "res://addons/godot_2d_mcp/runtime/runtime_bridge.gd"
@@ -31,6 +31,7 @@ const CanvasItemMaterialHandlerScript := preload("res://addons/godot_2d_mcp/hand
 const CanvasItemShaderHandlerScript := preload("res://addons/godot_2d_mcp/handlers/canvas_item_shader_handler.gd")
 const CpuParticlesHandlerScript := preload("res://addons/godot_2d_mcp/handlers/cpu_particles_handler.gd")
 const CpuParticleResourcesHandlerScript := preload("res://addons/godot_2d_mcp/handlers/cpu_particle_resources_handler.gd")
+const Draw2DHandlerScript := preload("res://addons/godot_2d_mcp/handlers/draw_2d_handler.gd")
 const RuntimeHandlerScript := preload("res://addons/godot_2d_mcp/handlers/runtime_handler.gd")
 const RuntimeDebuggerBridgeScript := preload("res://addons/godot_2d_mcp/runtime/runtime_debugger_bridge.gd")
 
@@ -110,6 +111,7 @@ func _register_handlers() -> void:
 	var canvas_item_shader_handler: RefCounted = CanvasItemShaderHandlerScript.new(get_undo_redo())
 	var cpu_particles_handler: RefCounted = CpuParticlesHandlerScript.new(get_undo_redo())
 	var cpu_particle_resources_handler: RefCounted = CpuParticleResourcesHandlerScript.new(get_undo_redo())
+	var draw_2d_handler: RefCounted = Draw2DHandlerScript.new(get_undo_redo())
 	var runtime_handler: RefCounted = RuntimeHandlerScript.new(_runtime_debugger)
 	_handlers.assign([
 		editor_handler, scene_handler, node_handler, class_handler, signal_handler, animation_handler,
@@ -117,7 +119,8 @@ func _register_handlers() -> void:
 		path_handler, skeleton_handler, audio_handler, gpu_particles_handler, particle_process_material_handler,
 		particle_process_material_resources_handler,
 		canvas_item_material_handler,
-		canvas_item_shader_handler, cpu_particles_handler, cpu_particle_resources_handler, runtime_handler
+		canvas_item_shader_handler, cpu_particles_handler, cpu_particle_resources_handler, draw_2d_handler,
+		runtime_handler
 	])
 
 	_dispatcher.register("editor_get_state", editor_handler.get_state)
@@ -175,6 +178,9 @@ func _register_handlers() -> void:
 	_dispatcher.register("cpu_particles_2d_get", cpu_particles_handler.get_cpu_particles_2d)
 	_dispatcher.register("cpu_particles_2d_curve_get", cpu_particle_resources_handler.get_cpu_particles_2d_curve)
 	_dispatcher.register("cpu_particles_2d_gradient_get", cpu_particle_resources_handler.get_cpu_particles_2d_gradient)
+	_dispatcher.register("sprite_2d_get", draw_2d_handler.get_sprite_2d)
+	_dispatcher.register("line_2d_get", draw_2d_handler.get_line_2d)
+	_dispatcher.register("polygon_2d_get", draw_2d_handler.get_polygon_2d)
 	_dispatcher.register("light_2d_get", lighting_handler.get_light_2d)
 	_dispatcher.register("light_occluder_2d_get", lighting_handler.get_light_occluder_2d)
 	_dispatcher.register("tile_map_layer_get", tile_map_handler.get_tile_map_layer)
@@ -265,6 +271,9 @@ func _register_handlers() -> void:
 	_dispatcher.register("cpu_particles_2d_gradient_bind", cpu_particle_resources_handler.bind_cpu_particles_2d_gradient)
 	_dispatcher.register("cpu_particles_2d_gradient_set", cpu_particle_resources_handler.set_cpu_particles_2d_gradient)
 	_dispatcher.register("cpu_particles_2d_gradient_clear", cpu_particle_resources_handler.clear_cpu_particles_2d_gradient)
+	_dispatcher.register("sprite_2d_set", draw_2d_handler.set_sprite_2d)
+	_dispatcher.register("line_2d_set", draw_2d_handler.set_line_2d)
+	_dispatcher.register("polygon_2d_set", draw_2d_handler.set_polygon_2d)
 	_dispatcher.register("light_2d_set", lighting_handler.set_light_2d)
 	_dispatcher.register("light_occluder_2d_set", lighting_handler.set_light_occluder_2d)
 	_dispatcher.register("tile_set_create", tile_map_handler.create_tile_set)

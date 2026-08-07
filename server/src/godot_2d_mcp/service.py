@@ -260,6 +260,90 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def sprite_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "sprite_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def line_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "line_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def polygon_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "polygon_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def sprite_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_sprite_2d_properties(properties)
+        return await self.bridge.call(
+            "sprite_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def line_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_line_2d_properties(properties)
+        return await self.bridge.call(
+            "line_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def polygon_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_polygon_2d_properties(properties)
+        return await self.bridge.call(
+            "polygon_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
     async def node_create(
         self,
         type_name: str,
@@ -3176,10 +3260,7 @@ def _validate_stylebox_properties(properties: dict[str, Any]) -> None:
     if len(properties) > 48:
         raise ValueError("properties can contain at most 48 entries")
     if any(
-        not isinstance(name, str)
-        or not name
-        or len(name) > 256
-        or not _is_json_bind_value(value)
+        not isinstance(name, str) or not name or len(name) > 256 or not _is_json_bind_value(value)
         for name, value in properties.items()
     ):
         raise ValueError("properties must contain bounded JSON-compatible values")
@@ -3444,6 +3525,225 @@ def _validate_light_2d_properties(properties: dict[str, Any]) -> None:
         _validate_optional_project_resource_path(properties["texture_path"], "texture_path")
 
 
+def _validate_sprite_2d_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "texture_path",
+        "centered",
+        "offset",
+        "flip_h",
+        "flip_v",
+        "hframes",
+        "vframes",
+        "frame",
+        "frame_coords",
+        "region_enabled",
+        "region_rect",
+        "region_filter_clip_enabled",
+    }
+    _validate_draw_2d_property_names(properties, allowed, "Sprite2D")
+    if {"frame", "frame_coords"} <= properties.keys():
+        raise ValueError("frame and frame_coords cannot be supplied together")
+    if "texture_path" in properties:
+        _validate_optional_project_resource_path(properties["texture_path"], "texture_path")
+    for name in {
+        "centered",
+        "flip_h",
+        "flip_v",
+        "region_enabled",
+        "region_filter_clip_enabled",
+    } & properties.keys():
+        _validate_boolean(properties[name], name)
+    if "offset" in properties:
+        _validate_draw_2d_vector2(properties["offset"], "offset")
+    for name in {"hframes", "vframes"} & properties.keys():
+        _validate_draw_2d_integer(properties[name], name, minimum=1, maximum=16_384)
+    if "frame" in properties:
+        _validate_draw_2d_integer(
+            properties["frame"], "frame", minimum=0, maximum=16_384 * 16_384 - 1
+        )
+    if "frame_coords" in properties:
+        _validate_draw_2d_vector2i(properties["frame_coords"], "frame_coords")
+    if "region_rect" in properties:
+        _validate_draw_2d_rect2(properties["region_rect"], "region_rect")
+
+
+def _validate_line_2d_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "points",
+        "closed",
+        "width",
+        "width_curve_path",
+        "default_color",
+        "gradient_path",
+        "texture_path",
+        "texture_mode",
+        "joint_mode",
+        "begin_cap_mode",
+        "end_cap_mode",
+        "sharp_limit",
+        "round_precision",
+        "antialiased",
+    }
+    _validate_draw_2d_property_names(properties, allowed, "Line2D")
+    if "points" in properties:
+        _validate_draw_2d_points(properties["points"], "points")
+    for name in {"closed", "antialiased"} & properties.keys():
+        _validate_boolean(properties[name], name)
+    if (
+        properties.get("closed") is True
+        and "points" in properties
+        and 0 < len(properties["points"]) < 3
+    ):
+        raise ValueError("closed Line2D requires zero or at least three points")
+    if "width" in properties:
+        _validate_viewport_number(properties["width"], "width", minimum=0.0, maximum=1_000_000.0)
+    for name in {"width_curve_path", "gradient_path", "texture_path"} & properties.keys():
+        _validate_optional_project_resource_path(properties[name], name)
+    if "default_color" in properties:
+        _validate_light_color(properties["default_color"], "default_color")
+    _validate_draw_2d_enum(properties, "texture_mode", {"none", "tile", "stretch"})
+    _validate_draw_2d_enum(properties, "joint_mode", {"sharp", "bevel", "round"})
+    for name in {"begin_cap_mode", "end_cap_mode"}:
+        _validate_draw_2d_enum(properties, name, {"none", "box", "round"})
+    if "sharp_limit" in properties:
+        _validate_viewport_number(
+            properties["sharp_limit"], "sharp_limit", minimum=0.0, maximum=1_000.0
+        )
+    if "round_precision" in properties:
+        _validate_draw_2d_integer(
+            properties["round_precision"], "round_precision", minimum=1, maximum=32
+        )
+
+
+def _validate_polygon_2d_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "polygon",
+        "uv",
+        "vertex_colors",
+        "color",
+        "texture_path",
+        "texture_offset",
+        "texture_rotation",
+        "texture_scale",
+        "invert_enabled",
+        "invert_border",
+        "antialiased",
+        "offset",
+    }
+    _validate_draw_2d_property_names(properties, allowed, "Polygon2D")
+    if "polygon" in properties:
+        _validate_draw_2d_points(properties["polygon"], "polygon")
+        if 0 < len(properties["polygon"]) < 3:
+            raise ValueError("polygon must be empty or contain at least three points")
+    if "uv" in properties:
+        _validate_draw_2d_points(properties["uv"], "uv")
+    if "vertex_colors" in properties:
+        _validate_draw_2d_colors(properties["vertex_colors"], "vertex_colors")
+    if (
+        "polygon" in properties
+        and "uv" in properties
+        and properties["uv"]
+        and len(properties["uv"]) != len(properties["polygon"])
+    ):
+        raise ValueError("uv must be empty or contain one entry per polygon point")
+    if (
+        "polygon" in properties
+        and "vertex_colors" in properties
+        and properties["vertex_colors"]
+        and len(properties["vertex_colors"]) != len(properties["polygon"])
+    ):
+        raise ValueError("vertex_colors must be empty or contain one entry per polygon point")
+    if "color" in properties:
+        _validate_light_color(properties["color"], "color")
+    if "texture_path" in properties:
+        _validate_optional_project_resource_path(properties["texture_path"], "texture_path")
+    for name in {"texture_offset", "offset"} & properties.keys():
+        _validate_draw_2d_vector2(properties[name], name)
+    if "texture_rotation" in properties:
+        _validate_viewport_number(
+            properties["texture_rotation"],
+            "texture_rotation",
+            minimum=-36_000.0,
+            maximum=36_000.0,
+        )
+    if "texture_scale" in properties:
+        _validate_draw_2d_vector2(properties["texture_scale"], "texture_scale")
+        if math.isclose(
+            float(properties["texture_scale"]["x"]), 0.0, abs_tol=1e-12
+        ) or math.isclose(float(properties["texture_scale"]["y"]), 0.0, abs_tol=1e-12):
+            raise ValueError("texture_scale components must be finite and non-zero")
+    for name in {"invert_enabled", "antialiased"} & properties.keys():
+        _validate_boolean(properties[name], name)
+    if "invert_border" in properties:
+        _validate_viewport_number(
+            properties["invert_border"], "invert_border", minimum=0.0, maximum=1_000_000.0
+        )
+
+
+def _validate_draw_2d_property_names(
+    properties: dict[str, Any], allowed: set[str], type_name: str
+) -> None:
+    if not isinstance(properties, dict) or not properties:
+        raise ValueError("properties must be a non-empty object")
+    if len(properties) > 20:
+        raise ValueError("properties can contain at most 20 entries")
+    if any(not isinstance(name, str) or name not in allowed for name in properties):
+        raise ValueError(f"properties contains an unsupported {type_name} property")
+
+
+def _validate_draw_2d_vector2(value: Any, label: str) -> None:
+    _validate_viewport_vector2(value, label)
+    if any(abs(float(value[axis])) > 1_000_000.0 for axis in ("x", "y")):
+        raise ValueError(f"{label} coordinates must be between -1000000 and 1000000")
+
+
+def _validate_draw_2d_vector2i(value: Any, label: str) -> None:
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"x", "y"}
+        or any(
+            isinstance(value[axis], bool) or not isinstance(value[axis], int) for axis in ("x", "y")
+        )
+    ):
+        raise ValueError(f"{label} must contain integral x and y values")
+
+
+def _validate_draw_2d_rect2(value: Any, label: str) -> None:
+    if not isinstance(value, dict) or set(value) != {"position", "size"}:
+        raise ValueError(f"{label} must contain position and size Vector2 values")
+    _validate_draw_2d_vector2(value["position"], f"{label}.position")
+    _validate_draw_2d_vector2(value["size"], f"{label}.size")
+    if value["size"]["x"] < 0 or value["size"]["y"] < 0:
+        raise ValueError(f"{label} size must be non-negative")
+
+
+def _validate_draw_2d_points(value: Any, label: str) -> None:
+    if not isinstance(value, list) or len(value) > 512:
+        raise ValueError(f"{label} must contain at most 512 Vector2 values")
+    for index, point in enumerate(value):
+        _validate_draw_2d_vector2(point, f"{label}[{index}]")
+
+
+def _validate_draw_2d_colors(value: Any, label: str) -> None:
+    if not isinstance(value, list) or len(value) > 512:
+        raise ValueError(f"{label} must contain at most 512 Color values")
+    for index, color in enumerate(value):
+        _validate_light_color(color, f"{label}[{index}]")
+
+
+def _validate_draw_2d_integer(value: Any, label: str, *, minimum: int, maximum: int) -> None:
+    if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value <= maximum:
+        raise ValueError(f"{label} must be an integer between {minimum} and {maximum}")
+
+
+def _validate_draw_2d_enum(properties: dict[str, Any], name: str, allowed: set[str]) -> None:
+    if name not in properties:
+        return
+    value = properties[name]
+    if not isinstance(value, str) or value.strip().lower() not in allowed:
+        raise ValueError(f"{name} must be one of: {', '.join(sorted(allowed))}")
+
+
 def _validate_viewport_configuration_properties(properties: dict[str, Any]) -> None:
     allowed = {
         "anchor_mode",
@@ -3589,9 +3889,7 @@ def _validate_viewport_configuration_properties(properties: dict[str, Any]) -> N
     ):
         raise ValueError("repeat_size components must be greater than or equal to zero")
     for name in ("zoom",):
-        if name in properties and (
-            properties[name]["x"] <= 0 or properties[name]["y"] <= 0
-        ):
+        if name in properties and (properties[name]["x"] <= 0 or properties[name]["y"] <= 0):
             raise ValueError("zoom components must be finite and greater than zero")
     if "scale" in properties and (
         math.isclose(float(properties["scale"]["x"]), 0.0, abs_tol=1e-12)
@@ -3804,8 +4102,7 @@ def _validate_gpu_particles_2d_properties(properties: dict[str, Any]) -> None:
             _validate_node_path(value)
     if "draw_order" in properties and (
         not isinstance(properties["draw_order"], str)
-        or properties["draw_order"].strip().lower()
-        not in {"index", "lifetime", "reverse_lifetime"}
+        or properties["draw_order"].strip().lower() not in {"index", "lifetime", "reverse_lifetime"}
     ):
         raise ValueError("draw_order must be one of: index, lifetime, reverse_lifetime")
     for name, minimum, maximum in (
@@ -3931,8 +4228,7 @@ def _validate_cpu_particles_2d_properties(properties: dict[str, Any]) -> None:
         },
     }.items():
         if name in properties and (
-            not isinstance(properties[name], str)
-            or properties[name].strip().lower() not in values
+            not isinstance(properties[name], str) or properties[name].strip().lower() not in values
         ):
             raise ValueError(f"{name} must be one of: {', '.join(sorted(values))}")
     for name, minimum, maximum in (
@@ -3988,8 +4284,7 @@ def _validate_cpu_particles_2d_properties(properties: dict[str, Any]) -> None:
         if name in properties:
             _validate_viewport_vector2(properties[name], name)
     if "emission_rect_extents" in properties and (
-        properties["emission_rect_extents"]["x"] < 0
-        or properties["emission_rect_extents"]["y"] < 0
+        properties["emission_rect_extents"]["x"] < 0 or properties["emission_rect_extents"]["y"] < 0
     ):
         raise ValueError("emission_rect_extents must have non-negative x and y")
     for name in ("emission_points", "emission_normals"):
@@ -4062,12 +4357,16 @@ def _validate_cpu_particles_curve_properties(properties: dict[str, Any]) -> None
         raise ValueError("properties contains an unsupported Curve field")
     for name in {"min_domain", "max_domain", "min_value", "max_value"} & properties.keys():
         _validate_viewport_number(properties[name], name, minimum=-1_000_000.0, maximum=1_000_000.0)
-    if "min_domain" in properties and "max_domain" in properties and (
-        properties["min_domain"] >= properties["max_domain"]
+    if (
+        "min_domain" in properties
+        and "max_domain" in properties
+        and (properties["min_domain"] >= properties["max_domain"])
     ):
         raise ValueError("min_domain must be less than max_domain")
-    if "min_value" in properties and "max_value" in properties and (
-        properties["min_value"] >= properties["max_value"]
+    if (
+        "min_value" in properties
+        and "max_value" in properties
+        and (properties["min_value"] >= properties["max_value"])
     ):
         raise ValueError("min_value must be less than max_value")
     if "bake_resolution" in properties and (
@@ -4105,10 +4404,10 @@ def _validate_cpu_particles_curve_points(points: Any) -> None:
                 maximum=1_000_000.0,
             )
         for name in {"left_mode", "right_mode"} & point.keys():
-            if (
-                not isinstance(point[name], str)
-                or point[name].strip().lower() not in {"free", "linear"}
-            ):
+            if not isinstance(point[name], str) or point[name].strip().lower() not in {
+                "free",
+                "linear",
+            }:
                 raise ValueError(f"points[{index}].{name} must be free or linear")
 
 
@@ -4277,8 +4576,7 @@ def _validate_canvas_item_material_properties(properties: dict[str, Any]) -> Non
         "light_mode": {"normal", "unshaded", "light_only"},
     }.items():
         if name in properties and (
-            not isinstance(properties[name], str)
-            or properties[name].strip().lower() not in values
+            not isinstance(properties[name], str) or properties[name].strip().lower() not in values
         ):
             raise ValueError(f"{name} must be one of: {', '.join(sorted(values))}")
     for name in ("particles_animation", "particles_anim_loop"):
@@ -4418,8 +4716,7 @@ def _validate_particle_process_material_2d_properties(properties: dict[str, Any]
         if name in properties:
             _validate_viewport_vector2(properties[name], name)
     if "emission_box_extents" in properties and (
-        properties["emission_box_extents"]["x"] < 0
-        or properties["emission_box_extents"]["y"] < 0
+        properties["emission_box_extents"]["x"] < 0 or properties["emission_box_extents"]["y"] < 0
     ):
         raise ValueError("emission_box_extents must have non-negative x and y")
     if "color" in properties:
@@ -4438,8 +4735,7 @@ def _validate_particle_process_material_2d_properties(properties: dict[str, Any]
         "sub_emitter_mode": {"disabled", "constant", "at_end", "at_collision", "at_start"},
     }.items():
         if name in properties and (
-            not isinstance(properties[name], str)
-            or properties[name].strip().lower() not in values
+            not isinstance(properties[name], str) or properties[name].strip().lower() not in values
         ):
             raise ValueError(f"{name} must be one of: {', '.join(sorted(values))}")
     for name, minimum, maximum in (
@@ -4514,9 +4810,9 @@ def _validate_viewport_transform2d(value: Any) -> None:
         raise ValueError("transform must contain x, y, and origin Vector2 values")
     for name in ("x", "y", "origin"):
         _validate_viewport_vector2(value[name], f"transform.{name}")
-    determinant = float(value["x"]["x"]) * float(value["y"]["y"]) - float(
-        value["x"]["y"]
-    ) * float(value["y"]["x"])
+    determinant = float(value["x"]["x"]) * float(value["y"]["y"]) - float(value["x"]["y"]) * float(
+        value["y"]["x"]
+    )
     if math.isclose(determinant, 0.0, abs_tol=1e-12):
         raise ValueError("transform must have a non-zero determinant")
 
@@ -4641,11 +4937,16 @@ def _validate_tile_collision_polygons(polygons: list[dict[str, Any]]) -> None:
     if total_points > 2048:
         raise ValueError("collision polygon points exceed the supported limit")
     for index, polygon in enumerate(polygons):
-        if not isinstance(polygon, dict) or "points" not in polygon or set(polygon) - {
-            "points",
-            "one_way",
-            "one_way_margin",
-        }:
+        if (
+            not isinstance(polygon, dict)
+            or "points" not in polygon
+            or set(polygon)
+            - {
+                "points",
+                "one_way",
+                "one_way_margin",
+            }
+        ):
             raise ValueError("each collision polygon must contain points and supported options")
         _validate_tile_geometry_points(polygon["points"], f"polygons[{index}].points")
         if "one_way" in polygon and not isinstance(polygon["one_way"], bool):
@@ -4668,11 +4969,16 @@ def _validate_tile_occlusion_polygons(polygons: list[dict[str, Any]]) -> None:
         raise ValueError("occlusion polygon points exceed the supported limit")
     supported_cull_modes = {"disabled", "clockwise", "counter_clockwise"}
     for index, polygon in enumerate(polygons):
-        if not isinstance(polygon, dict) or "points" not in polygon or set(polygon) - {
-            "points",
-            "closed",
-            "cull_mode",
-        }:
+        if (
+            not isinstance(polygon, dict)
+            or "points" not in polygon
+            or set(polygon)
+            - {
+                "points",
+                "closed",
+                "cull_mode",
+            }
+        ):
             raise ValueError("each occlusion polygon must contain points and supported options")
         closed = polygon.get("closed", True)
         if not isinstance(closed, bool):
@@ -4719,9 +5025,7 @@ def _validate_tile_navigation_geometry(
         if not isinstance(polygon, list) or not 3 <= len(polygon) <= 512:
             raise ValueError("each polygon must contain between three and 512 vertex indices")
         if any(
-            isinstance(index, bool)
-            or not isinstance(index, int)
-            or not 0 <= index < len(vertices)
+            isinstance(index, bool) or not isinstance(index, int) or not 0 <= index < len(vertices)
             for index in polygon
         ):
             raise ValueError("polygon indices must identify vertices")
@@ -4864,9 +5168,7 @@ def _validate_tile_set_terrain_mode(value: str) -> None:
         "match_corners",
         "match_sides",
     }:
-        raise ValueError(
-            "mode must be match_corners_and_sides, match_corners, or match_sides"
-        )
+        raise ValueError("mode must be match_corners_and_sides, match_corners, or match_sides")
 
 
 def _validate_tile_set_terrain_set_index(value: int) -> None:
@@ -4874,9 +5176,7 @@ def _validate_tile_set_terrain_set_index(value: int) -> None:
         raise ValueError("terrain_set must be an integer between 0 and 63")
 
 
-def _validate_tile_set_terrain_index(
-    value: int, *, allow_clear: bool, label: str
-) -> None:
+def _validate_tile_set_terrain_index(value: int, *, allow_clear: bool, label: str) -> None:
     minimum = -1 if allow_clear else 0
     if isinstance(value, bool) or not isinstance(value, int) or not minimum <= value < 64:
         raise ValueError(f"{label} must be an integer between {minimum} and 63")
@@ -4980,12 +5280,9 @@ def _is_json_bind_value(value: Any, depth: int = 0) -> bool:
     if isinstance(value, list):
         return len(value) <= 128 and all(_is_json_bind_value(item, depth + 1) for item in value)
     if isinstance(value, dict):
-        return (
-            len(value) <= 128
-            and all(
-                isinstance(key, str) and _is_json_bind_value(item, depth + 1)
-                for key, item in value.items()
-            )
+        return len(value) <= 128 and all(
+            isinstance(key, str) and _is_json_bind_value(item, depth + 1)
+            for key, item in value.items()
         )
     return False
 

@@ -352,6 +352,108 @@ async def test_node_set_properties_forwards_one_atomic_payload() -> None:
 
 
 @pytest.mark.asyncio
+async def test_draw_2d_tools_forward_semantic_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    scene_file = "res://main.tscn"
+    sprite_path = "/Main/Hero"
+    line_path = "/Main/Trail"
+    polygon_path = "/Main/Ground"
+    sprite_properties = {
+        "texture_path": "res://art/hero.png",
+        "hframes": 4,
+        "vframes": 2,
+        "frame_coords": {"x": 2, "y": 1},
+        "offset": {"x": 8.0, "y": -4.0},
+    }
+    line_properties = {
+        "points": [{"x": 0.0, "y": 0.0}, {"x": 32.0, "y": 16.0}],
+        "width": 3.0,
+        "default_color": {"r": 1.0, "g": 0.4, "b": 0.1, "a": 1.0},
+        "joint_mode": "round",
+    }
+    polygon_properties = {
+        "polygon": [
+            {"x": 0.0, "y": 0.0},
+            {"x": 64.0, "y": 0.0},
+            {"x": 32.0, "y": 32.0},
+        ],
+        "uv": [{"x": 0.0, "y": 0.0}, {"x": 1.0, "y": 0.0}, {"x": 0.5, "y": 1.0}],
+        "texture_path": "res://art/ground.png",
+        "texture_scale": {"x": 1.0, "y": 1.0},
+    }
+
+    await service.sprite_2d_get(sprite_path, session_id="project@a1b2", scene_file=scene_file)
+    await service.line_2d_get(line_path, scene_file=scene_file)
+    await service.polygon_2d_get(polygon_path, scene_file=scene_file)
+    await service.sprite_2d_set(sprite_path, sprite_properties, scene_file=scene_file)
+    await service.line_2d_set(line_path, line_properties, scene_file=scene_file)
+    await service.polygon_2d_set(polygon_path, polygon_properties, scene_file=scene_file)
+
+    assert bridge.calls == [
+        ("sprite_2d_get", {"path": sprite_path, "scene_file": scene_file}, "project@a1b2"),
+        ("line_2d_get", {"path": line_path, "scene_file": scene_file}, None),
+        ("polygon_2d_get", {"path": polygon_path, "scene_file": scene_file}, None),
+        (
+            "sprite_2d_set",
+            {"path": sprite_path, "properties": sprite_properties, "scene_file": scene_file},
+            None,
+        ),
+        (
+            "line_2d_set",
+            {"path": line_path, "properties": line_properties, "scene_file": scene_file},
+            None,
+        ),
+        (
+            "polygon_2d_set",
+            {"path": polygon_path, "properties": polygon_properties, "scene_file": scene_file},
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_draw_2d_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="non-empty"):
+        await service.sprite_2d_set("/Main/Hero", {})
+    with pytest.raises(ValueError, match="unsupported Sprite2D"):
+        await service.sprite_2d_set("/Main/Hero", {"texture": "res://art/hero.png"})
+    with pytest.raises(ValueError, match="frame and frame_coords"):
+        await service.sprite_2d_set("/Main/Hero", {"frame": 1, "frame_coords": {"x": 0, "y": 0}})
+    with pytest.raises(ValueError, match="hframes"):
+        await service.sprite_2d_set("/Main/Hero", {"hframes": 1.5})
+    with pytest.raises(ValueError, match="texture_path"):
+        await service.sprite_2d_set("/Main/Hero", {"texture_path": "user://hero.png"})
+    with pytest.raises(ValueError, match="closed Line2D"):
+        await service.line_2d_set(
+            "/Main/Trail",
+            {"closed": True, "points": [{"x": 0.0, "y": 0.0}, {"x": 4.0, "y": 0.0}]},
+        )
+    with pytest.raises(ValueError, match="joint_mode"):
+        await service.line_2d_set("/Main/Trail", {"joint_mode": "miter"})
+    with pytest.raises(ValueError, match="polygon must be empty"):
+        await service.polygon_2d_set(
+            "/Main/Ground", {"polygon": [{"x": 0.0, "y": 0.0}, {"x": 4.0, "y": 0.0}]}
+        )
+    with pytest.raises(ValueError, match="texture_scale"):
+        await service.polygon_2d_set("/Main/Ground", {"texture_scale": {"x": 0.0, "y": 1.0}})
+    with pytest.raises(ValueError, match="vertex_colors"):
+        await service.polygon_2d_set(
+            "/Main/Ground",
+            {
+                "polygon": [
+                    {"x": 0.0, "y": 0.0},
+                    {"x": 4.0, "y": 0.0},
+                    {"x": 0.0, "y": 4.0},
+                ],
+                "vertex_colors": [{"r": 1.0, "g": 1.0, "b": 1.0}],
+            },
+        )
+
+
+@pytest.mark.asyncio
 async def test_node_set_properties_rejects_empty_or_unbounded_updates() -> None:
     service = GodotService(SessionRegistry(), FakeBridge())
 
@@ -1015,9 +1117,7 @@ async def test_control_theme_tools_reject_invalid_payloads() -> None:
             "/Main/UI/Root", "shader", "Button", "font_color", {"r": 1, "g": 1, "b": 1}
         )
     with pytest.raises(ValueError, match="Theme identifier"):
-        await service.control_theme_item_clear(
-            "/Main/UI/Root", "color", "Button", "bad/name"
-        )
+        await service.control_theme_item_clear("/Main/UI/Root", "color", "Button", "bad/name")
 
 
 @pytest.mark.asyncio
@@ -1029,9 +1129,7 @@ async def test_collision_shape_and_layer_tools_forward_safe_payloads() -> None:
     await service.collision_shape_get(
         "/Main/Wall/Collider", scene_file="res://main.tscn", session_id="project@a1b2"
     )
-    await service.collision_object_get_layers(
-        "/Main/Wall", scene_file="res://main.tscn"
-    )
+    await service.collision_object_get_layers("/Main/Wall", scene_file="res://main.tscn")
     await service.collision_shape_set(
         "/Main/Wall/Collider",
         shape_type="rectangle",
@@ -1127,9 +1225,7 @@ async def test_physics_behavior_tools_forward_semantic_payloads() -> None:
         scene_file="res://main.tscn",
         session_id="project@a1b2",
     )
-    await service.physics_body_2d_set(
-        "/Main/Player", body_properties, scene_file="res://main.tscn"
-    )
+    await service.physics_body_2d_set("/Main/Player", body_properties, scene_file="res://main.tscn")
     await service.joint_2d_set(
         "/Main/PlayerJoint",
         properties=joint_properties,
@@ -1267,9 +1363,7 @@ async def test_cast_tools_reject_invalid_payloads() -> None:
     with pytest.raises(ValueError, match="properties, masks, or shape_type"):
         await service.shape_cast_2d_set("/Main/PlayerShapeCast")
     with pytest.raises(ValueError, match="shape_type"):
-        await service.shape_cast_2d_set(
-            "/Main/PlayerShapeCast", shape_properties={"radius": 12.0}
-        )
+        await service.shape_cast_2d_set("/Main/PlayerShapeCast", shape_properties={"radius": 12.0})
     with pytest.raises(ValueError, match="shape_properties"):
         await service.shape_cast_2d_set("/Main/PlayerShapeCast", shape_type="circle")
 
@@ -1312,9 +1406,7 @@ async def test_navigation_tools_reject_invalid_payloads() -> None:
     with pytest.raises(ValueError, match="non-empty"):
         await service.navigation_2d_set("/Main/NavigationRegion", {})
     with pytest.raises(ValueError, match="JSON-compatible"):
-        await service.navigation_2d_set(
-            "/Main/NavigationRegion", {"enter_cost": float("inf")}
-        )
+        await service.navigation_2d_set("/Main/NavigationRegion", {"enter_cost": float("inf")})
 
 
 @pytest.mark.asyncio
@@ -1417,9 +1509,7 @@ async def test_navigation_polygon_tools_reject_invalid_payloads() -> None:
             "/Main/NavigationRegion", [{"x": 1.0}], [[0, 1, 2]]
         )
     with pytest.raises(ValueError, match="vertices and polygons"):
-        await service.navigation_polygon_geometry_set(
-            "/Main/NavigationRegion", [], [[0, 1, 2]]
-        )
+        await service.navigation_polygon_geometry_set("/Main/NavigationRegion", [], [[0, 1, 2]])
     with pytest.raises(ValueError, match="outline"):
         await service.navigation_polygon_outline_set(
             "/Main/NavigationRegion", [{"x": 0.0, "y": 0.0}]
@@ -1517,9 +1607,7 @@ async def test_viewport_tools_reject_invalid_payloads() -> None:
     with pytest.raises(ValueError, match="repeat_times"):
         await service.parallax_2d_set("/Main/Background", {"repeat_times": 0})
     with pytest.raises(ValueError, match="repeat_size"):
-        await service.parallax_2d_set(
-            "/Main/Background", {"repeat_size": {"x": -1.0, "y": 1.0}}
-        )
+        await service.parallax_2d_set("/Main/Background", {"repeat_size": {"x": -1.0, "y": 1.0}})
     with pytest.raises(ValueError, match="transform cannot"):
         await service.canvas_layer_set(
             "/Main/HUD",
@@ -1561,9 +1649,7 @@ async def test_path_2d_tools_forward_curve_edits() -> None:
         path, offset=2, limit=20, session_id="project@a1b2", scene_file=scene_file
     )
     await service.path_2d_curve_set(path, points, bake_interval=2.5, scene_file=scene_file)
-    await service.path_2d_curve_point_insert(
-        path, inserted_point, index=1, scene_file=scene_file
-    )
+    await service.path_2d_curve_point_insert(path, inserted_point, index=1, scene_file=scene_file)
     await service.path_2d_curve_point_set(path, 2, updated_point, scene_file=scene_file)
     await service.path_2d_curve_point_remove(path, 0, scene_file=scene_file)
     await service.path_2d_curve_clear(path, scene_file=scene_file)
@@ -1614,9 +1700,7 @@ async def test_path_2d_tools_reject_invalid_payloads() -> None:
             "/Main/PatrolPath", [{"position": {"x": 0.0, "y": 0.0}}] * 513
         )
     with pytest.raises(ValueError, match="position"):
-        await service.path_2d_curve_point_insert(
-            "/Main/PatrolPath", {"in": {"x": 0.0, "y": 0.0}}
-        )
+        await service.path_2d_curve_point_insert("/Main/PatrolPath", {"in": {"x": 0.0, "y": 0.0}})
     with pytest.raises(ValueError, match="point.out"):
         await service.path_2d_curve_point_set(
             "/Main/PatrolPath",
@@ -1652,9 +1736,7 @@ async def test_skeleton_2d_tools_forward_semantic_edits() -> None:
         "origin": {"x": 48.0, "y": 0.0},
     }
 
-    await service.skeleton_2d_get(
-        skeleton_path, session_id="project@a1b2", scene_file=scene_file
-    )
+    await service.skeleton_2d_get(skeleton_path, session_id="project@a1b2", scene_file=scene_file)
     await service.bone_2d_get(bone_path, scene_file=scene_file)
     await service.skeleton_2d_bone_create(
         skeleton_path,
@@ -1760,9 +1842,7 @@ async def test_audio_stream_player_2d_tools_forward_semantic_edits() -> None:
         "playback_type": "stream",
     }
 
-    await service.audio_stream_player_2d_get(
-        path, session_id="project@a1b2", scene_file=scene_file
-    )
+    await service.audio_stream_player_2d_get(path, session_id="project@a1b2", scene_file=scene_file)
     await service.audio_stream_player_2d_set(path, properties, scene_file=scene_file)
 
     assert bridge.calls == [
@@ -1976,9 +2056,7 @@ async def test_cpu_particles_2d_tools_reject_invalid_payloads() -> None:
     with pytest.raises(ValueError, match="emission_shape"):
         await service.cpu_particles_2d_set(path, {"emission_shape": "line"})
     with pytest.raises(ValueError, match="emission_rect_extents"):
-        await service.cpu_particles_2d_set(
-            path, {"emission_rect_extents": {"x": -1.0, "y": 2.0}}
-        )
+        await service.cpu_particles_2d_set(path, {"emission_rect_extents": {"x": -1.0, "y": 2.0}})
     with pytest.raises(ValueError, match="emission_points"):
         await service.cpu_particles_2d_set(
             path,
@@ -2491,9 +2569,7 @@ async def test_canvas_item_shader_tools_forward_copy_on_write_payloads() -> None
         {"amount": 0.75, "tint": {"r": 1.0, "g": 0.5, "b": 0.0, "a": 1.0}},
         scene_file=scene_file,
     )
-    await service.canvas_item_shader_uniforms_clear(
-        path, ["amount", "tint"], scene_file=scene_file
-    )
+    await service.canvas_item_shader_uniforms_clear(path, ["amount", "tint"], scene_file=scene_file)
     await service.canvas_item_shader_clear(path, scene_file=scene_file)
 
     assert bridge.calls == [

@@ -33,6 +33,9 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "class_2d_coverage",
         "node_get_properties",
         "node_get_signals",
+        "sprite_2d_get",
+        "line_2d_get",
+        "polygon_2d_get",
         "animation_list",
         "animation_get",
         "control_get_layout",
@@ -75,6 +78,9 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "node_script_clear",
         "node_instance_scene",
         "node_set_properties",
+        "sprite_2d_set",
+        "line_2d_set",
+        "polygon_2d_set",
         "node_delete",
         "node_rename",
         "node_duplicate",
@@ -193,6 +199,9 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["class_2d_coverage"].readOnlyHint is True
     assert annotations["node_get_properties"].readOnlyHint is True
     assert annotations["node_get_signals"].readOnlyHint is True
+    assert annotations["sprite_2d_get"].readOnlyHint is True
+    assert annotations["line_2d_get"].readOnlyHint is True
+    assert annotations["polygon_2d_get"].readOnlyHint is True
     assert annotations["animation_list"].readOnlyHint is True
     assert annotations["animation_get"].readOnlyHint is True
     assert annotations["control_get_layout"].readOnlyHint is True
@@ -334,6 +343,9 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["scene_open"].readOnlyHint is False
     assert annotations["node_script_bind"].readOnlyHint is False
     assert annotations["node_script_clear"].destructiveHint is True
+    assert annotations["sprite_2d_set"].readOnlyHint is False
+    assert annotations["line_2d_set"].readOnlyHint is False
+    assert annotations["polygon_2d_set"].readOnlyHint is False
     assert annotations["scene_save"].idempotentHint is True
 
 
@@ -362,9 +374,7 @@ async def test_runtime_screenshot_view_returns_mcp_image_content() -> None:
     tool = await app.mcp.get_tool("runtime_screenshot_view")
 
     assert tool is not None
-    response = await tool.run(
-        {"request_id": "screenshot-123", "session_id": "project@a1b2"}
-    )
+    response = await tool.run({"request_id": "screenshot-123", "session_id": "project@a1b2"})
 
     assert len(response.content) == 1
     image = response.content[0]
