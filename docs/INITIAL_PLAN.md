@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：阶段 0 至阶段 7 已完成。阶段 1 至阶段 5 已交付完整 2D/UI 场景、动画、物理、导航、TileMap、视觉、粒子与控件语义能力；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图、输入模拟、`AudioStreamPlayer2D` 运行时状态/播放/停止/定位控制、受限性能采样、客户端 PNG 内容断言和有总超时/自动清理边界的游戏测试编排；阶段 7 已交付运行时 `ClassDB` 2D 覆盖审计、完整快照、跨版本差异、类型详情反射和全允许节点生命周期验收（v0.51.0）
+状态：阶段 0 至阶段 7 已完成。阶段 1 至阶段 5 已交付完整 2D/UI 场景、动画、物理、导航、TileMap、视觉、粒子与控件语义能力；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图、输入模拟、项目 Input Map 动作与键盘/鼠标/手柄绑定编辑、`AudioStreamPlayer2D` 运行时状态/播放/停止/定位控制、受限性能采样、客户端 PNG 内容断言和有总超时/自动清理边界的游戏测试编排；阶段 7 已交付运行时 `ClassDB` 2D 覆盖审计、完整快照、跨版本差异、类型详情反射和全允许节点生命周期验收（v0.52.0）
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -100,6 +100,10 @@ Codex / Claude Code / MCP Client
 | `session_list` | 列出连接的 Godot 编辑器实例 |
 | `session_activate` | 显式选择目标编辑器会话 |
 | `editor_get_state` | 获取项目、场景、导入和运行状态 |
+| `input_map_get` | 分页读取项目 Input Map 动作与持久化绑定 |
+| `input_map_action_upsert` | 创建或显式完整替换一个项目输入动作 |
+| `input_map_action_delete` | 显式确认后删除一个项目输入动作 |
+| `input_map_undo` / `input_map_redo` | 撤销或重做紧邻的 MCP 输入映射操作 |
 | `class_search` | 查询允许创建的 2D 类型及能力 |
 | `class_2d_describe` | 分页读取支持类型的继承、公开属性、方法、信号和枚举 |
 | `scene_get_hierarchy` | 分页读取当前场景树 |
@@ -123,6 +127,7 @@ Codex / Claude Code / MCP Client
 ### 当前已交付
 
 - 会话选择、编辑器状态、2D 类型检索、场景树和节点属性读取；`scene_create` 仅在项目内创建此前不存在的 `.tscn`，自动打开并允许后续节点编辑，`scene_open` 会先审计完整实例子树再打开现有项目 `.tscn`/`.scn`，两者均拒绝 3D 和其他策略外节点。
+- `input_map_get`、`input_map_action_upsert`、`input_map_action_delete`、`input_map_undo`、`input_map_redo` 支持项目级 Input Map 的分页读取、动作创建/完整替换、显式删除和受作用域限制的全局撤销/重做。写入同步保存 `project.godot`，不依赖场景保存；键盘、鼠标按钮、手柄按钮和手柄轴绑定均采用稳定 JSON 结构，键盘支持 keycode、physical keycode、key label、unicode 与修饰键，`device: -1` 表示全部设备。为避免破坏 Godot 编辑器导航，`ui_*` 内置动作只读。
 - 内置 `ClassDB` 2D/UI 节点创建、兼容项目内非 `@tool` Script 的直接创建/绑定/显式解绑、原子属性修改、删除、撤销/重做和显式保存；脚本必须具有兼容的受支持 2D/UI 原生基类，`@tool` 脚本会被拒绝以避免编辑器内代码执行。对 Godot 声明为 `Resource` 的公开属性，以及 `TypedArray`/`TypedDictionary` 中声明为 Resource 的元素，可通过严格类型检查的 `{ "resource_path": "res://..." }` 引用安全绑定项目资源，且不会修改外部资源。读取类型化容器时会返回 `container_type` 元数据；每个元素在写入前按 Godot 声明转换，非字符串键字典以 `{ "entries": [{ "key": ..., "value": ... }] }` 传输以保持键类型，场景 Node 引用和脚本约束对象明确拒绝。`node_instance_scene` 仅实例化完整受支持的 2D/UI PackedScene，保留内部 owner，支持撤销/重做与完整实例根删除，`node_duplicate`/`node_reparent` 同样可处理未添加局部 override 的完整实例根且绝不展平其内部节点。
 - `node_rename`、`node_duplicate`、`node_reparent` 和 `node_move`。
 - `node_get_signals`、`signal_connect` 和 `signal_disconnect`，支持连接已有节点方法、绑定 JSON 参数、deferred 与 one-shot 选项。

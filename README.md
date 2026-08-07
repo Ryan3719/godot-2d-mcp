@@ -2,7 +2,7 @@
 
 Godot 2D MCP connects Codex, Claude Code, and other MCP clients to a live Godot editor. The project is designed for comprehensive Godot 2D authoring while keeping editor mutations on Godot's main thread and inside its undo/redo system.
 
-The current `0.51.0` preview adds paginated runtime ClassDB descriptions for every policy-supported 2D node and audited resource, including inheritance, public properties, methods, signals, and enums. This lets agents inspect the actual API exposed by the connected Godot build before authoring. It retains complete, versioned 2D coverage snapshots and compatibility diffs, plus real Godot 4.7 lifecycle validation for every allowed 2D node: creation, property inspection, save/reopen, deletion, undo, and redo. Editor-only ClassDB types remain excluded from game-scene authoring. Existing runtime performance sampling, PNG assertions, one-call runtime tests, NavigationPolygon baking, runtime audio control, strict typed containers, and broad semantic tooling remain available. Agents can build 2D scenes, start a game, inspect real output, run bounded automated checks, and retain Godot-native undo and save behavior.
+The current `0.52.0` preview lets agents author persistent Godot Input Map actions directly in `project.godot`, with keyboard, mouse-button, joypad-button, and joypad-axis bindings plus guarded project-level undo/redo. It retains paginated runtime ClassDB descriptions for every policy-supported 2D node and audited resource, including inheritance, public properties, methods, signals, and enums, so agents can inspect the actual API exposed by the connected Godot build before authoring. Complete, versioned 2D coverage snapshots and compatibility diffs, real Godot 4.7 lifecycle validation for every allowed 2D node, runtime performance sampling, PNG assertions, one-call runtime tests, NavigationPolygon baking, runtime audio control, strict typed containers, and broad semantic tooling remain available. Editor-only ClassDB types remain excluded from game-scene authoring.
 
 ## Current capabilities
 
@@ -12,6 +12,7 @@ The current `0.51.0` preview adds paginated runtime ClassDB descriptions for eve
 - Structured, versioned request and response protocol.
 - `session_list` and `session_activate`.
 - `editor_get_state`.
+- `input_map_get`, `input_map_action_upsert`, `input_map_action_delete`, `input_map_undo`, and `input_map_redo` for persistent project Input Map authoring with keyboard, mouse-button, joypad-button, and joypad-axis bindings.
 - Paginated `scene_get_hierarchy`.
 - Runtime `class_search` filtered by the centralized 2D type policy.
 - `class_2d_coverage` derives a paginated 2D node/resource inventory from the running Godot `ClassDB`, separating generic support, semantic tools, and direct smoke-test status. `class_2d_coverage_snapshot` returns the complete versioned inventory, and `class_2d_coverage_diff` compares a saved snapshot against the active Godot build.
@@ -103,6 +104,10 @@ Call `class_2d_coverage` before choosing a new 2D implementation batch. It accep
 ## Class API Reflection
 
 Call `class_2d_describe(type_name=..., section=...)` after selecting a supported type. It only exposes types admitted by the same runtime 2D policy as authoring tools. `section` is one of `overview`, `properties`, `methods`, `signals`, or `enums`. Every response includes the class kind, category, parent, complete inheritance chain, instantiability, and Godot API type. Property entries include declared type, class name, hint metadata, read-only status, and getter/setter names. Method and signal entries include typed arguments, the count of trailing default arguments, and flags; enum entries include their integer constants. Results are sorted by name and use `offset` with `limit` (1 through 500); agents must request subsequent pages when `has_more` is true. This is reflection, not an unrestricted invocation surface: use the dedicated authoring tools or controlled generic property workflow to mutate scenes.
+
+## Project Input Map
+
+Call `input_map_get` before changing a project action. `input_map_action_upsert` creates an action when it is absent, or atomically replaces its entire binding list when `replace_existing: true` is explicit. Supplying no `deadzone` on a replacement preserves the current value; a new action defaults to `0.2`. Bindings use `key` (exactly one of `keycode`, `physical_keycode`, `key_label`, or `unicode`, with optional modifiers), `mouse_button` (buttons 1 through 9), `joypad_button` (buttons 0 through 127), or `joypad_motion` (axes 0 through 9 with a non-zero value from `-1` through `1`). `device: -1` means all devices. Input actions in Godot's reserved `ui_*` namespace are read-only through MCP. `input_map_action_delete` requires `confirm: true`; use `input_map_undo` and `input_map_redo` immediately after an MCP Input Map mutation. These tools save `project.godot` synchronously and never require `scene_save`.
 
 ## Editing workflow
 

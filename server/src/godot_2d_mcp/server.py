@@ -19,6 +19,8 @@ INSTRUCTIONS = """Godot 2D editor integration. Inspect editor state before editi
 When multiple sessions are connected, activate the intended session before issuing commands.
 Pass scene_file from editor_get_state to write tools when scene drift must be rejected.
 Node changes participate in Godot undo/redo and remain unsaved until scene_save is called.
+Input Map tools update and save project.godot immediately.
+Use input_map_undo or input_map_redo for their scoped history.
 """
 
 READ_ONLY = ToolAnnotations(
@@ -117,6 +119,61 @@ def create_application(
     async def editor_stop(session_id: str | None = None) -> dict[str, Any]:
         """Request that the currently running Godot scene stops; safe when no scene is running."""
         return await service.editor_stop(session_id=session_id)
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def input_map_get(
+        query: str = "",
+        offset: int = 0,
+        limit: int = 100,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Read paginated project Input Map actions and their persistent bindings."""
+        return await service.input_map_get(
+            query=query,
+            offset=offset,
+            limit=limit,
+            session_id=session_id,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def input_map_action_upsert(
+        action: str,
+        events: list[dict[str, Any]],
+        deadzone: float | None = None,
+        replace_existing: bool = False,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Create or atomically replace one project Input Map action and its full binding list."""
+        return await service.input_map_action_upsert(
+            action=action,
+            events=events,
+            deadzone=deadzone,
+            replace_existing=replace_existing,
+            session_id=session_id,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def input_map_action_delete(
+        action: str,
+        confirm: bool = False,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Delete one non-built-in Input Map action after explicit confirmation."""
+        return await service.input_map_action_delete(
+            action=action,
+            confirm=confirm,
+            session_id=session_id,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def input_map_undo(session_id: str | None = None) -> dict[str, Any]:
+        """Undo the latest MCP Input Map operation from the project-wide editor history."""
+        return await service.input_map_undo(session_id=session_id)
+
+    @mcp.tool(annotations=WRITE)
+    async def input_map_redo(session_id: str | None = None) -> dict[str, Any]:
+        """Redo the next MCP Input Map operation from the project-wide editor history."""
+        return await service.input_map_redo(session_id=session_id)
 
     @mcp.tool(annotations=READ_ONLY)
     async def runtime_get_state(session_id: str | None = None) -> dict[str, Any]:

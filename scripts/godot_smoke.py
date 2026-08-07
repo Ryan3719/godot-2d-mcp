@@ -90,6 +90,114 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         state = await _wait_for_editor_ready(app)
         _trace_smoke("editor connected and ready")
         loop_mode = "pingpong" if str(state.get("godot_version", "")).startswith("4.7") else "linear"
+        input_action_name = "mcp_smoke_move_left"
+        input_events = [
+            {"type": "key", "physical_keycode": 65, "shift": True},
+            {"type": "mouse_button", "button": 1, "device": -1},
+            {"type": "joypad_button", "button": 0, "device": 2},
+            {"type": "joypad_motion", "axis": 0, "axis_value": -1.0},
+        ]
+        input_action_created = await app.service.input_map_action_upsert(
+            input_action_name,
+            input_events,
+            deadzone=0.35,
+        )
+        input_actions_after_create = await app.service.input_map_get(
+            query=input_action_name, limit=20
+        )
+        created_input_action = next(
+            (
+                action
+                for action in input_actions_after_create.get("actions", [])
+                if action.get("action") == input_action_name
+            ),
+            None,
+        )
+        if (
+            input_action_created.get("created") is not True
+            or created_input_action is None
+            or abs(float(created_input_action.get("deadzone", -1)) - 0.35) > 0.00001
+            or {event.get("type") for event in created_input_action.get("events", [])}
+            != {"key", "mouse_button", "joypad_button", "joypad_motion"}
+            or input_action_name not in (project_path / "project.godot").read_text(encoding="utf-8")
+        ):
+            raise RuntimeError(
+                "Input Map action creation was incomplete: "
+                f"result={input_action_created}, action={created_input_action}"
+            )
+        input_action_undo_create = await app.service.input_map_undo()
+        input_actions_after_undo_create = await app.service.input_map_get(
+            query=input_action_name, limit=20
+        )
+        input_action_redo_create = await app.service.input_map_redo()
+        input_actions_after_redo_create = await app.service.input_map_get(
+            query=input_action_name, limit=20
+        )
+        if (
+            input_action_undo_create.get("changed") is not True
+            or input_actions_after_undo_create.get("total") != 0
+            or input_action_redo_create.get("changed") is not True
+            or input_actions_after_redo_create.get("total") != 1
+        ):
+            raise RuntimeError(
+                "Input Map creation undo/redo was incomplete: "
+                f"undo={input_action_undo_create}, after_undo={input_actions_after_undo_create}, "
+                f"redo={input_action_redo_create}, after_redo={input_actions_after_redo_create}"
+            )
+        input_action_updated = await app.service.input_map_action_upsert(
+            input_action_name,
+            [{"type": "key", "keycode": 68, "command_or_control_autoremap": True}],
+            deadzone=0.5,
+            replace_existing=True,
+        )
+        input_action_undo_update = await app.service.input_map_undo()
+        input_action_redo_update = await app.service.input_map_redo()
+        input_actions_after_update = await app.service.input_map_get(
+            query=input_action_name, limit=20
+        )
+        updated_input_action = next(
+            (
+                action
+                for action in input_actions_after_update.get("actions", [])
+                if action.get("action") == input_action_name
+            ),
+            None,
+        )
+        if (
+            input_action_updated.get("replaced") is not True
+            or input_action_undo_update.get("changed") is not True
+            or input_action_redo_update.get("changed") is not True
+            or updated_input_action is None
+            or abs(float(updated_input_action.get("deadzone", -1)) - 0.5) > 0.00001
+            or updated_input_action.get("event_count") != 1
+            or updated_input_action.get("events", [{}])[0].get("keycode") != 68
+            or updated_input_action.get("events", [{}])[0].get("command_or_control_autoremap")
+            is not True
+        ):
+            raise RuntimeError(
+                "Input Map action replacement was incomplete: "
+                f"result={input_action_updated}, action={updated_input_action}"
+            )
+        input_action_deleted = await app.service.input_map_action_delete(
+            input_action_name, confirm=True
+        )
+        input_action_undo_delete = await app.service.input_map_undo()
+        input_action_redo_delete = await app.service.input_map_redo()
+        input_actions_after_delete = await app.service.input_map_get(
+            query=input_action_name, limit=20
+        )
+        if (
+            input_action_deleted.get("deleted") is not True
+            or input_action_undo_delete.get("changed") is not True
+            or input_action_redo_delete.get("changed") is not True
+            or input_actions_after_delete.get("total") != 0
+            or input_action_name in (project_path / "project.godot").read_text(encoding="utf-8")
+        ):
+            raise RuntimeError(
+                "Input Map action deletion was incomplete: "
+                f"delete={input_action_deleted}, undo={input_action_undo_delete}, "
+                f"redo={input_action_redo_delete}, after_delete={input_actions_after_delete}"
+            )
         hierarchy = await app.service.scene_get_hierarchy(limit=20)
         classes = await app.service.class_search(query="Button", limit=20)
         button_overview = await app.service.class_2d_describe("Button")

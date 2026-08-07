@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.51.0"
+const PLUGIN_VERSION := "0.52.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 const RUNTIME_AUTOLOAD_NAME := "Godot2DMcpRuntime"
 const RUNTIME_AUTOLOAD_PATH := "res://addons/godot_2d_mcp/runtime/runtime_bridge.gd"
@@ -10,6 +10,7 @@ const ConnectionScript := preload("res://addons/godot_2d_mcp/transport/connectio
 const DispatcherScript := preload("res://addons/godot_2d_mcp/dispatcher.gd")
 const DockScript := preload("res://addons/godot_2d_mcp/ui/mcp_dock.gd")
 const EditorHandlerScript := preload("res://addons/godot_2d_mcp/handlers/editor_handler.gd")
+const InputMapHandlerScript := preload("res://addons/godot_2d_mcp/handlers/input_map_handler.gd")
 const SceneHandlerScript := preload("res://addons/godot_2d_mcp/handlers/scene_handler.gd")
 const NodeHandlerScript := preload("res://addons/godot_2d_mcp/handlers/node_handler.gd")
 const ClassHandlerScript := preload("res://addons/godot_2d_mcp/handlers/class_handler.gd")
@@ -93,6 +94,7 @@ func _exit_tree() -> void:
 
 func _register_handlers() -> void:
 	var editor_handler: RefCounted = EditorHandlerScript.new()
+	var input_map_handler: RefCounted = InputMapHandlerScript.new(get_undo_redo())
 	var scene_handler: RefCounted = SceneHandlerScript.new(get_undo_redo())
 	var node_handler: RefCounted = NodeHandlerScript.new(get_undo_redo())
 	var class_handler: RefCounted = ClassHandlerScript.new()
@@ -120,7 +122,7 @@ func _register_handlers() -> void:
 	var button_handler: RefCounted = ButtonHandlerScript.new(get_undo_redo())
 	var runtime_handler: RefCounted = RuntimeHandlerScript.new(_runtime_debugger)
 	_handlers.assign([
-		editor_handler, scene_handler, node_handler, class_handler, signal_handler, animation_handler,
+		editor_handler, input_map_handler, scene_handler, node_handler, class_handler, signal_handler, animation_handler,
 		ui_handler, container_handler, theme_handler, physics_handler, tile_map_handler, lighting_handler, viewport_handler,
 		path_handler, skeleton_handler, audio_handler, gpu_particles_handler, particle_process_material_handler,
 		particle_process_material_resources_handler,
@@ -134,6 +136,11 @@ func _register_handlers() -> void:
 	_dispatcher.register("editor_get_state", editor_handler.get_state)
 	_dispatcher.register("editor_run", editor_handler.run)
 	_dispatcher.register("editor_stop", editor_handler.stop)
+	_dispatcher.register("input_map_get", input_map_handler.get_input_map)
+	_dispatcher.register("input_map_action_upsert", input_map_handler.upsert_action)
+	_dispatcher.register("input_map_action_delete", input_map_handler.delete_action)
+	_dispatcher.register("input_map_undo", input_map_handler.undo)
+	_dispatcher.register("input_map_redo", input_map_handler.redo)
 	_dispatcher.register("runtime_get_state", runtime_handler.get_runtime_state)
 	_dispatcher.register("runtime_logs_get", runtime_handler.get_runtime_logs)
 	_dispatcher.register("runtime_screenshot_request", runtime_handler.request_runtime_screenshot)

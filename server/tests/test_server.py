@@ -17,6 +17,11 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "editor_get_state",
         "editor_run",
         "editor_stop",
+        "input_map_get",
+        "input_map_action_upsert",
+        "input_map_action_delete",
+        "input_map_undo",
+        "input_map_redo",
         "runtime_get_state",
         "runtime_logs_get",
         "runtime_screenshot_request",
@@ -217,6 +222,11 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     annotations = {tool.name: tool.annotations for tool in tools}
     assert annotations["editor_run"].readOnlyHint is False
     assert annotations["editor_stop"].idempotentHint is True
+    assert annotations["input_map_get"].readOnlyHint is True
+    assert annotations["input_map_action_upsert"].readOnlyHint is False
+    assert annotations["input_map_action_delete"].destructiveHint is True
+    assert annotations["input_map_undo"].readOnlyHint is False
+    assert annotations["input_map_redo"].readOnlyHint is False
     assert annotations["runtime_get_state"].readOnlyHint is True
     assert annotations["runtime_logs_get"].readOnlyHint is True
     assert annotations["runtime_screenshot_request"].readOnlyHint is False

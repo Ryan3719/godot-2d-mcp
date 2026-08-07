@@ -566,6 +566,90 @@ async def test_editor_run_rejects_invalid_modes_and_scene_paths() -> None:
 
 
 @pytest.mark.asyncio
+async def test_input_map_tools_forward_validated_project_actions() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    events = [
+        {"type": "key", "physical_keycode": 65, "shift": True},
+        {"type": "mouse_button", "button": 1, "device": -1},
+        {"type": "joypad_button", "button": 0, "device": 2},
+        {"type": "joypad_motion", "axis": 0, "axis_value": -1.0},
+    ]
+
+    await service.input_map_get(
+        query=" move ", offset=4, limit=20, session_id="project@a1b2"
+    )
+    await service.input_map_action_upsert(
+        " player_move_left ",
+        events,
+        deadzone=0.35,
+        replace_existing=True,
+        session_id="project@a1b2",
+    )
+    await service.input_map_action_delete(
+        "player_move_left", confirm=True, session_id="project@a1b2"
+    )
+    await service.input_map_undo(session_id="project@a1b2")
+    await service.input_map_redo(session_id="project@a1b2")
+
+    assert bridge.calls == [
+        ("input_map_get", {"query": "move", "offset": 4, "limit": 20}, "project@a1b2"),
+        (
+            "input_map_action_upsert",
+            {
+                "action": "player_move_left",
+                "events": events,
+                "replace_existing": True,
+                "deadzone": 0.35,
+            },
+            "project@a1b2",
+        ),
+        (
+            "input_map_action_delete",
+            {"action": "player_move_left", "confirm": True},
+            "project@a1b2",
+        ),
+        ("input_map_undo", {}, "project@a1b2"),
+        ("input_map_redo", {}, "project@a1b2"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_input_map_tools_reject_invalid_project_actions() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="action"):
+        await service.input_map_action_upsert(" ", [])
+    with pytest.raises(ValueError, match="exactly one"):
+        await service.input_map_action_upsert(
+            "jump", [{"type": "key", "keycode": 65, "unicode": 65}]
+        )
+    with pytest.raises(ValueError, match="command_or_control_autoremap"):
+        await service.input_map_action_upsert(
+            "jump",
+            [{"type": "key", "keycode": 65, "command_or_control_autoremap": True, "ctrl": True}],
+        )
+    with pytest.raises(ValueError, match="button"):
+        await service.input_map_action_upsert("jump", [{"type": "mouse_button", "button": 10}])
+    with pytest.raises(ValueError, match="axis_value"):
+        await service.input_map_action_upsert(
+            "jump", [{"type": "joypad_motion", "axis": 0, "axis_value": 0}]
+        )
+    with pytest.raises(ValueError, match="deadzone"):
+        await service.input_map_action_upsert(
+            "jump", [{"type": "joypad_button", "button": 0}], deadzone=1.1
+        )
+    with pytest.raises(ValueError, match="replace_existing"):
+        await service.input_map_action_upsert(
+            "jump", [{"type": "joypad_button", "button": 0}], replace_existing="yes"  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="confirm"):
+        await service.input_map_action_delete("jump", confirm="yes")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="offset"):
+        await service.input_map_get(offset=-1)
+
+
+@pytest.mark.asyncio
 async def test_runtime_feedback_tools_forward_validated_payloads() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)
