@@ -56,6 +56,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "shape_cast_2d_get",
         "navigation_2d_get",
         "navigation_polygon_get",
+        "navigation_polygon_bake_result_get",
         "camera_2d_get",
         "parallax_2d_get",
         "canvas_layer_get",
@@ -135,6 +136,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "navigation_polygon_outline_set",
         "navigation_polygon_outline_remove",
         "navigation_polygon_make_from_outlines",
+        "navigation_polygon_bake_request",
         "navigation_polygon_clear",
         "camera_2d_set",
         "parallax_2d_set",
@@ -243,6 +245,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["shape_cast_2d_get"].readOnlyHint is True
     assert annotations["navigation_2d_get"].readOnlyHint is True
     assert annotations["navigation_polygon_get"].readOnlyHint is True
+    assert annotations["navigation_polygon_bake_result_get"].readOnlyHint is True
     assert annotations["camera_2d_get"].readOnlyHint is True
     assert annotations["parallax_2d_get"].readOnlyHint is True
     assert annotations["canvas_layer_get"].readOnlyHint is True
@@ -306,6 +309,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["navigation_polygon_outline_set"].readOnlyHint is False
     assert annotations["navigation_polygon_outline_remove"].destructiveHint is True
     assert annotations["navigation_polygon_make_from_outlines"].readOnlyHint is False
+    assert annotations["navigation_polygon_bake_request"].readOnlyHint is False
     assert annotations["navigation_polygon_clear"].destructiveHint is True
     assert annotations["camera_2d_set"].readOnlyHint is False
     assert annotations["parallax_2d_set"].readOnlyHint is False

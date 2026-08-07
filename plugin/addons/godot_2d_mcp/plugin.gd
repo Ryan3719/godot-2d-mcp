@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.47.0"
+const PLUGIN_VERSION := "0.48.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 const RUNTIME_AUTOLOAD_NAME := "Godot2DMcpRuntime"
 const RUNTIME_AUTOLOAD_PATH := "res://addons/godot_2d_mcp/runtime/runtime_bridge.gd"
@@ -172,6 +172,9 @@ func _register_handlers() -> void:
 	_dispatcher.register("shape_cast_2d_get", physics_handler.get_shape_cast)
 	_dispatcher.register("navigation_2d_get", physics_handler.get_navigation_node)
 	_dispatcher.register("navigation_polygon_get", physics_handler.get_navigation_polygon)
+	_dispatcher.register(
+		"navigation_polygon_bake_result_get", physics_handler.get_navigation_polygon_bake_result
+	)
 	_dispatcher.register("camera_2d_get", viewport_handler.get_camera_2d)
 	_dispatcher.register("parallax_2d_get", viewport_handler.get_parallax_2d)
 	_dispatcher.register("canvas_layer_get", viewport_handler.get_canvas_layer)
@@ -248,6 +251,7 @@ func _register_handlers() -> void:
 	_dispatcher.register("navigation_polygon_outline_set", physics_handler.set_navigation_polygon_outline)
 	_dispatcher.register("navigation_polygon_outline_remove", physics_handler.remove_navigation_polygon_outline)
 	_dispatcher.register("navigation_polygon_make_from_outlines", physics_handler.make_navigation_polygon_from_outlines)
+	_dispatcher.register("navigation_polygon_bake_request", physics_handler.request_navigation_polygon_bake)
 	_dispatcher.register("navigation_polygon_clear", physics_handler.clear_navigation_polygon)
 	_dispatcher.register("camera_2d_set", viewport_handler.set_camera_2d)
 	_dispatcher.register("parallax_2d_set", viewport_handler.set_parallax_2d)

@@ -1947,6 +1947,81 @@ async def test_navigation_polygon_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_navigation_polygon_bake_tools_forward_and_validate_requests() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    settings = {
+        "agent_radius": 6.0,
+        "cell_size": 2.0,
+        "border_size": 8.0,
+        "baking_rect": {
+            "position": {"x": -16.0, "y": -8.0},
+            "size": {"x": 256.0, "y": 128.0},
+        },
+        "baking_rect_offset": {"x": 4.0, "y": 2.0},
+        "sample_partition_type": "triangulate",
+        "parsed_geometry_type": "static_colliders",
+        "parsed_collision_layers": [2, 5],
+    }
+
+    await service.navigation_polygon_bake_request(
+        "/Main/NavigationRegion",
+        source_root_path="/Main/Geometry",
+        settings=settings,
+        session_id="project@a1b2",
+        scene_file="res://main.tscn",
+    )
+    await service.navigation_polygon_bake_result_get(
+        "navigation-bake-123", session_id="project@a1b2"
+    )
+
+    assert bridge.calls == [
+        (
+            "navigation_polygon_bake_request",
+            {
+                "path": "/Main/NavigationRegion",
+                "source_root_path": "/Main/Geometry",
+                "settings": settings,
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        ),
+        (
+            "navigation_polygon_bake_result_get",
+            {"request_id": "navigation-bake-123"},
+            "project@a1b2",
+        ),
+    ]
+
+    with pytest.raises(ValueError, match="source_root_path"):
+        await service.navigation_polygon_bake_request(
+            "/Main/NavigationRegion", source_root_path=True  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="cell_size"):
+        await service.navigation_polygon_bake_request(
+            "/Main/NavigationRegion", settings={"cell_size": 0.0}
+        )
+    with pytest.raises(ValueError, match="baking_rect size"):
+        await service.navigation_polygon_bake_request(
+            "/Main/NavigationRegion",
+            settings={
+                "baking_rect": {
+                    "position": {"x": 0.0, "y": 0.0},
+                    "size": {"x": -1.0, "y": 32.0},
+                }
+            },
+        )
+    with pytest.raises(ValueError, match="sample_partition_type"):
+        await service.navigation_polygon_bake_request(
+            "/Main/NavigationRegion", settings={"sample_partition_type": "bad"}
+        )
+    with pytest.raises(ValueError, match="parsed_collision_layers"):
+        await service.navigation_polygon_bake_request(
+            "/Main/NavigationRegion", settings={"parsed_collision_layers": [2, 2]}
+        )
+
+
+@pytest.mark.asyncio
 async def test_viewport_tools_forward_atomic_semantic_payloads() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

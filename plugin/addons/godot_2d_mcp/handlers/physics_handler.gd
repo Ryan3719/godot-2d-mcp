@@ -14,6 +14,21 @@ const MAX_NAVIGATION_POLYGONS := 512
 const MAX_NAVIGATION_POLYGON_INDICES := 2048
 const MAX_NAVIGATION_OUTLINES := 128
 const MAX_NAVIGATION_OUTLINE_POINTS := 512
+const MAX_NAVIGATION_BAKE_RESULTS := 32
+const NAVIGATION_BAKE_PARTITIONS := {
+	"convex_partition": NavigationPolygon.SAMPLE_PARTITION_CONVEX_PARTITION,
+	"triangulate": NavigationPolygon.SAMPLE_PARTITION_TRIANGULATE,
+}
+const NAVIGATION_BAKE_GEOMETRY_TYPES := {
+	"mesh_instances": NavigationPolygon.PARSED_GEOMETRY_MESH_INSTANCES,
+	"static_colliders": NavigationPolygon.PARSED_GEOMETRY_STATIC_COLLIDERS,
+	"both": NavigationPolygon.PARSED_GEOMETRY_BOTH,
+}
+const NAVIGATION_BAKE_SOURCE_GEOMETRY_MODES := {
+	"root_node_children": NavigationPolygon.SOURCE_GEOMETRY_ROOT_NODE_CHILDREN,
+	"groups_with_children": NavigationPolygon.SOURCE_GEOMETRY_GROUPS_WITH_CHILDREN,
+	"groups_explicit": NavigationPolygon.SOURCE_GEOMETRY_GROUPS_EXPLICIT,
+}
 const PROTECTED_SHAPE_PROPERTIES := {
 	"resource_path": true,
 	"resource_name": true,
@@ -115,6 +130,9 @@ const ENUM_OPTIONS_BY_PROPERTY := {
 }
 
 var _undo_redo: EditorUndoRedoManager
+var _next_navigation_bake_request_number := 1
+var _navigation_bake_requests: Dictionary = {}
+var _navigation_bake_completed_order: Array[String] = []
 
 
 func _init(undo_redo: EditorUndoRedoManager) -> void:
@@ -685,6 +703,82 @@ func make_navigation_polygon_from_outlines(params: Dictionary) -> Dictionary:
 	return result
 
 
+func request_navigation_polygon_bake(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_navigation_region(params)
+	if resolved.has("_error"):
+		return resolved
+	var navigation_region: NavigationRegion2D = resolved["navigation_region"]
+	var current: NavigationPolygon = navigation_region.navigation_polygon
+	if current == null:
+		return _navigation_polygon_required(navigation_region)
+	if current.get_outline_count() == 0:
+		return Errors.make(
+			"NAVIGATION_POLYGON_OUTLINES_REQUIRED",
+			"NavigationPolygon on '%s' needs at least one outline before source-geometry baking" % navigation_region.name,
+			false,
+			"Create an enclosing outline with navigation_polygon_outline_set before requesting a bake."
+		)
+	if _has_pending_navigation_bake(navigation_region):
+		return Errors.make(
+			"NAVIGATION_POLYGON_BAKE_IN_PROGRESS",
+			"NavigationPolygon on '%s' already has a pending source-geometry bake" % navigation_region.name,
+			true,
+			"Poll navigation_polygon_bake_result_get until the existing request is ready or stale."
+		)
+	var source_root_result := _resolve_navigation_bake_source_root(params, resolved["scene_root"])
+	if source_root_result.has("_error"):
+		return source_root_result
+	if current.source_geometry_mode != NavigationPolygon.SOURCE_GEOMETRY_ROOT_NODE_CHILDREN:
+		return Errors.make(
+			"UNSUPPORTED_NAVIGATION_BAKE_SOURCE_MODE",
+			"source_geometry_mode must be root_node_children for MCP scene-scoped baking",
+			false,
+			"Use a local source_root_path to scope the bake; group-based parsing can include nodes outside the edited scene."
+		)
+	var settings_result := _parse_navigation_bake_settings(params, current)
+	if settings_result.has("_error"):
+		return settings_result
+	var replacement_result := _duplicate_navigation_polygon(current)
+	if replacement_result.has("_error"):
+		return replacement_result
+	var replacement: NavigationPolygon = replacement_result["navigation_polygon"]
+	_apply_navigation_bake_settings(replacement, settings_result["settings"])
+	var source_geometry := NavigationMeshSourceGeometryData2D.new()
+	NavigationServer2D.parse_source_geometry_data(
+		replacement, source_geometry, source_root_result["source_root"]
+	)
+	var request_id := _new_navigation_bake_request_id()
+	_navigation_bake_requests[request_id] = {
+		"status": "pending",
+		"path": ScenePath.from_node(navigation_region, resolved["scene_root"]),
+		"source_root_path": ScenePath.from_node(source_root_result["source_root"], resolved["scene_root"]),
+		"started_at_msec": Time.get_ticks_msec(),
+		"source_geometry": _serialize_navigation_source_geometry(source_geometry),
+		"navigation_region": navigation_region,
+		"scene_root": resolved["scene_root"],
+		"source_navigation_polygon": current,
+		"replacement_navigation_polygon": replacement,
+	}
+	NavigationServer2D.bake_from_source_geometry_data_async(
+		replacement,
+		source_geometry,
+		Callable(self, "_complete_navigation_polygon_bake").bind(request_id)
+	)
+	return _navigation_bake_response(request_id, _navigation_bake_requests[request_id])
+
+
+func get_navigation_polygon_bake_result(params: Dictionary) -> Dictionary:
+	var request_id := str(params.get("request_id", "")).strip_edges()
+	if request_id.is_empty() or not _navigation_bake_requests.has(request_id):
+		return Errors.make(
+			"NAVIGATION_POLYGON_BAKE_NOT_FOUND",
+			"No navigation polygon bake request exists with this request_id",
+			false,
+			"Call navigation_polygon_bake_request first and retain its request_id."
+		)
+	return _navigation_bake_response(request_id, _navigation_bake_requests[request_id])
+
+
 func clear_navigation_polygon(params: Dictionary) -> Dictionary:
 	var resolved := _resolve_navigation_region(params)
 	if resolved.has("_error"):
@@ -713,6 +807,101 @@ func clear_navigation_polygon(params: Dictionary) -> Dictionary:
 	result["undoable"] = true
 	result["_scene_mutated"] = true
 	return result
+
+
+func _complete_navigation_polygon_bake(request_id: String) -> void:
+	if not _navigation_bake_requests.has(request_id):
+		return
+	var request: Dictionary = _navigation_bake_requests[request_id]
+	if str(request.get("status", "")) != "pending":
+		return
+	var navigation_region := request.get("navigation_region") as NavigationRegion2D
+	var scene_root := request.get("scene_root") as Node
+	var source_navigation_polygon := request.get("source_navigation_polygon") as NavigationPolygon
+	var replacement_navigation_polygon := request.get("replacement_navigation_polygon") as NavigationPolygon
+	if navigation_region == null or scene_root == null or source_navigation_polygon == null \
+		or replacement_navigation_polygon == null or not is_instance_valid(navigation_region) \
+		or not is_instance_valid(scene_root):
+		_finish_navigation_bake_stale(
+			request_id, request, "The target scene or NavigationRegion2D was freed before baking finished"
+		)
+		return
+	if EditorInterface.get_edited_scene_root() != scene_root:
+		_finish_navigation_bake_stale(request_id, request, "The edited scene changed before baking finished")
+		return
+	if navigation_region.navigation_polygon != source_navigation_polygon:
+		_finish_navigation_bake_stale(
+			request_id, request, "The NavigationPolygon changed before the pending bake could be committed"
+		)
+		return
+	_commit_navigation_polygon(
+		navigation_region,
+		scene_root,
+		replacement_navigation_polygon,
+		"Bake NavigationPolygon from scene geometry on %s" % navigation_region.name
+	)
+	request["status"] = "ready"
+	request["completed_at_msec"] = Time.get_ticks_msec()
+	request["result"] = {
+		"navigation_polygon": _serialize_navigation_polygon(replacement_navigation_polygon),
+		"undoable": true,
+	}
+	request.erase("navigation_region")
+	request.erase("scene_root")
+	request.erase("source_navigation_polygon")
+	request.erase("replacement_navigation_polygon")
+	_navigation_bake_requests[request_id] = request
+	_remember_completed_navigation_bake(request_id)
+
+
+func _finish_navigation_bake_stale(request_id: String, request: Dictionary, reason: String) -> void:
+	request["status"] = "stale"
+	request["completed_at_msec"] = Time.get_ticks_msec()
+	request["result"] = {"reason": reason}
+	request.erase("navigation_region")
+	request.erase("scene_root")
+	request.erase("source_navigation_polygon")
+	request.erase("replacement_navigation_polygon")
+	_navigation_bake_requests[request_id] = request
+	_remember_completed_navigation_bake(request_id)
+
+
+func _has_pending_navigation_bake(navigation_region: NavigationRegion2D) -> bool:
+	for request_id in _navigation_bake_requests:
+		var request: Dictionary = _navigation_bake_requests[request_id]
+		if str(request.get("status", "")) != "pending":
+			continue
+		if request.get("navigation_region") == navigation_region:
+			return true
+	return false
+
+
+func _new_navigation_bake_request_id() -> String:
+	var request_id := "navigation-bake-%x-%d" % [
+		Time.get_ticks_usec(), _next_navigation_bake_request_number
+	]
+	_next_navigation_bake_request_number += 1
+	return request_id
+
+
+func _remember_completed_navigation_bake(request_id: String) -> void:
+	_navigation_bake_completed_order.erase(request_id)
+	_navigation_bake_completed_order.append(request_id)
+	while _navigation_bake_completed_order.size() > MAX_NAVIGATION_BAKE_RESULTS:
+		_navigation_bake_requests.erase(_navigation_bake_completed_order.pop_front())
+
+
+func _navigation_bake_response(request_id: String, request: Dictionary) -> Dictionary:
+	return {
+		"request_id": request_id,
+		"status": request.get("status", "pending"),
+		"path": request.get("path", ""),
+		"source_root_path": request.get("source_root_path", ""),
+		"started_at_msec": request.get("started_at_msec", 0),
+		"completed_at_msec": request.get("completed_at_msec", null),
+		"source_geometry": request.get("source_geometry", {}),
+		"result": request.get("result", {}),
+	}
 
 
 func _resolve_area(params: Dictionary, require_writable: bool = true) -> Dictionary:
@@ -835,6 +1024,161 @@ func _navigation_polygon_required(navigation_region: NavigationRegion2D) -> Dict
 		false,
 		"Call navigation_polygon_create before editing its geometry."
 	)
+
+
+func _resolve_navigation_bake_source_root(params: Dictionary, scene_root: Node) -> Dictionary:
+	var raw_path := str(params.get("source_root_path", "")).strip_edges()
+	var source_root := ScenePath.resolve(raw_path, scene_root)
+	if source_root == null:
+		return Errors.make(
+			"NAVIGATION_BAKE_SOURCE_ROOT_NOT_FOUND",
+			"source_root_path does not identify a node in the edited scene",
+			false,
+			"Use scene_get_hierarchy and pass a path below the active scene root."
+		)
+	return {"source_root": source_root}
+
+
+func _parse_navigation_bake_settings(params: Dictionary, current: NavigationPolygon) -> Dictionary:
+	var raw_settings: Variant = params.get("settings", {})
+	if raw_settings == null:
+		raw_settings = {}
+	if not raw_settings is Dictionary or raw_settings.size() > 8:
+		return Errors.make(
+			"INVALID_NAVIGATION_BAKE_SETTINGS",
+			"settings must be an object with at most 8 supported properties"
+		)
+	var allowed := [
+		"agent_radius", "cell_size", "border_size", "baking_rect", "baking_rect_offset",
+		"sample_partition_type", "parsed_geometry_type", "parsed_collision_layers",
+	]
+	var settings := {}
+	for raw_name in raw_settings:
+		if not raw_name is String or raw_name not in allowed:
+			return Errors.make(
+				"INVALID_NAVIGATION_BAKE_SETTINGS",
+				"settings contains an unsupported NavigationPolygon bake property: %s" % str(raw_name)
+			)
+		var name: String = raw_name
+		match name:
+			"agent_radius":
+				var radius_result := _parse_navigation_bake_number(
+					raw_settings[name], name, 0.0, 4096.0
+				)
+				if radius_result.has("_error"):
+					return radius_result
+				settings[name] = radius_result["value"]
+			"cell_size":
+				var cell_size_result := _parse_navigation_bake_number(
+					raw_settings[name], name, 1.0, 4096.0
+				)
+				if cell_size_result.has("_error"):
+					return cell_size_result
+				settings[name] = cell_size_result["value"]
+			"border_size":
+				var border_size_result := _parse_navigation_bake_number(
+					raw_settings[name], name, 0.0, 4096.0
+				)
+				if border_size_result.has("_error"):
+					return border_size_result
+				settings[name] = border_size_result["value"]
+			"baking_rect":
+				var baking_rect_result := VariantCodec.decode(
+					raw_settings[name], {"type": TYPE_RECT2}, current.baking_rect
+				)
+				if baking_rect_result.has("_error"):
+					return Errors.make(
+						"INVALID_NAVIGATION_BAKE_SETTINGS",
+						"baking_rect must contain finite position and non-negative size Vector2 values"
+					)
+				var baking_rect: Rect2 = baking_rect_result["value"]
+				if not is_finite(baking_rect.position.x) or not is_finite(baking_rect.position.y) \
+						or not is_finite(baking_rect.size.x) or not is_finite(baking_rect.size.y) \
+						or baking_rect.size.x < 0.0 or baking_rect.size.y < 0.0:
+					return Errors.make(
+						"INVALID_NAVIGATION_BAKE_SETTINGS",
+						"baking_rect must contain finite position and non-negative size Vector2 values"
+					)
+				settings[name] = baking_rect
+			"baking_rect_offset":
+				var offset_result := VariantCodec.decode(
+					raw_settings[name], {"type": TYPE_VECTOR2}, current.baking_rect_offset
+				)
+				if offset_result.has("_error"):
+					return Errors.make(
+						"INVALID_NAVIGATION_BAKE_SETTINGS",
+						"baking_rect_offset must contain finite x and y values"
+					)
+				var baking_rect_offset: Vector2 = offset_result["value"]
+				if not is_finite(baking_rect_offset.x) or not is_finite(baking_rect_offset.y):
+					return Errors.make(
+						"INVALID_NAVIGATION_BAKE_SETTINGS",
+						"baking_rect_offset must contain finite x and y values"
+					)
+				settings[name] = baking_rect_offset
+			"sample_partition_type":
+				var partition_result := _parse_navigation_bake_enum(
+					raw_settings[name], name, NAVIGATION_BAKE_PARTITIONS
+				)
+				if partition_result.has("_error"):
+					return partition_result
+				settings[name] = partition_result["value"]
+			"parsed_geometry_type":
+				var geometry_result := _parse_navigation_bake_enum(
+					raw_settings[name], name, NAVIGATION_BAKE_GEOMETRY_TYPES
+				)
+				if geometry_result.has("_error"):
+					return geometry_result
+				settings[name] = geometry_result["value"]
+			"parsed_collision_layers":
+				var layers_result := _parse_layer_numbers(raw_settings[name], name)
+				if layers_result.has("_error"):
+					return layers_result
+				settings[name] = layers_result["mask"]
+	return {"settings": settings}
+
+
+func _parse_navigation_bake_number(raw_value: Variant, label: String, minimum: float, maximum: float) -> Dictionary:
+	if not (raw_value is int or raw_value is float) or not is_finite(float(raw_value)):
+		return Errors.make("INVALID_NAVIGATION_BAKE_SETTINGS", "%s must be a finite number" % label)
+	var value := float(raw_value)
+	if value < minimum or value > maximum:
+		return Errors.make(
+			"INVALID_NAVIGATION_BAKE_SETTINGS",
+			"%s must be between %s and %s" % [label, minimum, maximum]
+		)
+	return {"value": value}
+
+
+func _parse_navigation_bake_enum(raw_value: Variant, label: String, options: Dictionary) -> Dictionary:
+	if not raw_value is String:
+		return Errors.make("INVALID_NAVIGATION_BAKE_SETTINGS", "%s must be a supported string value" % label)
+	var name: String = raw_value.strip_edges().to_lower()
+	if not options.has(name):
+		return Errors.make(
+			"INVALID_NAVIGATION_BAKE_SETTINGS",
+			"%s must be one of: %s" % [label, ", ".join(options.keys())]
+		)
+	return {"value": options[name]}
+
+
+func _apply_navigation_bake_settings(navigation_polygon: NavigationPolygon, settings: Dictionary) -> void:
+	if settings.has("agent_radius"):
+		navigation_polygon.agent_radius = settings["agent_radius"]
+	if settings.has("cell_size"):
+		navigation_polygon.cell_size = settings["cell_size"]
+	if settings.has("border_size"):
+		navigation_polygon.border_size = settings["border_size"]
+	if settings.has("baking_rect"):
+		navigation_polygon.baking_rect = settings["baking_rect"]
+	if settings.has("baking_rect_offset"):
+		navigation_polygon.baking_rect_offset = settings["baking_rect_offset"]
+	if settings.has("sample_partition_type"):
+		navigation_polygon.sample_partition_type = settings["sample_partition_type"]
+	if settings.has("parsed_geometry_type"):
+		navigation_polygon.parsed_geometry_type = settings["parsed_geometry_type"]
+	if settings.has("parsed_collision_layers"):
+		navigation_polygon.parsed_collision_mask = settings["parsed_collision_layers"]
 
 
 func _parse_navigation_polygon_agent_radius(params: Dictionary, fallback: float) -> Dictionary:
@@ -1053,7 +1397,41 @@ func _serialize_navigation_polygon(navigation_polygon: NavigationPolygon) -> Var
 		"vertices": VariantCodec.serialize(navigation_polygon.get_vertices()),
 		"polygons": polygons,
 		"outlines": outlines,
+		"bake_settings": {
+			"cell_size": navigation_polygon.cell_size,
+			"border_size": navigation_polygon.border_size,
+			"baking_rect": VariantCodec.serialize(navigation_polygon.baking_rect),
+			"baking_rect_offset": VariantCodec.serialize(navigation_polygon.baking_rect_offset),
+			"sample_partition_type": _navigation_bake_enum_name(
+				navigation_polygon.sample_partition_type, NAVIGATION_BAKE_PARTITIONS
+			),
+			"parsed_geometry_type": _navigation_bake_enum_name(
+				navigation_polygon.parsed_geometry_type, NAVIGATION_BAKE_GEOMETRY_TYPES
+			),
+			"parsed_collision_layers": _mask_to_layer_numbers(navigation_polygon.parsed_collision_mask),
+			"source_geometry_mode": _navigation_bake_enum_name(
+				navigation_polygon.source_geometry_mode, NAVIGATION_BAKE_SOURCE_GEOMETRY_MODES
+			),
+			"source_geometry_group_name": str(navigation_polygon.source_geometry_group_name),
+		},
 	}
+
+
+func _serialize_navigation_source_geometry(source_geometry: NavigationMeshSourceGeometryData2D) -> Dictionary:
+	return {
+		"has_data": source_geometry.has_data(),
+		"traversable_outline_count": source_geometry.get_traversable_outlines().size(),
+		"obstruction_outline_count": source_geometry.get_obstruction_outlines().size(),
+		"projected_obstruction_count": source_geometry.get_projected_obstructions().size(),
+		"bounds": VariantCodec.serialize(source_geometry.get_bounds()),
+	}
+
+
+func _navigation_bake_enum_name(value: int, options: Dictionary) -> String:
+	for name in options:
+		if int(options[name]) == value:
+			return str(name)
+	return "unknown"
 
 
 func _resolve_collision_shape(params: Dictionary, require_writable: bool = true) -> Dictionary:
