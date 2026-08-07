@@ -8,6 +8,7 @@ const MAX_LOG_ENTRIES := 1000
 const MAX_SCREENSHOT_RESULTS := 8
 const MAX_INPUT_RESULTS := 32
 const MAX_AUDIO_CONTROL_RESULTS := 32
+const MAX_PERFORMANCE_SAMPLE_RESULTS := 16
 
 var _autoload_status: Dictionary = {"available": false, "reason": "not_configured"}
 var _session_states: Dictionary = {}
@@ -20,6 +21,8 @@ var _input_requests: Dictionary = {}
 var _input_order: Array[String] = []
 var _audio_control_requests: Dictionary = {}
 var _audio_control_order: Array[String] = []
+var _performance_sample_requests: Dictionary = {}
+var _performance_sample_order: Array[String] = []
 
 
 func configure_autoload(status: Dictionary) -> void:
@@ -68,6 +71,10 @@ func _capture(message: String, data: Array, session_id: int) -> bool:
 			if data.size() == 2 and data[1] is Dictionary:
 				_store_audio_control_result(str(data[0]), data[1], session_id)
 			return true
+		"performance_sample_result":
+			if data.size() == 2 and data[1] is Dictionary:
+				_store_performance_sample_result(str(data[0]), data[1], session_id)
+			return true
 	return false
 
 
@@ -82,6 +89,7 @@ func get_runtime_state(_params: Dictionary) -> Dictionary:
 		"pending_screenshots": _pending_count(_screenshot_requests),
 		"pending_inputs": _pending_count(_input_requests),
 		"pending_audio_controls": _pending_count(_audio_control_requests),
+		"pending_performance_samples": _pending_count(_performance_sample_requests),
 	}
 
 
@@ -193,6 +201,34 @@ func get_audio_stream_player_2d_control_result(params: Dictionary) -> Dictionary
 	return {"request_id": request_id, "status": result["status"], "result": result.get("result", {})}
 
 
+func request_performance_sample(params: Dictionary) -> Dictionary:
+	var session_result := _active_session_result()
+	if session_result.has("_error"):
+		return session_result
+	var request_id := _new_request_id("performance")
+	_performance_sample_requests[request_id] = {
+		"status": "pending",
+		"session_id": session_result["session_id"],
+	}
+	(session_result["session"] as EditorDebuggerSession).send_message(
+		"%s:performance_sample" % CAPTURE_NAME, [request_id, {"duration_seconds": float(params["duration_seconds"])}]
+	)
+	return {"request_id": request_id, "status": "pending"}
+
+
+func get_performance_sample_result(params: Dictionary) -> Dictionary:
+	var request_id := str(params.get("request_id", "")).strip_edges()
+	if not _performance_sample_requests.has(request_id):
+		return Errors.make(
+			"RUNTIME_PERFORMANCE_SAMPLE_NOT_FOUND",
+			"No runtime performance sample exists with this request_id",
+			false,
+			"Call runtime_performance_sample_request first and retain its request_id."
+		)
+	var result: Dictionary = _performance_sample_requests[request_id]
+	return {"request_id": request_id, "status": result["status"], "result": result.get("result", {})}
+
+
 func _on_session_started(session_id: int) -> void:
 	var state: Dictionary = _session_states.get(session_id, {})
 	state["started"] = true
@@ -266,6 +302,22 @@ func _store_audio_control_result(request_id: String, result: Dictionary, session
 	_audio_control_order.erase(request_id)
 	_audio_control_order.append(request_id)
 	_trim_results(_audio_control_requests, _audio_control_order, MAX_AUDIO_CONTROL_RESULTS)
+
+
+func _store_performance_sample_result(request_id: String, result: Dictionary, session_id: int) -> void:
+	if not _performance_sample_requests.has(request_id):
+		return
+	var request: Dictionary = _performance_sample_requests[request_id]
+	if int(request.get("session_id", -1)) != session_id:
+		return
+	request["status"] = "ready" if bool(result.get("ok", false)) else "error"
+	request["result"] = result.duplicate(true)
+	_performance_sample_requests[request_id] = request
+	_performance_sample_order.erase(request_id)
+	_performance_sample_order.append(request_id)
+	_trim_results(
+		_performance_sample_requests, _performance_sample_order, MAX_PERFORMANCE_SAMPLE_RESULTS
+	)
 
 
 func _active_session_result() -> Dictionary:

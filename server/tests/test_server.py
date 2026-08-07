@@ -22,10 +22,14 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "runtime_screenshot_request",
         "runtime_screenshot_get",
         "runtime_screenshot_view",
+        "runtime_screenshot_assert",
         "runtime_input_send",
         "runtime_input_result_get",
         "runtime_audio_stream_player_2d_control",
         "runtime_audio_stream_player_2d_control_result_get",
+        "runtime_performance_sample_request",
+        "runtime_performance_sample_result_get",
+        "runtime_test_run",
         "scene_get_hierarchy",
         "scene_create",
         "scene_open",
@@ -215,10 +219,14 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["runtime_screenshot_request"].readOnlyHint is False
     assert annotations["runtime_screenshot_get"].readOnlyHint is True
     assert annotations["runtime_screenshot_view"].readOnlyHint is True
+    assert annotations["runtime_screenshot_assert"].readOnlyHint is True
     assert annotations["runtime_input_send"].readOnlyHint is False
     assert annotations["runtime_input_result_get"].readOnlyHint is True
     assert annotations["runtime_audio_stream_player_2d_control"].readOnlyHint is False
     assert annotations["runtime_audio_stream_player_2d_control_result_get"].readOnlyHint is True
+    assert annotations["runtime_performance_sample_request"].readOnlyHint is False
+    assert annotations["runtime_performance_sample_result_get"].readOnlyHint is True
+    assert annotations["runtime_test_run"].readOnlyHint is False
     assert annotations["class_2d_coverage"].readOnlyHint is True
     assert annotations["node_get_properties"].readOnlyHint is True
     assert annotations["node_get_signals"].readOnlyHint is True

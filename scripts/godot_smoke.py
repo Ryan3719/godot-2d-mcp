@@ -6328,6 +6328,46 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError(
                 "Runtime screenshot did not contain the rendered smoke-scene background"
             )
+        screenshot_assertions = await app.service.runtime_screenshot_assert(
+            screenshot_request["request_id"],
+            [
+                {"kind": "dimensions", "width": 128, "height": 72},
+                {
+                    "kind": "pixel",
+                    "x": 0,
+                    "y": 0,
+                    "color": {"r": 230, "g": 13, "b": 26},
+                    "tolerance": 4,
+                },
+                {
+                    "kind": "color_presence",
+                    "color": {"r": 230, "g": 13, "b": 26},
+                    "tolerance": 4,
+                    "min_pixels": 100,
+                },
+            ],
+        )
+        if screenshot_assertions.get("status") != "ready" or not screenshot_assertions.get("passed"):
+            raise RuntimeError(f"Runtime screenshot assertions failed: {screenshot_assertions}")
+        performance_request = await app.service.runtime_performance_sample_request(0.2)
+        performance_result = await _wait_for_runtime_performance_sample(
+            app, performance_request["request_id"]
+        )
+        performance_data = performance_result.get("result", {})
+        if (
+            performance_result.get("status") != "ready"
+            or performance_data.get("ok") is not True
+            or performance_data.get("frame_count", 0) < 1
+            or performance_data.get("actual_duration_seconds", 0.0) < 0.2
+            or set(performance_data.get("monitors", {}))
+            != {
+                "time_fps",
+                "memory_static_bytes",
+                "object_count",
+                "draw_calls_in_frame",
+            }
+        ):
+            raise RuntimeError(f"Runtime performance sample was incomplete: {performance_result}")
         input_request = await app.service.runtime_input_send(
             [{"type": "action", "action": "godot_2d_mcp_smoke", "pressed": True}]
         )
@@ -6341,6 +6381,30 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if runtime_stop.get("was_playing") is not True:
             raise RuntimeError("Runtime feedback smoke could not stop its custom scene")
         await _wait_for_play_state(app, "stopped")
+        orchestrated_test = await app.service.runtime_test_run(
+            mode="custom",
+            scene_file=runtime_scene_file,
+            inputs=[{"type": "action", "action": "godot_2d_mcp_smoke", "pressed": True}],
+            settle_seconds=0.1,
+            performance_sample_seconds=0.1,
+            screenshot={"format": "png", "max_width": 64, "max_height": 64},
+            screenshot_assertions=[
+                {"kind": "dimensions", "width": 64, "height": 36},
+                {
+                    "kind": "color_presence",
+                    "color": {"r": 230, "g": 13, "b": 26},
+                    "tolerance": 4,
+                    "min_pixels": 100,
+                },
+            ],
+            timeout_seconds=10.0,
+        )
+        if (
+            orchestrated_test.get("status") != "passed"
+            or orchestrated_test.get("cleanup", {}).get("editor_state", {}).get("play_state")
+            != "stopped"
+        ):
+            raise RuntimeError(f"Runtime test orchestration failed: {orchestrated_test}")
 
         print(
             "Godot smoke passed: "
@@ -6461,6 +6525,22 @@ async def _wait_for_runtime_input_result(
         await asyncio.sleep(0.1)
     raise RuntimeError(
         "Runtime input did not complete within "
+        f"{timeout_seconds:.0f} seconds; last result: {result}"
+    )
+
+
+async def _wait_for_runtime_performance_sample(
+    app: object, request_id: str, timeout_seconds: float = 10.0
+) -> dict:
+    attempts = int(timeout_seconds / 0.1)
+    result: dict = {}
+    for _ in range(attempts):
+        result = await app.service.runtime_performance_sample_result_get(request_id)
+        if result.get("status") != "pending":
+            return result
+        await asyncio.sleep(0.1)
+    raise RuntimeError(
+        "Runtime performance sample did not complete within "
         f"{timeout_seconds:.0f} seconds; last result: {result}"
     )
 
