@@ -1796,6 +1796,82 @@ async def test_animation_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_animation_audio_track_upsert_forwards_strict_payload() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    keys = [
+        {
+            "time": 0.0,
+            "stream_path": "res://audio/click.tres",
+            "start_offset": 0.05,
+            "end_offset": 0.1,
+        }
+    ]
+
+    await service.animation_audio_track_upsert(
+        player_path="/Main/ButtonAnimations",
+        animation="button_hover",
+        target_path="/Main/ClickSound",
+        keys=keys,
+        enabled=False,
+        use_blend=False,
+        library="ui",
+        session_id="project@a1b2",
+        scene_file="res://main.tscn",
+    )
+
+    assert bridge.calls == [
+        (
+            "animation_audio_track_upsert",
+            {
+                "player_path": "/Main/ButtonAnimations",
+                "animation": "button_hover",
+                "target_path": "/Main/ClickSound",
+                "keys": keys,
+                "enabled": False,
+                "use_blend": False,
+                "library": "ui",
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        )
+    ]
+
+
+@pytest.mark.asyncio
+async def test_animation_audio_track_upsert_rejects_unsafe_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="stream_path"):
+        await service.animation_audio_track_upsert(
+            "/Main/ButtonAnimations",
+            "hover",
+            "/Main/ClickSound",
+            keys=[{"time": 0.0, "stream_path": ""}],
+        )
+    with pytest.raises(ValueError, match="only time"):
+        await service.animation_audio_track_upsert(
+            "/Main/ButtonAnimations",
+            "hover",
+            "/Main/ClickSound",
+            keys=[{"time": 0.0, "stream_path": "res://audio/click.tres", "value": 1}],
+        )
+    with pytest.raises(ValueError, match="start_offset"):
+        await service.animation_audio_track_upsert(
+            "/Main/ButtonAnimations",
+            "hover",
+            "/Main/ClickSound",
+            keys=[
+                {
+                    "time": 0.0,
+                    "stream_path": "res://audio/click.tres",
+                    "start_offset": -0.1,
+                }
+            ],
+        )
+
+
+@pytest.mark.asyncio
 async def test_control_layout_and_stylebox_tools_forward_structured_values() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

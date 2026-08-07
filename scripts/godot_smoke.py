@@ -2834,6 +2834,117 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError(
                 "Undo did not restore the AudioStreamPlayer2D stream binding"
             )
+        await _expect_godot_error(
+            app.service.animation_audio_track_upsert(
+                player_path="/Main/ButtonAnimations",
+                animation="button_hover",
+                target_path=reparented_button_path,
+                keys=[{"time": 0.0, "stream_path": "res://test_audio.tres"}],
+                scene_file=scene_file,
+            ),
+            "AUDIO_STREAM_PLAYER_2D_REQUIRED",
+        )
+        await _expect_godot_error(
+            app.service.animation_audio_track_upsert(
+                player_path="/Main/ButtonAnimations",
+                animation="button_hover",
+                target_path=audio_player_path,
+                keys=[{"time": 0.0, "stream_path": "res://test_icon.svg"}],
+                scene_file=scene_file,
+            ),
+            "RESOURCE_TYPE_MISMATCH",
+        )
+        audio_track_create = await app.service.animation_audio_track_upsert(
+            player_path="/Main/ButtonAnimations",
+            animation="button_hover",
+            target_path=audio_player_path,
+            keys=[
+                {
+                    "time": 0.0,
+                    "stream_path": "res://test_audio.tres",
+                    "start_offset": 0.05,
+                    "end_offset": 0.1,
+                },
+                {"time": 0.15, "stream_path": "res://test_audio.tres"},
+            ],
+            enabled=True,
+            use_blend=True,
+            scene_file=scene_file,
+        )
+        audio_track_index = audio_track_create["track"]["index"]
+        if (
+            audio_track_create["replaced_existing"]
+            or audio_track_create["track"]["type"] != "audio"
+            or audio_track_create["track"]["target_path"] != audio_player_path
+            or audio_track_create["track"]["property"] != ""
+            or audio_track_create["track"].get("use_blend") is not True
+            or audio_track_create["track"]["key_count"] != 2
+        ):
+            raise RuntimeError("Audio animation track creation returned an unexpected result")
+        audio_animation = await app.service.animation_get(
+            "/Main/ButtonAnimations", "button_hover", scene_file=scene_file
+        )
+        audio_track = _audio_animation_track(audio_animation["animation"], audio_player_path)
+        if (
+            audio_track["keys"][0].get("stream_path") != "res://test_audio.tres"
+            or not _is_close(audio_track["keys"][0].get("start_offset"), 0.05)
+            or not _is_close(audio_track["keys"][0].get("end_offset"), 0.1)
+        ):
+            raise RuntimeError("Audio animation key data was not serialized correctly")
+        audio_track_update = await app.service.animation_audio_track_upsert(
+            player_path="/Main/ButtonAnimations",
+            animation="button_hover",
+            target_path=audio_player_path,
+            keys=[
+                {
+                    "time": 0.1,
+                    "stream_path": "res://test_audio.tres",
+                    "start_offset": 0.02,
+                    "end_offset": 0.03,
+                }
+            ],
+            enabled=False,
+            use_blend=False,
+            scene_file=scene_file,
+        )
+        if (
+            audio_track_update["replaced_existing"] is not True
+            or audio_track_update["track"]["enabled"] is not False
+            or audio_track_update["track"].get("use_blend") is not False
+            or audio_track_update["track"]["key_count"] != 1
+        ):
+            raise RuntimeError("Audio animation track replacement was incomplete")
+        undo_audio_track_update = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_audio_track_update.get("changed"):
+            raise RuntimeError("Audio animation track replacement was not undoable")
+        restored_audio_animation = await app.service.animation_get(
+            "/Main/ButtonAnimations", "button_hover", scene_file=scene_file
+        )
+        restored_audio_track = _audio_animation_track(
+            restored_audio_animation["animation"], audio_player_path
+        )
+        if restored_audio_track["key_count"] != 2 or restored_audio_track.get("use_blend") is not True:
+            raise RuntimeError("Undo did not restore the audio animation track")
+        redo_audio_track_update = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_audio_track_update.get("changed"):
+            raise RuntimeError("Audio animation track replacement was not redoable")
+        audio_track_delete = await app.service.animation_track_delete(
+            player_path="/Main/ButtonAnimations",
+            animation="button_hover",
+            track_index=audio_track_index,
+            scene_file=scene_file,
+        )
+        if audio_track_delete["track_index"] != audio_track_index:
+            raise RuntimeError("Audio animation track delete returned an unexpected index")
+        undo_audio_track_delete = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_audio_track_delete.get("changed"):
+            raise RuntimeError("Audio animation track delete was not undoable")
+        redo_audio_track_delete = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_audio_track_delete.get("changed"):
+            raise RuntimeError("Audio animation track delete was not redoable")
+        restore_audio_track_delete = await app.service.scene_undo(scene_file=scene_file)
+        if not restore_audio_track_delete.get("changed"):
+            raise RuntimeError("Undo did not restore the deleted audio animation track")
 
         sparks = await app.service.node_create(
             type_name="GPUParticles2D",
@@ -6359,6 +6470,22 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "TileSetAtlasSource" not in saved_scene
         ):
             raise RuntimeError("Saved scene does not contain the created Button")
+        reopened_scene = await app.service.scene_open(scene_file)
+        if reopened_scene.get("scene_file") != scene_file:
+            raise RuntimeError("Saved scene did not reopen")
+        reopened_audio_animation = await app.service.animation_get(
+            "/Main/ButtonAnimations", "button_hover", scene_file=scene_file
+        )
+        reopened_audio_track = _audio_animation_track(
+            reopened_audio_animation["animation"], audio_player_path
+        )
+        if (
+            reopened_audio_track["key_count"] != 1
+            or reopened_audio_track["enabled"] is not False
+            or reopened_audio_track.get("use_blend") is not False
+            or reopened_audio_track["keys"][0].get("stream_path") != "res://test_audio.tres"
+        ):
+            raise RuntimeError("Saved audio animation track did not survive reopening")
 
         await _expect_godot_error(
             app.service.editor_run(
@@ -7015,6 +7142,13 @@ def _animation_track(animation: dict, target_path: str, property_name: str) -> d
     raise RuntimeError(
         f"Animation track was not returned: {target_path}:{property_name}"
     )
+
+
+def _audio_animation_track(animation: dict, target_path: str) -> dict:
+    for track in animation.get("tracks", []):
+        if track.get("type") == "audio" and track.get("target_path") == target_path:
+            return track
+    raise RuntimeError(f"Audio animation track was not returned: {target_path}")
 
 
 def _layout_sides_match(actual: object, expected: dict[str, float]) -> bool:
