@@ -11,6 +11,12 @@ const MAX_ANIMATIONS := 256
 const MAX_TRACKS := 128
 const MAX_KEYS_PER_TRACK := 512
 const MAX_ANIMATION_LENGTH := 3600.0
+const AUDIO_KEY_FIELDS := {
+	"time": true,
+	"stream_path": true,
+	"start_offset": true,
+	"end_offset": true,
+}
 const PROTECTED_PROPERTIES := {
 	"owner": true,
 	"scene_file_path": true,
@@ -213,7 +219,7 @@ func delete_animation(params: Dictionary) -> Dictionary:
 	var animation_root_result := _resolve_animation_root(player, scene_root)
 	if animation_root_result.has("_error"):
 		return animation_root_result
-	var scope_check := _require_2d_value_track_scope(
+	var scope_check := _require_2d_animation_track_scope(
 		animation, animation_root_result["root"], scene_root
 	)
 	if scope_check != null:
@@ -316,6 +322,92 @@ func upsert_value_track(params: Dictionary) -> Dictionary:
 	}
 
 
+func upsert_audio_track(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_player(params)
+	if resolved.has("_error"):
+		return resolved
+	var player: AnimationPlayer = resolved["player"]
+	var scene_root: Node = resolved["scene_root"]
+	var library_result := _resolve_library(player, params)
+	if library_result.has("_error"):
+		return library_result
+	var library: AnimationLibrary = library_result["library"]
+	var library_editability := _require_editable_library(library)
+	if library_editability != null:
+		return library_editability
+	var animation_result := _resolve_editable_animation(library, params)
+	if animation_result.has("_error"):
+		return animation_result
+	var animation: Animation = animation_result["animation"]
+	var target_result := _resolve_local_target(scene_root, str(params.get("target_path", "")))
+	if target_result.has("_error"):
+		return target_result
+	var target: Node = target_result["node"]
+	if not target is AudioStreamPlayer2D:
+		return Errors.make(
+			"AUDIO_STREAM_PLAYER_2D_REQUIRED",
+			"Audio animation tracks must target AudioStreamPlayer2D, not %s" % target.get_class(),
+			false,
+			"Create or target a scene-local AudioStreamPlayer2D node."
+		)
+	var animation_root_result := _resolve_animation_root(player, scene_root)
+	if animation_root_result.has("_error"):
+		return animation_root_result
+	var track_path := _make_node_track_path(animation_root_result["root"], target)
+	var keys_result := _parse_audio_track_keys(params.get("keys", []), animation.length)
+	if keys_result.has("_error"):
+		return keys_result
+	var configuration_result := _parse_audio_track_configuration(params)
+	if configuration_result.has("_error"):
+		return configuration_result
+	var existing_index := animation.find_track(track_path, Animation.TYPE_AUDIO)
+	if existing_index >= 0 and animation.track_is_imported(existing_index):
+		return Errors.make(
+			"IMPORTED_ANIMATION_TRACK",
+			"Cannot replace imported animation track %d" % existing_index,
+			false,
+			"Edit the source animation instead of an imported track."
+		)
+	var replacement := _duplicate_animation(animation)
+	if replacement == null:
+		return Errors.make("ANIMATION_DUPLICATE_FAILED", "Godot failed to duplicate the animation resource")
+	var track_index := existing_index
+	if existing_index >= 0:
+		replacement.remove_track(existing_index)
+	track_index = replacement.add_track(Animation.TYPE_AUDIO, existing_index)
+	replacement.track_set_path(track_index, track_path)
+	replacement.track_set_enabled(track_index, configuration_result["enabled"])
+	replacement.audio_track_set_use_blend(track_index, configuration_result["use_blend"])
+	for key in keys_result["keys"]:
+		replacement.audio_track_insert_key(
+			track_index,
+			key["time"],
+			key["stream"],
+			key["start_offset"],
+			key["end_offset"]
+		)
+	_commit_animation_replacement(
+		scene_root,
+		player,
+		library,
+		library_result["name"],
+		animation_result["name"],
+		animation,
+		replacement,
+		false,
+		"Godot 2D MCP: Update animation audio track"
+	)
+	return {
+		"player_path": ScenePath.from_node(player, scene_root),
+		"library": library_result["name"],
+		"animation": animation_result["name"],
+		"track": _serialize_track(replacement, track_index, animation_root_result["root"], scene_root),
+		"replaced_existing": existing_index >= 0,
+		"undoable": true,
+		"_scene_mutated": true,
+	}
+
+
 func delete_track(params: Dictionary) -> Dictionary:
 	var resolved := _resolve_player(params)
 	if resolved.has("_error"):
@@ -337,12 +429,13 @@ func delete_track(params: Dictionary) -> Dictionary:
 	if track_index_result.has("_error"):
 		return track_index_result
 	var track_index: int = track_index_result["index"]
-	if animation.track_get_type(track_index) != Animation.TYPE_VALUE:
+	var track_type := animation.track_get_type(track_index)
+	if track_type != Animation.TYPE_VALUE and track_type != Animation.TYPE_AUDIO:
 		return Errors.make(
 			"UNSUPPORTED_ANIMATION_TRACK",
-			"animation_track_delete currently supports 2D/UI property value tracks only",
+			"animation_track_delete supports local 2D/UI property value and audio tracks only",
 			false,
-			"Method, audio, nested-animation, and 3D tracks are not editable in this release."
+			"Method, nested-animation, Bezier, and 3D tracks are not editable in this release."
 		)
 	if animation.track_is_imported(track_index):
 		return Errors.make(
@@ -354,11 +447,17 @@ func delete_track(params: Dictionary) -> Dictionary:
 	var animation_root_result := _resolve_animation_root(player, scene_root)
 	if animation_root_result.has("_error"):
 		return animation_root_result
-	var property_result := _resolve_track_property(
-		animation, track_index, animation_root_result["root"], scene_root
-	)
-	if property_result.has("_error"):
-		return property_result
+	var track_scope_result: Dictionary = {}
+	if track_type == Animation.TYPE_VALUE:
+		track_scope_result = _resolve_track_property(
+			animation, track_index, animation_root_result["root"], scene_root
+		)
+	else:
+		track_scope_result = _resolve_audio_track_target(
+			animation, track_index, animation_root_result["root"], scene_root
+		)
+	if track_scope_result.has("_error"):
+		return track_scope_result
 	var replacement := _duplicate_animation(animation)
 	if replacement == null:
 		return Errors.make("ANIMATION_DUPLICATE_FAILED", "Godot failed to duplicate the animation resource")
@@ -765,44 +864,79 @@ func _resolve_track_property(
 	return _resolve_writable_property(target, str(track_path.get_subname(0))).merged({"node": target})
 
 
-func _require_2d_value_track_scope(
+func _resolve_audio_track_target(
+	animation: Animation, track_index: int, animation_root: Node, scene_root: Node
+) -> Dictionary:
+	var track_path := animation.track_get_path(track_index)
+	if track_path.get_subname_count() != 0:
+		return Errors.make(
+			"UNSUPPORTED_ANIMATION_TRACK_PATH",
+			"Audio track %d must target an AudioStreamPlayer2D node directly" % track_index,
+			false,
+			"Use animation_audio_track_upsert with a scene-local AudioStreamPlayer2D path."
+		)
+	var target := animation_root.get_node_or_null(track_path)
+	if target == null:
+		return Errors.make(
+			"ANIMATION_TARGET_NOT_FOUND",
+			"Animation track %d target no longer exists" % track_index,
+			false,
+			"Repair or replace the track with animation_audio_track_upsert."
+		)
+	if target != scene_root and target.owner != scene_root:
+		return Errors.make(
+			"PACKED_SCENE_BOUNDARY",
+			"Cannot edit a track targeting instanced node '%s'" % target.name,
+			false,
+			"Edit the source PackedScene or replace the track with a local target."
+		)
+	if not target is AudioStreamPlayer2D:
+		return Errors.make(
+			"AUDIO_STREAM_PLAYER_2D_REQUIRED",
+			"Audio track %d targets %s, not AudioStreamPlayer2D" % [track_index, target.get_class()],
+			false,
+			"Use animation_audio_track_upsert with a scene-local AudioStreamPlayer2D path."
+		)
+	return {"node": target}
+
+
+func _require_2d_animation_track_scope(
 	animation: Animation, animation_root: Node, scene_root: Node
 ) -> Variant:
 	for track_index in animation.get_track_count():
-		if animation.track_get_type(track_index) != Animation.TYPE_VALUE:
-			return Errors.make(
-				"UNSUPPORTED_ANIMATION_TRACK",
-				"Animation contains a non-property track at index %d" % track_index,
-				false,
-				"Only local 2D/UI property value tracks are editable in this release."
+		var track_type := animation.track_get_type(track_index)
+		if track_type == Animation.TYPE_VALUE:
+			var property_result := _resolve_track_property(
+				animation, track_index, animation_root, scene_root
 			)
-		var track_path := animation.track_get_path(track_index)
-		if track_path.get_subname_count() != 1:
-			return Errors.make(
-				"UNSUPPORTED_ANIMATION_TRACK_PATH",
-				"Animation track %d does not target a single node property" % track_index,
-				false,
-				"Remove unsupported tracks in Godot before editing this animation through MCP."
+			if property_result.has("_error"):
+				return property_result
+			continue
+		if track_type == Animation.TYPE_AUDIO:
+			var audio_result := _resolve_audio_track_target(
+				animation, track_index, animation_root, scene_root
 			)
-		var target := animation_root.get_node_or_null(track_path)
-		if target == null or (target != scene_root and not scene_root.is_ancestor_of(target)):
-			return Errors.make(
-				"ANIMATION_TARGET_NOT_FOUND",
-				"Animation track %d target cannot be resolved in the edited scene" % track_index
-			)
-		if not TypePolicy.is_supported_node_class(target.get_class()):
-			return Errors.make(
-				"UNSUPPORTED_2D_TYPE",
-				"Animation track %d targets unsupported type %s" % [track_index, target.get_class()]
-			)
+			if audio_result.has("_error"):
+				return audio_result
+			continue
+		return Errors.make(
+			"UNSUPPORTED_ANIMATION_TRACK",
+			"Animation contains an unsupported track at index %d" % track_index,
+			false,
+			"Only local 2D/UI property value tracks and AudioStreamPlayer2D audio tracks are editable."
+		)
 	return null
 
 
 func _make_track_path(animation_root: Node, target: Node, property_name: String) -> NodePath:
+	return NodePath("%s:%s" % [str(_make_node_track_path(animation_root, target)), property_name])
+
+
+func _make_node_track_path(animation_root: Node, target: Node) -> NodePath:
 	var target_path := str(animation_root.get_path_to(target))
 	if target_path.is_empty():
 		target_path = "."
-	return NodePath("%s:%s" % [target_path, property_name])
+	return NodePath(target_path)
 
 
 func _parse_value_keys(
@@ -856,6 +990,88 @@ func _parse_value_key(
 		"value": decoded["value"],
 		"transition": transition_result["transition"],
 	}
+
+
+func _parse_audio_track_keys(raw_keys: Variant, animation_length: float) -> Dictionary:
+	if not raw_keys is Array or raw_keys.is_empty():
+		return Errors.make("MISSING_PARAMETER", "keys must be a non-empty array")
+	if raw_keys.size() > MAX_KEYS_PER_TRACK:
+		return Errors.make(
+			"REQUEST_LIMIT_EXCEEDED",
+			"A track can contain at most %d keys" % MAX_KEYS_PER_TRACK
+		)
+	var parsed: Array[Dictionary] = []
+	for raw_key in raw_keys:
+		if not raw_key is Dictionary:
+			return Errors.make("INVALID_AUDIO_ANIMATION_KEY", "Every audio key must be an object")
+		for field in raw_key:
+			if not field is String or not AUDIO_KEY_FIELDS.has(field):
+				return Errors.make(
+					"INVALID_AUDIO_ANIMATION_KEY",
+					"Audio keys allow only time, stream_path, start_offset, and end_offset"
+				)
+		if not raw_key.has("time") or not raw_key.has("stream_path"):
+			return Errors.make(
+				"INVALID_AUDIO_ANIMATION_KEY", "Each audio key requires time and stream_path"
+			)
+		var time_result := _parse_key_time(raw_key["time"], animation_length)
+		if time_result.has("_error"):
+			return time_result
+		var stream_result := _load_audio_track_stream(raw_key["stream_path"])
+		if stream_result.has("_error"):
+			return stream_result
+		var start_offset_result := _parse_audio_track_offset(
+			raw_key.get("start_offset", 0.0), "start_offset"
+		)
+		if start_offset_result.has("_error"):
+			return start_offset_result
+		var end_offset_result := _parse_audio_track_offset(
+			raw_key.get("end_offset", 0.0), "end_offset"
+		)
+		if end_offset_result.has("_error"):
+			return end_offset_result
+		for existing_key in parsed:
+			if is_equal_approx(existing_key["time"], time_result["time"]):
+				return Errors.make(
+					"DUPLICATE_ANIMATION_KEY",
+					"A track cannot contain more than one key at the same time"
+				)
+		parsed.append(
+			{
+				"time": time_result["time"],
+				"stream": stream_result["stream"],
+				"start_offset": start_offset_result["offset"],
+				"end_offset": end_offset_result["offset"],
+			}
+		)
+	return {"keys": parsed}
+
+
+func _load_audio_track_stream(raw_stream_path: Variant) -> Dictionary:
+	if not raw_stream_path is String:
+		return Errors.make("INVALID_AUDIO_STREAM_PATH", "stream_path must be a non-empty res:// string")
+	var stream_path: String = raw_stream_path.strip_edges()
+	if stream_path.is_empty() or stream_path.length() > 4096 or not stream_path.begins_with("res://") \
+		or stream_path.contains("/../") or stream_path.ends_with("/.."):
+		return Errors.make("INVALID_AUDIO_STREAM_PATH", "stream_path must remain inside the Godot project res:// directory")
+	if not ResourceLoader.exists(stream_path):
+		return Errors.make("RESOURCE_NOT_FOUND", "stream_path does not exist: %s" % stream_path)
+	var stream := ResourceLoader.load(stream_path)
+	if not stream is AudioStream:
+		return Errors.make("RESOURCE_TYPE_MISMATCH", "stream_path does not load an AudioStream resource")
+	return {"stream": stream as AudioStream}
+
+
+func _parse_audio_track_offset(raw_offset: Variant, label: String) -> Dictionary:
+	if not _is_finite_number(raw_offset):
+		return Errors.make("INVALID_AUDIO_ANIMATION_KEY", "%s must be a finite number" % label)
+	var offset := float(raw_offset)
+	if offset < 0.0 or offset > MAX_ANIMATION_LENGTH:
+		return Errors.make(
+			"INVALID_AUDIO_ANIMATION_KEY",
+			"%s must be between 0 and %s seconds" % [label, MAX_ANIMATION_LENGTH]
+		)
+	return {"offset": offset}
 
 
 func _parse_key_time(raw_time: Variant, animation_length: float) -> Dictionary:
@@ -919,6 +1135,14 @@ func _parse_track_configuration(params: Dictionary) -> Dictionary:
 		"enabled": enabled,
 		"loop_wrap": loop_wrap,
 	}
+
+
+func _parse_audio_track_configuration(params: Dictionary) -> Dictionary:
+	var enabled = params.get("enabled", true)
+	var use_blend = params.get("use_blend", true)
+	if not enabled is bool or not use_blend is bool:
+		return Errors.make("INVALID_PARAMETER", "enabled and use_blend must be booleans")
+	return {"enabled": enabled, "use_blend": use_blend}
 
 
 func _library_name_from_params(params: Dictionary) -> Dictionary:
@@ -1056,16 +1280,30 @@ func _serialize_track(
 	}
 	if animation.track_get_type(track_index) == Animation.TYPE_VALUE:
 		result["update_mode"] = _update_mode_name(animation.value_track_get_update_mode(track_index))
+	elif animation.track_get_type(track_index) == Animation.TYPE_AUDIO:
+		result["use_blend"] = animation.audio_track_is_use_blend(track_index)
 	return result
 
 
 func _serialize_key(animation: Animation, track_index: int, key_index: int) -> Dictionary:
-	return {
+	var result := {
 		"index": key_index,
 		"time": _safe_float(animation.track_get_key_time(track_index, key_index)),
 		"transition": _safe_float(animation.track_get_key_transition(track_index, key_index)),
-		"value": VariantCodec.serialize(animation.track_get_key_value(track_index, key_index)),
 	}
+	if animation.track_get_type(track_index) == Animation.TYPE_AUDIO:
+		var stream := animation.audio_track_get_key_stream(track_index, key_index)
+		result["stream_path"] = "" if stream == null else stream.resource_path
+		result["stream_type"] = "" if stream == null else stream.get_class()
+		result["start_offset"] = _safe_float(
+			animation.audio_track_get_key_start_offset(track_index, key_index)
+		)
+		result["end_offset"] = _safe_float(
+			animation.audio_track_get_key_end_offset(track_index, key_index)
+		)
+	else:
+		result["value"] = VariantCodec.serialize(animation.track_get_key_value(track_index, key_index))
+	return result
 
 
 func _animation_not_found_error(animation_name: String, library_name: String) -> Dictionary:

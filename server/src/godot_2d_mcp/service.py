@@ -1474,6 +1474,40 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def animation_audio_track_upsert(
+        self,
+        player_path: str,
+        animation: str,
+        target_path: str,
+        keys: list[dict[str, Any]],
+        enabled: bool = True,
+        use_blend: bool = True,
+        library: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(player_path)
+        _validate_animation_name(animation)
+        _validate_node_path(target_path)
+        _validate_animation_audio_track_keys(keys)
+        _validate_boolean(enabled, "enabled")
+        _validate_boolean(use_blend, "use_blend")
+        _validate_animation_library(library)
+        return await self.bridge.call(
+            "animation_audio_track_upsert",
+            _scene_params(
+                scene_file,
+                player_path=player_path,
+                animation=animation,
+                target_path=target_path,
+                keys=keys,
+                enabled=enabled,
+                use_blend=use_blend,
+                library=library,
+            ),
+            session_id=session_id,
+        )
+
     async def animation_track_delete(
         self,
         player_path: str,
@@ -4580,6 +4614,36 @@ def _validate_animation_keys(keys: list[dict[str, Any]]) -> None:
             raise ValueError("key values must be bounded JSON-compatible values")
         if "transition" in key:
             _validate_transition(key["transition"])
+        time = float(key["time"])
+        if any(math.isclose(time, existing, rel_tol=1e-9, abs_tol=1e-9) for existing in times):
+            raise ValueError("keys cannot contain duplicate times")
+        times.append(time)
+
+
+def _validate_animation_audio_track_keys(keys: list[dict[str, Any]]) -> None:
+    if not isinstance(keys, list) or not keys:
+        raise ValueError("keys must be a non-empty array")
+    if len(keys) > 512:
+        raise ValueError("keys can contain at most 512 entries")
+    allowed = {"time", "stream_path", "start_offset", "end_offset"}
+    times: list[float] = []
+    for key in keys:
+        if not isinstance(key, dict) or set(key) - allowed:
+            raise ValueError(
+                "each audio key allows only time, stream_path, start_offset, and end_offset"
+            )
+        if "time" not in key or "stream_path" not in key:
+            raise ValueError("each audio key requires time and stream_path")
+        _validate_key_time(key["time"])
+        stream_path = key["stream_path"]
+        if not isinstance(stream_path, str) or not stream_path.strip():
+            raise ValueError("stream_path must be a non-empty res:// path")
+        _validate_project_resource_path(stream_path, "stream_path")
+        for name in ("start_offset", "end_offset"):
+            if name in key and (
+                not _is_finite_number(key[name]) or not 0 <= float(key[name]) <= 3600
+            ):
+                raise ValueError(f"{name} must be a finite number between 0 and 3600")
         time = float(key["time"])
         if any(math.isclose(time, existing, rel_tol=1e-9, abs_tol=1e-9) for existing in times):
             raise ValueError("keys cannot contain duplicate times")
