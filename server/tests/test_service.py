@@ -292,6 +292,89 @@ async def test_button_2d_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_range_2d_tools_forward_validated_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    properties = {
+        "min_value": 0,
+        "max_value": 200,
+        "value": 75,
+        "step": 5,
+        "page": 20,
+        "allow_greater": False,
+        "rounded": True,
+        "fill_mode": " bottom_to_top ",
+        "indeterminate": True,
+        "scrollable": False,
+        "tick_count": 8,
+        "ticks_position": "both",
+        "custom_step": -1,
+        "alignment": "right",
+        "prefix": "$",
+        "custom_arrow_step": 2,
+    }
+
+    await service.range_2d_get(
+        "/Main/Value", scene_file="res://main.tscn", session_id="project@a1b2"
+    )
+    await service.range_2d_set(
+        "/Main/Value",
+        properties,
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
+
+    assert bridge.calls == [
+        (
+            "range_2d_get",
+            {"path": "/Main/Value", "scene_file": "res://main.tscn"},
+            "project@a1b2",
+        ),
+        (
+            "range_2d_set",
+            {
+                "path": "/Main/Value",
+                "properties": properties,
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_range_2d_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    for properties, label in (
+        ({"step": -0.01}, "step"),
+        ({"custom_step": -1.01}, "custom_step"),
+        ({"custom_step": -0.5}, "custom_step"),
+        ({"min_value": 2, "max_value": 1}, "min_value"),
+        ({"page": 3, "min_value": 0, "max_value": 2}, "page"),
+        (
+            {
+                "min_value": 0,
+                "max_value": 10,
+                "page": 2,
+                "value": 9,
+                "allow_greater": False,
+            },
+            "max_value - page",
+        ),
+        ({"exp_edit": True, "min_value": -1}, "exp_edit"),
+        ({"tick_count": 2.5}, "tick_count"),
+        ({"fill_mode": "diagonal"}, "fill_mode"),
+        ({"ticks_position": "edge"}, "ticks_position"),
+        ({"alignment": "justify"}, "alignment"),
+        ({"prefix": "x" * 257}, "prefix"),
+        ({"unknown": True}, "unsupported Range"),
+    ):
+        with pytest.raises(ValueError, match=label):
+            await service.range_2d_set("/Main/Value", properties)
+
+
+@pytest.mark.asyncio
 async def test_container_2d_tools_forward_validated_payloads() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

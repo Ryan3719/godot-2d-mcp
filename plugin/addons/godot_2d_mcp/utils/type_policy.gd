@@ -254,6 +254,10 @@ const NODE_SEMANTIC_CATALOG := [
 		"tools": ["button_2d_get", "button_2d_set"],
 	},
 	{
+		"base_type": "Range",
+		"tools": ["range_2d_get", "range_2d_set"],
+	},
+	{
 		"base_type": "OptionButton",
 		"tools": ["button_menu_items_get", "button_menu_items_set", "button_menu_items_clear"],
 	},
@@ -408,6 +412,12 @@ const SEMANTIC_SMOKE_COVERED_CLASSES := {
 	"LinkButton": true,
 	"OptionButton": true,
 	"MenuButton": true,
+	"ProgressBar": true,
+	"HSlider": true,
+	"VSlider": true,
+	"HScrollBar": true,
+	"VScrollBar": true,
+	"SpinBox": true,
 	"HBoxContainer": true,
 	"GridContainer": true,
 	"AspectRatioContainer": true,
