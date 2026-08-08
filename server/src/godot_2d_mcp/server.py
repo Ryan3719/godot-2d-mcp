@@ -598,7 +598,7 @@ def create_application(
         session_id: str | None = None,
         scene_file: str = "",
     ) -> dict[str, Any]:
-        """Read a paginated OptionButton or MenuButton item list and selection state."""
+        """Read a paginated persistent OptionButton or MenuButton item list and selection state."""
         return await service.button_menu_items_get(
             path=path,
             offset=offset,
@@ -1372,7 +1372,7 @@ def create_application(
         session_id: str | None = None,
         scene_file: str = "",
     ) -> dict[str, Any]:
-        """Atomically replace a flat OptionButton or MenuButton item list."""
+        """Atomically replace persistent fields in a flat OptionButton or MenuButton item list."""
         return await service.button_menu_items_set(
             path=path,
             items=items,

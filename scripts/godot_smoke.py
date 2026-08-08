@@ -4628,8 +4628,6 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
                     "text": "Easy",
                     "id": 10,
                     "icon_path": "res://test_icon.svg",
-                    "metadata": {"difficulty": 1},
-                    "tooltip": "Suitable for new players",
                 },
                 {"kind": "normal", "text": "Normal", "id": 20, "disabled": True},
                 {"kind": "separator", "text": "Locked"},
@@ -4642,7 +4640,6 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or option_menu["item_count"] != 3
             or option_menu["selected_index"] != 1
             or option_menu["items"][0]["icon"]["resource_path"] != "res://test_icon.svg"
-            or option_menu["items"][0]["metadata"] != {"difficulty": 1}
             or option_menu["items"][2]["kind"] != "separator"
         ):
             raise RuntimeError("OptionButton menu items were not applied")
@@ -4655,6 +4652,22 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the empty OptionButton menu")
         if not (await app.service.scene_redo(scene_file=scene_file)).get("changed"):
             raise RuntimeError("OptionButton menu item update was not redoable")
+        if not (await app.service.scene_save(scene_file=scene_file)).get("saved"):
+            raise RuntimeError("OptionButton menu items could not be saved")
+        if not (await app.service.scene_open(scene_file)).get("opened"):
+            raise RuntimeError("Scene could not reopen after saving OptionButton menu items")
+        persisted_option_menu = await app.service.button_menu_items_get(
+            option_button_path, scene_file=scene_file
+        )
+        if (
+            persisted_option_menu["item_count"] != 3
+            or persisted_option_menu["selected_index"] != 1
+            or persisted_option_menu["items"][0]["id"] != 10
+            or persisted_option_menu["items"][0]["icon"]["resource_path"] != "res://test_icon.svg"
+            or persisted_option_menu["items"][1]["disabled"] is not True
+            or persisted_option_menu["items"][2]["kind"] != "separator"
+        ):
+            raise RuntimeError("OptionButton menu items were not persisted")
         resized_option_menu = await app.service.button_menu_items_set(
             option_button_path,
             [{"kind": "normal", "text": "Easy", "id": 10}],
@@ -4685,31 +4698,22 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
                     "text": "Open",
                     "id": 100,
                     "icon_path": "res://test_icon.svg",
-                    "metadata": {"command": "open"},
-                    "tooltip": "Open an existing scene",
-                    "accelerator": 79,
-                    "indent": 1,
-                    "text_direction": "ltr",
-                    "auto_translate_mode": "always",
-                    "icon_max_width": 24,
-                    "icon_modulate": {"r": 0.8, "g": 0.9, "b": 1.0, "a": 1.0},
+                    "disabled": True,
                 },
                 {"kind": "check", "text": "Show Grid", "checked": True},
                 {"kind": "radio", "text": "Snap", "checked": True},
-                {"kind": "multistate", "text": "Quality", "max_states": 3, "state": 2},
                 {"kind": "separator", "text": "Advanced"},
             ],
             scene_file=scene_file,
         )
         if (
             menu_items["type"] != "MenuButton"
-            or menu_items["item_count"] != 5
+            or menu_items["item_count"] != 4
             or menu_items["items"][0]["icon"]["resource_path"] != "res://test_icon.svg"
-            or menu_items["items"][0]["metadata"] != {"command": "open"}
+            or menu_items["items"][0]["disabled"] is not True
             or menu_items["items"][1]["checked"] is not True
             or menu_items["items"][2]["kind"] != "radio"
-            or menu_items["items"][3]["state"] != 2
-            or menu_items["items"][4]["kind"] != "separator"
+            or menu_items["items"][3]["kind"] != "separator"
         ):
             raise RuntimeError("MenuButton menu items were not applied")
         if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
@@ -4721,6 +4725,26 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the empty MenuButton menu")
         if not (await app.service.scene_redo(scene_file=scene_file)).get("changed"):
             raise RuntimeError("MenuButton menu item update was not redoable")
+        if not (await app.service.scene_save(scene_file=scene_file)).get("saved"):
+            raise RuntimeError("MenuButton menu items could not be saved")
+        if not (await app.service.scene_open(scene_file)).get("opened"):
+            raise RuntimeError("Scene could not reopen after saving MenuButton menu items")
+        persisted_menu_button = await app.service.button_menu_items_get(
+            menu_button_path, scene_file=scene_file
+        )
+        if (
+            persisted_menu_button["item_count"] != 4
+            or persisted_menu_button["items"][0]["text"] != "Open"
+            or persisted_menu_button["items"][0]["id"] != 100
+            or persisted_menu_button["items"][0]["disabled"] is not True
+            or persisted_menu_button["items"][0]["icon"]["resource_path"] != "res://test_icon.svg"
+            or persisted_menu_button["items"][1]["kind"] != "check"
+            or persisted_menu_button["items"][1]["checked"] is not True
+            or persisted_menu_button["items"][2]["kind"] != "radio"
+            or persisted_menu_button["items"][2]["checked"] is not True
+            or persisted_menu_button["items"][3]["kind"] != "separator"
+        ):
+            raise RuntimeError("MenuButton menu items were not persisted")
         cleared_menu_button = await app.service.button_menu_items_clear(
             menu_button_path, scene_file=scene_file
         )
@@ -6970,7 +6994,6 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentSubViewportContainer" not in saved_scene
             or "Easy" not in saved_scene
             or "Show Grid" not in saved_scene
-            or "Quality" not in saved_scene
             or "AgentPatrolPath" not in saved_scene
             or "AgentSkeleton" not in saved_scene
             or "AgentRootBone" not in saved_scene

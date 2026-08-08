@@ -4,7 +4,6 @@ extends RefCounted
 const Errors := preload("res://addons/godot_2d_mcp/utils/errors.gd")
 const MutationGuard := preload("res://addons/godot_2d_mcp/utils/mutation_guard.gd")
 const ScenePath := preload("res://addons/godot_2d_mcp/utils/scene_path.gd")
-const VariantCodec := preload("res://addons/godot_2d_mcp/utils/variant_codec.gd")
 
 const MAX_PROPERTIES := 32
 const MAX_TEXT_LENGTH := 4096
@@ -12,10 +11,6 @@ const MAX_LANGUAGE_LENGTH := 128
 const MAX_URI_LENGTH := 4096
 const MAX_PATH_LENGTH := 4096
 const MAX_MENU_ITEMS := 256
-const MAX_MENU_ITEM_TOOLTIP_LENGTH := 1024
-const MAX_MENU_ITEM_INDENT := 64
-const MAX_MENU_ITEM_ICON_WIDTH := 4096
-const MAX_MENU_ITEM_STATES := 256
 
 const BASE_PROPERTIES := [
 	"disabled", "toggle_mode", "button_pressed", "action_mode", "button_mask",
@@ -71,7 +66,6 @@ const AUTOWRAP_MODES := {"off": 0, "arbitrary": 1, "word": 2, "smart_word": 3}
 const AUTOWRAP_TRIM_FLAGS := {"trim_start": 64, "trim_end": 128}
 const TEXT_DIRECTIONS := {"auto": 0, "ltr": 1, "rtl": 2, "inherited": 3}
 const LINK_UNDERLINE_MODES := {"always": 0, "on_hover": 1, "never": 2}
-const AUTO_TRANSLATE_MODES := {"inherit": 0, "always": 1, "disabled": 2}
 const TEXTURE_STRETCH_MODES := {
 	"scale": 0,
 	"tile": 1,
@@ -240,13 +234,13 @@ func _parse_button_menu_item(raw_item: Variant, index: int, option_button: bool)
 	if not kind_value is String:
 		return _invalid_menu_configuration("items[%d].kind must be a string" % index)
 	var kind: String = kind_value.strip_edges().to_lower()
-	if not kind in ["normal", "check", "radio", "multistate", "separator"]:
+	if not kind in ["normal", "check", "radio", "separator"]:
 		return _invalid_menu_configuration("items[%d].kind is unsupported" % index)
 	if option_button and not kind in ["normal", "separator"]:
 		return _invalid_menu_configuration(
 			"OptionButton only supports normal and separator menu items"
 		)
-	var allowed := _menu_item_allowed_fields(kind, option_button)
+	var allowed := _menu_item_allowed_fields(kind)
 	for raw_key in raw_item:
 		if not raw_key is String or not allowed.has(raw_key):
 			return _invalid_menu_configuration(
@@ -272,103 +266,29 @@ func _parse_button_menu_item(raw_item: Variant, index: int, option_button: bool)
 	)
 	if icon_result.has("_error"):
 		return icon_result
-	var metadata_result := VariantCodec.decode_json_value(raw_item.get("metadata", null))
-	if metadata_result.has("_error"):
-		return _invalid_menu_configuration("items[%d].metadata must be JSON-compatible" % index)
 	var disabled_result := _parse_bool(raw_item.get("disabled", false), "items[%d].disabled" % index)
 	if disabled_result.has("_error"):
 		return disabled_result
-	var tooltip_result := _parse_string(
-		raw_item.get("tooltip", ""), "items[%d].tooltip" % index, MAX_MENU_ITEM_TOOLTIP_LENGTH
-	)
-	if tooltip_result.has("_error"):
-		return tooltip_result
 	item["icon"] = icon_result["value"]
-	item["metadata"] = metadata_result["value"]
 	item["disabled"] = disabled_result["value"]
-	item["tooltip"] = tooltip_result["value"]
 	if option_button:
 		return {"item": item}
-	var accelerator_result := _parse_menu_integer(
-		raw_item.get("accelerator", 0), "items[%d].accelerator" % index, 0, 2147483647
-	)
-	if accelerator_result.has("_error"):
-		return accelerator_result
-	var indent_result := _parse_menu_integer(
-		raw_item.get("indent", 0), "items[%d].indent" % index, 0, MAX_MENU_ITEM_INDENT
-	)
-	if indent_result.has("_error"):
-		return indent_result
-	var direction_result := _parse_enum(
-		raw_item.get("text_direction", "auto"), "items[%d].text_direction" % index, TEXT_DIRECTIONS
-	)
-	if direction_result.has("_error"):
-		return direction_result
-	var language_result := _parse_string(
-		raw_item.get("language", ""), "items[%d].language" % index, MAX_LANGUAGE_LENGTH
-	)
-	if language_result.has("_error"):
-		return language_result
-	var translation_result := _parse_enum(
-		raw_item.get("auto_translate_mode", "inherit"), "items[%d].auto_translate_mode" % index, AUTO_TRANSLATE_MODES
-	)
-	if translation_result.has("_error"):
-		return translation_result
-	var icon_width_result := _parse_menu_integer(
-		raw_item.get("icon_max_width", 0), "items[%d].icon_max_width" % index, 0, MAX_MENU_ITEM_ICON_WIDTH
-	)
-	if icon_width_result.has("_error"):
-		return icon_width_result
-	var color_result := _parse_menu_color(raw_item.get("icon_modulate", Color.WHITE), index)
-	if color_result.has("_error"):
-		return color_result
-	item["accelerator"] = accelerator_result["value"]
-	item["indent"] = indent_result["value"]
-	item["text_direction"] = direction_result["value"]
-	item["language"] = language_result["value"]
-	item["auto_translate_mode"] = translation_result["value"]
-	item["icon_max_width"] = icon_width_result["value"]
-	item["icon_modulate"] = color_result["value"]
 	if kind in ["check", "radio"]:
 		var checked_result := _parse_bool(raw_item.get("checked", false), "items[%d].checked" % index)
 		if checked_result.has("_error"):
 			return checked_result
 		item["checked"] = checked_result["value"]
-	if kind == "multistate":
-		var max_states_result := _parse_menu_integer(
-			raw_item.get("max_states", null), "items[%d].max_states" % index, 2, MAX_MENU_ITEM_STATES
-		)
-		if max_states_result.has("_error"):
-			return max_states_result
-		var state_result := _parse_menu_integer(
-			raw_item.get("state", 0), "items[%d].state" % index, 0, max_states_result["value"] - 1
-		)
-		if state_result.has("_error"):
-			return state_result
-		item["max_states"] = max_states_result["value"]
-		item["state"] = state_result["value"]
 	return {"item": item}
 
 
-func _menu_item_allowed_fields(kind: String, option_button: bool) -> Dictionary:
+func _menu_item_allowed_fields(kind: String) -> Dictionary:
 	if kind == "separator":
 		return {"kind": true, "text": true, "id": true}
 	var fields := {
-		"kind": true, "text": true, "id": true, "icon_path": true, "metadata": true,
-		"disabled": true, "tooltip": true,
+		"kind": true, "text": true, "id": true, "icon_path": true, "disabled": true,
 	}
-	if option_button:
-		return fields
-	for name_value in [
-		"accelerator", "indent",
-		"text_direction", "language", "auto_translate_mode", "icon_max_width", "icon_modulate",
-	]:
-		fields[str(name_value)] = true
 	if kind in ["check", "radio"]:
 		fields["checked"] = true
-	if kind == "multistate":
-		fields["max_states"] = true
-		fields["state"] = true
 	return fields
 
 
@@ -380,21 +300,6 @@ func _parse_menu_integer(raw_value: Variant, label: String, minimum: int, maximu
 	if value < minimum or value > maximum:
 		return _invalid_menu_configuration("%s must be between %d and %d" % [label, minimum, maximum])
 	return {"value": value}
-
-
-func _parse_menu_color(raw_value: Variant, index: int) -> Dictionary:
-	if raw_value is Color:
-		if _is_finite_color(raw_value):
-			return {"value": raw_value}
-		return _invalid_menu_configuration("items[%d].icon_modulate must be a finite Color" % index)
-	var decoded := VariantCodec.decode(raw_value, {"type": TYPE_COLOR}, Color.WHITE)
-	if decoded.has("_error") or not _is_finite_color(decoded.get("value", Color.WHITE)):
-		return _invalid_menu_configuration("items[%d].icon_modulate must be a finite Color" % index)
-	return {"value": decoded["value"]}
-
-
-func _is_finite_color(value: Color) -> bool:
-	return is_finite(value.r) and is_finite(value.g) and is_finite(value.b) and is_finite(value.a)
 
 
 func _validate_menu_has_no_submenus(popup: PopupMenu) -> Dictionary:
@@ -411,9 +316,31 @@ func _validate_menu_has_no_submenus(popup: PopupMenu) -> Dictionary:
 				"BUTTON_MENU_ITEM_SHORTCUT_UNSUPPORTED",
 				"Menu contains a Shortcut resource at item %d" % index,
 				false,
-				"Godot does not serialize MenuButton item Shortcut resources; use an accelerator instead."
+				"Per-item Shortcut resources are not available through persistent menu editing."
+			)
+		if _has_non_persistent_popup_state(popup, index):
+			return Errors.make(
+				"BUTTON_MENU_ITEM_NON_PERSISTENT",
+				"Menu contains non-persistent PopupMenu state at item %d" % index,
+				false,
+				"Remove runtime-only item state in Godot before replacing this menu; MenuButton scenes only store text, icon, check state, id, disabled, and separators."
 			)
 	return {}
+
+
+func _has_non_persistent_popup_state(popup: PopupMenu, index: int) -> bool:
+	return (
+		popup.get_item_multistate_max(index) > 0
+		or popup.get_item_metadata(index) != null
+		or not popup.get_item_tooltip(index).is_empty()
+		or popup.get_item_accelerator(index) != 0
+		or popup.get_item_indent(index) != 0
+		or popup.get_item_text_direction(index) != Control.TEXT_DIRECTION_AUTO
+		or not popup.get_item_language(index).is_empty()
+		or popup.get_item_auto_translate_mode(index) != Node.AUTO_TRANSLATE_MODE_INHERIT
+		or popup.get_item_icon_max_width(index) != 0
+		or popup.get_item_icon_modulate(index) != Color.WHITE
+	)
 
 
 func _snapshot_button_menu_items(button: BaseButton, popup: PopupMenu) -> Array:
@@ -432,9 +359,7 @@ func _snapshot_option_button_items(button: OptionButton) -> Array:
 		}
 		if item["kind"] == "normal":
 			item["icon"] = button.get_item_icon(index)
-			item["metadata"] = button.get_item_metadata(index)
 			item["disabled"] = button.is_item_disabled(index)
-			item["tooltip"] = button.get_item_tooltip(index)
 		items.append(item)
 	return items
 
@@ -449,8 +374,6 @@ func _snapshot_popup_menu_items(popup: PopupMenu) -> Array:
 			kind = "radio"
 		elif popup.is_item_checkable(index):
 			kind = "check"
-		elif popup.get_item_multistate_max(index) > 0:
-			kind = "multistate"
 		var item := {
 			"kind": kind,
 			"text": popup.get_item_text(index),
@@ -460,21 +383,9 @@ func _snapshot_popup_menu_items(popup: PopupMenu) -> Array:
 			items.append(item)
 			continue
 		item["icon"] = popup.get_item_icon(index)
-		item["metadata"] = popup.get_item_metadata(index)
 		item["disabled"] = popup.is_item_disabled(index)
-		item["tooltip"] = popup.get_item_tooltip(index)
-		item["accelerator"] = int(popup.get_item_accelerator(index))
-		item["indent"] = popup.get_item_indent(index)
-		item["text_direction"] = int(popup.get_item_text_direction(index))
-		item["language"] = popup.get_item_language(index)
-		item["auto_translate_mode"] = int(popup.get_item_auto_translate_mode(index))
-		item["icon_max_width"] = popup.get_item_icon_max_width(index)
-		item["icon_modulate"] = popup.get_item_icon_modulate(index)
 		if kind in ["check", "radio"]:
 			item["checked"] = popup.is_item_checked(index)
-		if kind == "multistate":
-			item["max_states"] = popup.get_item_multistate_max(index)
-			item["state"] = popup.get_item_multistate(index)
 		items.append(item)
 	return items
 
@@ -540,9 +451,7 @@ func _replace_option_button_items(button: OptionButton, items: Array, selected_i
 				button.add_item(item["text"], item["id"])
 			else:
 				button.add_icon_item(icon, item["text"], item["id"])
-			button.set_item_metadata(index, item["metadata"])
 			button.set_item_disabled(index, item["disabled"])
-			button.set_item_tooltip(index, item["tooltip"])
 		button.set_item_id(index, item["id"])
 	button.select(selected_index)
 
@@ -562,34 +471,20 @@ func _add_popup_menu_item(popup: PopupMenu, item: Dictionary) -> void:
 	match item["kind"]:
 		"check":
 			if icon == null:
-				popup.add_check_item(item["text"], item["id"], item["accelerator"])
+				popup.add_check_item(item["text"], item["id"])
 			else:
-				popup.add_icon_check_item(icon, item["text"], item["id"], item["accelerator"])
+				popup.add_icon_check_item(icon, item["text"], item["id"])
 		"radio":
 			if icon == null:
-				popup.add_radio_check_item(item["text"], item["id"], item["accelerator"])
+				popup.add_radio_check_item(item["text"], item["id"])
 			else:
-				popup.add_icon_radio_check_item(icon, item["text"], item["id"], item["accelerator"])
-		"multistate":
-			popup.add_multistate_item(
-				item["text"], item["max_states"], item["state"], item["id"], item["accelerator"]
-			)
-			if icon != null:
-				popup.set_item_icon(index, icon)
+				popup.add_icon_radio_check_item(icon, item["text"], item["id"])
 		_:
 			if icon == null:
-				popup.add_item(item["text"], item["id"], item["accelerator"])
+				popup.add_item(item["text"], item["id"])
 			else:
-				popup.add_icon_item(icon, item["text"], item["id"], item["accelerator"])
-	popup.set_item_metadata(index, item["metadata"])
+				popup.add_icon_item(icon, item["text"], item["id"])
 	popup.set_item_disabled(index, item["disabled"])
-	popup.set_item_tooltip(index, item["tooltip"])
-	popup.set_item_indent(index, item["indent"])
-	popup.set_item_text_direction(index, item["text_direction"])
-	popup.set_item_language(index, item["language"])
-	popup.set_item_auto_translate_mode(index, item["auto_translate_mode"])
-	popup.set_item_icon_max_width(index, item["icon_max_width"])
-	popup.set_item_icon_modulate(index, item["icon_modulate"])
 	if item["kind"] in ["check", "radio"]:
 		popup.set_item_checked(index, item["checked"])
 
@@ -610,7 +505,7 @@ func _menu_items_response(resolved: Dictionary, offset: int, limit: int) -> Dict
 		"items": serialized,
 		"items_truncated": end < items.size(),
 		"supported_item_kinds": ["normal", "separator"] if button is OptionButton else [
-			"normal", "check", "radio", "multistate", "separator"
+		"normal", "check", "radio", "separator"
 		],
 	}
 	if button is OptionButton:
@@ -631,23 +526,11 @@ func _serialize_button_menu_item(item: Dictionary, option_button: bool) -> Dicti
 	if item["kind"] == "separator":
 		return serialized
 	serialized["icon"] = _resource_descriptor(item["icon"])
-	serialized["metadata"] = VariantCodec.serialize(item["metadata"])
 	serialized["disabled"] = item["disabled"]
-	serialized["tooltip"] = item["tooltip"]
 	if option_button:
 		return serialized
-	serialized["accelerator"] = item["accelerator"]
-	serialized["indent"] = item["indent"]
-	serialized["text_direction"] = _enum_name(item["text_direction"], TEXT_DIRECTIONS)
-	serialized["language"] = item["language"]
-	serialized["auto_translate_mode"] = _enum_name(item["auto_translate_mode"], AUTO_TRANSLATE_MODES)
-	serialized["icon_max_width"] = item["icon_max_width"]
-	serialized["icon_modulate"] = VariantCodec.serialize(item["icon_modulate"])
 	if item["kind"] in ["check", "radio"]:
 		serialized["checked"] = item["checked"]
-	if item["kind"] == "multistate":
-		serialized["max_states"] = item["max_states"]
-		serialized["state"] = item["state"]
 	return serialized
 
 

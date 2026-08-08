@@ -6022,27 +6022,15 @@ def _validate_button_menu_items(items: list[dict[str, Any]]) -> None:
             "normal",
             "check",
             "radio",
-            "multistate",
             "separator",
         }:
-            raise ValueError(f"{label}.kind must be normal, check, radio, multistate, or separator")
+            raise ValueError(f"{label}.kind must be normal, check, radio, or separator")
         normalized_kind = kind.strip().lower()
         allowed = {"kind", "text", "id"}
         if normalized_kind != "separator":
-            allowed |= {"icon_path", "metadata", "disabled", "tooltip"}
+            allowed |= {"icon_path", "disabled"}
             if normalized_kind in {"check", "radio"}:
                 allowed.add("checked")
-            if normalized_kind == "multistate":
-                allowed |= {"max_states", "state"}
-            allowed |= {
-                "accelerator",
-                "indent",
-                "text_direction",
-                "language",
-                "auto_translate_mode",
-                "icon_max_width",
-                "icon_modulate",
-            }
         if any(not isinstance(name, str) or name not in allowed for name in item):
             raise ValueError(f"{label} contains an unsupported menu item field")
         text = item.get("text", "")
@@ -6059,41 +6047,6 @@ def _validate_button_menu_items(items: list[dict[str, Any]]) -> None:
         for name in ("disabled", "checked"):
             if name in item:
                 _validate_boolean(item[name], f"{label}.{name}")
-        if "tooltip" in item and (
-            not isinstance(item["tooltip"], str) or len(item["tooltip"]) > 1024
-        ):
-            raise ValueError(f"{label}.tooltip must be a string up to 1024 characters")
-        if "metadata" in item:
-            _validate_button_menu_json(item["metadata"], f"{label}.metadata")
-        if "accelerator" in item:
-            _validate_button_menu_integer(
-                item["accelerator"], f"{label}.accelerator", 0, 2_147_483_647
-            )
-        if "indent" in item:
-            _validate_button_menu_integer(item["indent"], f"{label}.indent", 0, 64)
-        if "icon_max_width" in item:
-            _validate_button_menu_integer(
-                item["icon_max_width"], f"{label}.icon_max_width", 0, 4096
-            )
-        for name, choices in {
-            "text_direction": {"auto", "ltr", "rtl", "inherited"},
-            "auto_translate_mode": {"inherit", "always", "disabled"},
-        }.items():
-            if name in item and (
-                not isinstance(item[name], str) or item[name].strip().lower() not in choices
-            ):
-                raise ValueError(f"{label}.{name} must be one of: {', '.join(sorted(choices))}")
-        if "language" in item and (
-            not isinstance(item["language"], str) or len(item["language"]) > 128
-        ):
-            raise ValueError(f"{label}.language must be a string up to 128 characters")
-        if "icon_modulate" in item:
-            _validate_light_color(item["icon_modulate"], f"{label}.icon_modulate")
-        if normalized_kind == "multistate":
-            _validate_button_menu_integer(item.get("max_states"), f"{label}.max_states", 2, 256)
-            _validate_button_menu_integer(
-                item.get("state", 0), f"{label}.state", 0, int(item["max_states"]) - 1
-            )
 
 
 def _validate_button_menu_integer(value: Any, label: str, minimum: int, maximum: int) -> None:
