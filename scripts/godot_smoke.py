@@ -3232,6 +3232,90 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         restore_method_track_delete = await app.service.scene_undo(scene_file=scene_file)
         if not restore_method_track_delete.get("changed"):
             raise RuntimeError("Undo did not restore the deleted method animation track")
+        await _expect_godot_error(
+            app.service.animation_nested_track_upsert(
+                player_path="/Main/ButtonAnimations",
+                animation="button_hover",
+                target_path="/Main/ButtonAnimations",
+                keys=[{"time": 0.0, "animation": "button_hover"}],
+                scene_file=scene_file,
+            ),
+            "NESTED_ANIMATION_RECURSION",
+        )
+        nested_track_create = await app.service.animation_nested_track_upsert(
+            player_path="/Main/ButtonAnimations",
+            animation="button_hover",
+            target_path="/Main/ButtonAnimations",
+            keys=[
+                {"time": 0.0, "animation": "button_pulse"},
+                {"time": 0.15, "animation": "[stop]"},
+            ],
+            scene_file=scene_file,
+        )
+        nested_track_index = nested_track_create["track"]["index"]
+        if (
+            nested_track_create["replaced_existing"]
+            or nested_track_create["track"]["type"] != "animation"
+            or nested_track_create["track"]["target_path"] != "/Main/ButtonAnimations"
+            or nested_track_create["track"]["key_count"] != 2
+        ):
+            raise RuntimeError("Nested animation track creation returned an unexpected result")
+        nested_animation = await app.service.animation_get(
+            "/Main/ButtonAnimations", "button_hover", scene_file=scene_file
+        )
+        nested_track = _nested_animation_track(
+            nested_animation["animation"], "/Main/ButtonAnimations"
+        )
+        if (
+            nested_track["keys"][0].get("animation") != "button_pulse"
+            or nested_track["keys"][1].get("animation") != "[stop]"
+        ):
+            raise RuntimeError("Nested animation keys were not serialized correctly")
+        nested_track_update = await app.service.animation_nested_track_upsert(
+            player_path="/Main/ButtonAnimations",
+            animation="button_hover",
+            target_path="/Main/ButtonAnimations",
+            keys=[{"time": 0.1, "animation": "[stop]"}],
+            enabled=False,
+            scene_file=scene_file,
+        )
+        if (
+            nested_track_update["replaced_existing"] is not True
+            or nested_track_update["track"]["enabled"] is not False
+            or nested_track_update["track"]["key_count"] != 1
+        ):
+            raise RuntimeError("Nested animation track replacement was incomplete")
+        undo_nested_track_update = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_nested_track_update.get("changed"):
+            raise RuntimeError("Nested animation track replacement was not undoable")
+        restored_nested_animation = await app.service.animation_get(
+            "/Main/ButtonAnimations", "button_hover", scene_file=scene_file
+        )
+        restored_nested_track = _nested_animation_track(
+            restored_nested_animation["animation"], "/Main/ButtonAnimations"
+        )
+        if restored_nested_track["key_count"] != 2 or restored_nested_track["enabled"] is not True:
+            raise RuntimeError("Undo did not restore the nested animation track")
+        redo_nested_track_update = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_nested_track_update.get("changed"):
+            raise RuntimeError("Nested animation track replacement was not redoable")
+        nested_track_delete = await app.service.animation_track_delete(
+            player_path="/Main/ButtonAnimations",
+            animation="button_hover",
+            track_index=nested_track_index,
+            scene_file=scene_file,
+        )
+        if nested_track_delete["track_index"] != nested_track_index:
+            raise RuntimeError("Nested animation track delete returned an unexpected index")
+        undo_nested_track_delete = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_nested_track_delete.get("changed"):
+            raise RuntimeError("Nested animation track delete was not undoable")
+        redo_nested_track_delete = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_nested_track_delete.get("changed"):
+            raise RuntimeError("Nested animation track delete was not redoable")
+        restore_nested_track_delete = await app.service.scene_undo(scene_file=scene_file)
+        if not restore_nested_track_delete.get("changed"):
+            raise RuntimeError("Undo did not restore the deleted nested animation track")
 
         sparks = await app.service.node_create(
             type_name="GPUParticles2D",
@@ -6806,6 +6890,15 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or reopened_method_track["keys"][0].get("args") != []
         ):
             raise RuntimeError("Saved method animation track did not survive reopening")
+        reopened_nested_track = _nested_animation_track(
+            reopened_audio_animation["animation"], "/Main/ButtonAnimations"
+        )
+        if (
+            reopened_nested_track["key_count"] != 1
+            or reopened_nested_track["enabled"] is not False
+            or reopened_nested_track["keys"][0].get("animation") != "[stop]"
+        ):
+            raise RuntimeError("Saved nested animation track did not survive reopening")
 
         await _expect_godot_error(
             app.service.editor_run(
@@ -7489,6 +7582,13 @@ def _method_animation_track(animation: dict, target_path: str) -> dict:
         if track.get("type") == "method" and track.get("target_path") == target_path:
             return track
     raise RuntimeError(f"Method animation track was not returned: {target_path}")
+
+
+def _nested_animation_track(animation: dict, target_path: str) -> dict:
+    for track in animation.get("tracks", []):
+        if track.get("type") == "animation" and track.get("target_path") == target_path:
+            return track
+    raise RuntimeError(f"Nested animation track was not returned: {target_path}")
 
 
 def _vector2_match(actual: object, expected: dict[str, float]) -> bool:

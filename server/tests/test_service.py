@@ -1893,6 +1893,68 @@ async def test_animation_method_track_upsert_forwards_strict_safe_payload() -> N
 
 
 @pytest.mark.asyncio
+async def test_animation_nested_track_upsert_forwards_strict_payload() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    keys = [
+        {"time": 0.0, "animation": "ui/button_pulse"},
+        {"time": 0.15, "animation": "[stop]"},
+    ]
+
+    result = await service.animation_nested_track_upsert(
+        player_path="/Main/ButtonAnimations",
+        animation="button_hover",
+        target_path="/Main/ChildAnimations",
+        keys=keys,
+        enabled=False,
+        library="ui",
+        session_id="project@a1b2",
+        scene_file="res://main.tscn",
+    )
+
+    assert result == {"command": "animation_nested_track_upsert"}
+    assert bridge.calls == [
+        (
+            "animation_nested_track_upsert",
+            {
+                "player_path": "/Main/ButtonAnimations",
+                "animation": "button_hover",
+                "target_path": "/Main/ChildAnimations",
+                "keys": keys,
+                "enabled": False,
+                "library": "ui",
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        )
+    ]
+    with pytest.raises(ValueError, match="nested animation"):
+        await service.animation_nested_track_upsert(
+            "/Main/ButtonAnimations",
+            "button_hover",
+            "/Main/ChildAnimations",
+            keys=[{"time": 0.0, "animation": ""}],
+        )
+    with pytest.raises(ValueError, match="only time and animation"):
+        await service.animation_nested_track_upsert(
+            "/Main/ButtonAnimations",
+            "button_hover",
+            "/Main/ChildAnimations",
+            keys=[{"time": 0.0, "animation": "pulse", "unexpected": True}],
+        )
+    with pytest.raises(ValueError, match="duplicate"):
+        await service.animation_nested_track_upsert(
+            "/Main/ButtonAnimations",
+            "button_hover",
+            "/Main/ChildAnimations",
+            keys=[
+                {"time": 0.0, "animation": "pulse"},
+                {"time": 0.0, "animation": "[stop]"},
+            ],
+        )
+
+
+@pytest.mark.asyncio
 async def test_animation_audio_track_upsert_forwards_strict_payload() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)
