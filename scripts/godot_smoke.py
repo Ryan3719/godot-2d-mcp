@@ -198,6 +198,68 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
                 f"delete={input_action_deleted}, undo={input_action_undo_delete}, "
                 f"redo={input_action_redo_delete}, after_delete={input_actions_after_delete}"
             )
+        resource_path = "res://generated/agent_gradient.tres"
+        await _expect_godot_error(
+            app.service.resource_create("Shader", "res://generated/rejected_shader.tres"),
+            "UNSUPPORTED_2D_RESOURCE",
+        )
+        created_resource = await app.service.resource_create(
+            "Gradient",
+            resource_path,
+            {
+                "offsets": [0.0, 1.0],
+                "colors": [
+                    {"r": 0.1, "g": 0.2, "b": 0.3, "a": 1.0},
+                    {"r": 0.8, "g": 0.7, "b": 0.6, "a": 1.0},
+                ],
+            },
+        )
+        created_resource_data = await app.service.resource_get(
+            resource_path, fields=["offsets", "colors"]
+        )
+        created_offsets = _property_value(created_resource_data, "offsets")
+        created_colors = _property_value(created_resource_data, "colors")
+        if (
+            created_resource.get("created") is not True
+            or created_resource.get("saved") is not True
+            or created_resource_data.get("resource_type") != "Gradient"
+            or created_offsets != [0.0, 1.0]
+            or not isinstance(created_colors, list)
+            or len(created_colors) != 2
+            or not _color_matches(
+                created_colors[0], {"r": 0.1, "g": 0.2, "b": 0.3, "a": 1.0}
+            )
+        ):
+            raise RuntimeError(
+                "Generic resource creation was incomplete: "
+                f"created={created_resource}, resource={created_resource_data}"
+            )
+        updated_resource = await app.service.resource_set_properties(
+            resource_path,
+            {"offsets": [0.0, 0.75]},
+        )
+        undone_resource = await app.service.resource_undo(resource_path)
+        after_undo_resource = await app.service.resource_get(resource_path, fields=["offsets"])
+        redone_resource = await app.service.resource_redo(resource_path)
+        saved_resource = await app.service.resource_save(resource_path)
+        after_redo_resource = await app.service.resource_get(resource_path, fields=["offsets"])
+        saved_resource_file = project_path / "generated" / "agent_gradient.tres"
+        if (
+            updated_resource.get("updated", {}).get("offsets") != [0.0, 0.75]
+            or undone_resource.get("changed") is not True
+            or _property_value(after_undo_resource, "offsets") != [0.0, 1.0]
+            or redone_resource.get("changed") is not True
+            or saved_resource.get("saved") is not True
+            or _property_value(after_redo_resource, "offsets") != [0.0, 0.75]
+            or not saved_resource_file.is_file()
+            or "Gradient" not in saved_resource_file.read_text(encoding="utf-8")
+        ):
+            raise RuntimeError(
+                "Generic resource update, undo/redo, or save was incomplete: "
+                f"updated={updated_resource}, undone={undone_resource}, "
+                f"after_undo={after_undo_resource}, redone={redone_resource}, "
+                f"saved={saved_resource}, after_redo={after_redo_resource}"
+            )
         hierarchy = await app.service.scene_get_hierarchy(limit=20)
         classes = await app.service.class_search(query="Button", limit=20)
         button_overview = await app.service.class_2d_describe("Button")
@@ -224,6 +286,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )
         resource_coverage = await app.service.class_2d_coverage(
             query="TileSet", scope="resource", limit=20
+        )
+        gradient_coverage = await app.service.class_2d_coverage(
+            query="Gradient", scope="resource", limit=20
         )
         navigation_polygon_coverage = await app.service.class_2d_coverage(
             query="NavigationPolygon", scope="resource", limit=20
@@ -351,6 +416,30 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         ):
             raise RuntimeError(
                 f"TileSet coverage audit was incomplete: {resource_coverage}"
+            )
+        gradient_coverage_entry = next(
+            (
+                entry
+                for entry in gradient_coverage.get("entries", [])
+                if entry.get("name") == "Gradient"
+            ),
+            None,
+        )
+        if (
+            gradient_coverage_entry is None
+            or {
+                "resource_get",
+                "resource_create",
+                "resource_set_properties",
+                "resource_save",
+                "resource_undo",
+                "resource_redo",
+            }
+            - set(gradient_coverage_entry.get("semantic_tools", []))
+            or gradient_coverage_entry.get("test_status") != "semantic_smoke"
+        ):
+            raise RuntimeError(
+                f"Gradient resource coverage audit was incomplete: {gradient_coverage}"
             )
         navigation_polygon_coverage_entry = next(
             (

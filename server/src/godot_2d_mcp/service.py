@@ -992,6 +992,91 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def resource_get(
+        self,
+        resource_path: str,
+        fields: list[str] | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        _validate_project_resource_path(resource_path, "resource_path")
+        _validate_resource_fields(fields)
+        return await self.bridge.call(
+            "resource_get",
+            {"resource_path": resource_path, "fields": fields or []},
+            session_id=session_id,
+        )
+
+    async def resource_create(
+        self,
+        type_name: str,
+        resource_path: str,
+        properties: dict[str, Any] | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        _validate_resource_type_name(type_name)
+        _validate_standalone_resource_path(resource_path)
+        resource_properties = {} if properties is None else properties
+        _validate_resource_properties(resource_properties, allow_empty=True)
+        return await self.bridge.call(
+            "resource_create",
+            {
+                "type": type_name.strip(),
+                "resource_path": resource_path,
+                "properties": resource_properties,
+            },
+            session_id=session_id,
+        )
+
+    async def resource_set_properties(
+        self,
+        resource_path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        _validate_standalone_resource_path(resource_path)
+        _validate_resource_properties(properties, allow_empty=False)
+        return await self.bridge.call(
+            "resource_set_properties",
+            {"resource_path": resource_path, "properties": properties},
+            session_id=session_id,
+        )
+
+    async def resource_save(
+        self,
+        resource_path: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        _validate_standalone_resource_path(resource_path)
+        return await self.bridge.call(
+            "resource_save",
+            {"resource_path": resource_path},
+            session_id=session_id,
+        )
+
+    async def resource_undo(
+        self,
+        resource_path: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        _validate_standalone_resource_path(resource_path)
+        return await self.bridge.call(
+            "resource_undo",
+            {"resource_path": resource_path},
+            session_id=session_id,
+        )
+
+    async def resource_redo(
+        self,
+        resource_path: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        _validate_standalone_resource_path(resource_path)
+        return await self.bridge.call(
+            "resource_redo",
+            {"resource_path": resource_path},
+            session_id=session_id,
+        )
+
     async def sprite_frames_animation_upsert(
         self,
         path: str,
@@ -5367,6 +5452,46 @@ def _validate_project_resource_path(value: str, label: str) -> None:
         or value.endswith("/..")
     ):
         raise ValueError(f"{label} must stay inside res://")
+
+
+def _validate_standalone_resource_path(value: str) -> None:
+    _validate_project_resource_path(value, "resource_path")
+    if "::" in value or not value.lower().endswith((".tres", ".res")):
+        raise ValueError("resource_path must be a standalone res:// .tres or .res resource")
+
+
+def _validate_resource_type_name(value: str) -> None:
+    if not isinstance(value, str) or not value.strip() or len(value.strip()) > 256:
+        raise ValueError("type must contain between 1 and 256 characters")
+
+
+def _validate_resource_fields(fields: list[str] | None) -> None:
+    if fields is None:
+        return
+    if not isinstance(fields, list) or len(fields) > 64:
+        raise ValueError("fields must contain at most 64 property names")
+    if any(
+        not isinstance(field, str) or not field.strip() or len(field.strip()) > 256
+        for field in fields
+    ):
+        raise ValueError("fields must only contain non-empty property names")
+    if len({field.strip() for field in fields}) != len(fields):
+        raise ValueError("fields must not contain duplicates")
+
+
+def _validate_resource_properties(properties: dict[str, Any], allow_empty: bool) -> None:
+    if not isinstance(properties, dict) or (not allow_empty and not properties):
+        raise ValueError("properties must be a non-empty object")
+    if len(properties) > 64:
+        raise ValueError("properties can contain at most 64 entries")
+    if any(
+        not isinstance(name, str)
+        or not name
+        or len(name) > 256
+        or not _is_json_bind_value(value)
+        for name, value in properties.items()
+    ):
+        raise ValueError("properties must contain bounded JSON-compatible values")
 
 
 def _validate_theme_default_names(defaults: list[str]) -> None:

@@ -25,6 +25,13 @@ const RESOURCE_BASELINE_SUPPORT := {
 	"embedded_authoring": false,
 }
 
+# Shader source has a separate bounded canvas_item workflow. Keeping it out of
+# the generic property path prevents bypassing its source and include checks.
+const RESOURCE_MANAGEMENT_EXCLUDED_BASE_TYPES := {
+	"Shader": true,
+	"ShaderMaterial": true,
+}
+
 # Keep this catalog explicit: it documents the 2D resources deliberately in scope,
 # rather than pretending every Resource returned by ClassDB has 2D authoring support.
 const RESOURCE_COVERAGE_CATALOG := [
@@ -440,6 +447,7 @@ const SEMANTIC_SMOKE_COVERED_CLASSES := {
 	"TileMapLayer": true,
 	"Theme": true,
 	"StyleBoxFlat": true,
+	"Gradient": true,
 	"ParticleProcessMaterial": true,
 	"CanvasItemMaterial": true,
 	"ShaderMaterial": true,
@@ -497,6 +505,15 @@ static func is_audited_resource_class(type_name: StringName) -> bool:
 	return not _matching_resource_catalog_entry(type_name).is_empty()
 
 
+static func is_resource_management_class(type_name: StringName) -> bool:
+	if not is_audited_resource_class(type_name):
+		return false
+	for excluded_base_type in RESOURCE_MANAGEMENT_EXCLUDED_BASE_TYPES:
+		if _matches_type(type_name, StringName(excluded_base_type)):
+			return false
+	return true
+
+
 static func coverage_category(type_name: StringName, kind: String) -> String:
 	if kind == "node":
 		return category(type_name)
@@ -519,6 +536,13 @@ static func coverage_semantic_tools(type_name: StringName, kind: String) -> Arra
 			continue
 		for tool_value in entry["tools"]:
 			var tool_name := str(tool_value)
+			if tool_name not in tools:
+				tools.append(tool_name)
+	if kind == "resource" and is_resource_management_class(type_name):
+		for tool_name in [
+			"resource_get", "resource_create", "resource_set_properties", "resource_save",
+			"resource_undo", "resource_redo",
+		]:
 			if tool_name not in tools:
 				tools.append(tool_name)
 	return tools

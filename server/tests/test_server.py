@@ -55,6 +55,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "sprite_frames_get",
         "button_2d_get",
         "button_menu_items_get",
+        "resource_get",
         "animation_list",
         "animation_get",
         "control_get_layout",
@@ -109,6 +110,11 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "button_2d_set",
         "button_menu_items_set",
         "button_menu_items_clear",
+        "resource_create",
+        "resource_set_properties",
+        "resource_save",
+        "resource_undo",
+        "resource_redo",
         "sprite_frames_animation_upsert",
         "sprite_frames_animation_rename",
         "sprite_frames_animation_remove",
@@ -265,6 +271,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["sprite_frames_get"].readOnlyHint is True
     assert annotations["button_2d_get"].readOnlyHint is True
     assert annotations["button_menu_items_get"].readOnlyHint is True
+    assert annotations["resource_get"].readOnlyHint is True
     assert annotations["animation_list"].readOnlyHint is True
     assert annotations["animation_get"].readOnlyHint is True
     assert annotations["control_get_layout"].readOnlyHint is True
@@ -431,6 +438,11 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["container_child_layout_set"].readOnlyHint is False
     assert annotations["button_menu_items_set"].readOnlyHint is False
     assert annotations["button_menu_items_clear"].destructiveHint is True
+    assert annotations["resource_create"].readOnlyHint is False
+    assert annotations["resource_set_properties"].readOnlyHint is False
+    assert annotations["resource_save"].idempotentHint is True
+    assert annotations["resource_undo"].readOnlyHint is False
+    assert annotations["resource_redo"].readOnlyHint is False
     assert annotations["sprite_frames_animation_upsert"].readOnlyHint is False
     assert annotations["sprite_frames_animation_rename"].readOnlyHint is False
     assert annotations["sprite_frames_animation_remove"].destructiveHint is True
