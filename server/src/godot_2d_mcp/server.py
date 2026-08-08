@@ -1190,6 +1190,32 @@ def create_application(
             scene_file=scene_file,
         )
 
+    @mcp.tool(annotations=READ_ONLY)
+    async def packed_scene_instance_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Inspect an instanced PackedScene root and its local override state."""
+        return await service.packed_scene_instance_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def packed_scene_instance_editable_children_enable(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Enable persistent Editable Children before editing an instance descendant."""
+        return await service.packed_scene_instance_editable_children_enable(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
     @mcp.tool(annotations=WRITE)
     async def node_set_properties(
         path: str,

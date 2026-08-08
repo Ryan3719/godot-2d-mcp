@@ -96,6 +96,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "node_script_bind",
         "node_script_clear",
         "node_instance_scene",
+        "packed_scene_instance_get",
+        "packed_scene_instance_editable_children_enable",
         "node_set_properties",
         "sprite_2d_set",
         "line_2d_set",
@@ -297,6 +299,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["tile_set_atlas_tile_get"].readOnlyHint is True
     assert annotations["node_create"].readOnlyHint is False
     assert annotations["node_instance_scene"].readOnlyHint is False
+    assert annotations["packed_scene_instance_get"].readOnlyHint is True
+    assert annotations["packed_scene_instance_editable_children_enable"].readOnlyHint is False
     assert annotations["node_delete"].destructiveHint is True
     assert annotations["node_rename"].destructiveHint is False
     assert annotations["node_duplicate"].readOnlyHint is False

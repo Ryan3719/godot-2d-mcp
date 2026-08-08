@@ -306,13 +306,65 @@ func instance_packed_scene(params: Dictionary) -> Dictionary:
 	}
 
 
+func get_packed_scene_instance(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_node(params, false)
+	if resolved.has("_error"):
+		return resolved
+	var node: Node = resolved["node"]
+	var scene_root: Node = resolved["scene_root"]
+	var instance_result := _require_packed_scene_instance_root(node, scene_root)
+	if instance_result.has("_error"):
+		return instance_result
+	return _serialize_packed_scene_instance(instance_result["instance"], scene_root)
+
+
+func enable_packed_scene_editable_children(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_node(params)
+	if resolved.has("_error"):
+		return resolved
+	var node: Node = resolved["node"]
+	var scene_root: Node = resolved["scene_root"]
+	var instance_result := _require_packed_scene_instance_root(node, scene_root)
+	if instance_result.has("_error"):
+		return instance_result
+	var instance: Node = instance_result["instance"]
+	var parent_editability := _require_editable_instance_parent(instance, scene_root)
+	if parent_editability != null:
+		return parent_editability
+	var was_editable := scene_root.is_editable_instance(instance)
+	var was_placeholder := instance.get_scene_instance_load_placeholder()
+	if was_editable and not was_placeholder:
+		var unchanged := _serialize_packed_scene_instance(instance, scene_root)
+		unchanged["changed"] = false
+		unchanged["undoable"] = false
+		return unchanged
+
+	_undo_redo.create_action(
+		"Godot 2D MCP: Enable Editable Children for %s" % instance.name,
+		UndoRedo.MERGE_DISABLE,
+		scene_root
+	)
+	_undo_redo.add_do_method(scene_root, "set_editable_instance", instance, true)
+	_undo_redo.add_undo_method(scene_root, "set_editable_instance", instance, was_editable)
+	if was_placeholder:
+		_undo_redo.add_do_method(instance, "set_scene_instance_load_placeholder", false)
+		_undo_redo.add_undo_method(instance, "set_scene_instance_load_placeholder", true)
+	_undo_redo.commit_action()
+
+	var result := _serialize_packed_scene_instance(instance, scene_root)
+	result["changed"] = true
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
 func set_properties(params: Dictionary) -> Dictionary:
 	var resolved := _resolve_node(params)
 	if resolved.has("_error"):
 		return resolved
 	var node: Node = resolved["node"]
 	var scene_root: Node = resolved["scene_root"]
-	var editability := _require_locally_owned(node, scene_root, "update")
+	var editability := _require_property_editable(node, scene_root, "update")
 	if editability != null:
 		return editability
 	var requested = params.get("properties", {})
@@ -455,7 +507,12 @@ func rename_node(params: Dictionary) -> Dictionary:
 	var editability := _require_locally_owned(node, scene_root, "rename")
 	if editability != null:
 		return editability
-	var subtree_check := _require_local_subtree(node, scene_root, "rename")
+	var is_packed_scene_instance := _is_packed_scene_instance_root(node, scene_root)
+	var subtree_check: Variant = (
+		_require_supported_subtree(node, "rename")
+		if is_packed_scene_instance
+		else _require_local_subtree(node, scene_root, "rename")
+	)
 	if subtree_check != null:
 		return subtree_check
 
@@ -477,7 +534,9 @@ func rename_node(params: Dictionary) -> Dictionary:
 	if _has_sibling_name(parent, new_name, node):
 		return _name_conflict_error(new_name)
 
-	var migration := NodePathMigration.plan(scene_root, node, parent, new_name)
+	var migration := NodePathMigration.plan(
+		scene_root, node, parent, new_name, not is_packed_scene_instance
+	)
 	if migration.has("_error"):
 		return migration
 	_undo_redo.create_action(
@@ -513,9 +572,9 @@ func duplicate_node(params: Dictionary) -> Dictionary:
 	var editability := _require_locally_owned(node, scene_root, "duplicate")
 	if editability != null:
 		return editability
-	var is_packed_scene_instance := not node.scene_file_path.is_empty()
+	var is_packed_scene_instance := _is_packed_scene_instance_root(node, scene_root)
 	var subtree_check: Variant = (
-		_require_complete_packed_scene_instance(node, scene_root, "duplicate")
+		_require_supported_subtree(node, "duplicate")
 		if is_packed_scene_instance
 		else _require_local_subtree(node, scene_root, "duplicate")
 	)
@@ -553,6 +612,11 @@ func duplicate_node(params: Dictionary) -> Dictionary:
 	if not requested_name.is_empty():
 		duplicate.name = requested_name
 	var duplicated_nodes := _collect_subtree(duplicate)
+	var local_owner_paths := _collect_local_owner_paths(node, scene_root)
+	var duplicate_owner_nodes := _resolve_duplicate_owner_nodes(duplicate, local_owner_paths)
+	if duplicate_owner_nodes.has("_error"):
+		duplicate.free()
+		return duplicate_owner_nodes
 	_undo_redo.create_action(
 		"Godot 2D MCP: Duplicate %s" % node.name,
 		UndoRedo.MERGE_DISABLE,
@@ -560,8 +624,9 @@ func duplicate_node(params: Dictionary) -> Dictionary:
 	)
 	_undo_redo.add_do_method(parent, "add_child", duplicate, true)
 	if is_packed_scene_instance:
-		# The root is local to this scene; all children retain their PackedScene owners.
-		_undo_redo.add_do_method(duplicate, "set_owner", scene_root)
+		# Preserve the external instance boundary while retaining local override descendants.
+		for duplicate_owner_node in duplicate_owner_nodes["nodes"]:
+			_undo_redo.add_do_method(duplicate_owner_node, "set_owner", scene_root)
 	else:
 		for duplicated_node in duplicated_nodes:
 			_undo_redo.add_do_method(duplicated_node, "set_owner", scene_root)
@@ -593,9 +658,9 @@ func reparent_node(params: Dictionary) -> Dictionary:
 	var editability := _require_locally_owned(node, scene_root, "reparent")
 	if editability != null:
 		return editability
-	var is_packed_scene_instance := not node.scene_file_path.is_empty()
+	var is_packed_scene_instance := _is_packed_scene_instance_root(node, scene_root)
 	var subtree_check: Variant = (
-		_require_complete_packed_scene_instance(node, scene_root, "reparent")
+		_require_supported_subtree(node, "reparent")
 		if is_packed_scene_instance
 		else _require_local_subtree(node, scene_root, "reparent")
 	)
@@ -925,6 +990,98 @@ func _is_writable_property(property_name: String, usage: int) -> bool:
 	)
 
 
+func _require_property_editable(node: Node, scene_root: Node, operation: String) -> Variant:
+	if node == scene_root or node.owner == scene_root:
+		return null
+	if node.owner != null and scene_root.is_editable_instance(node.owner):
+		return null
+	var instance_path := ""
+	if node.owner != null and scene_root.is_ancestor_of(node.owner):
+		instance_path = ScenePath.from_node(node.owner, scene_root)
+	return Errors.make(
+		"PACKED_SCENE_EDITABLE_CHILDREN_REQUIRED",
+		"Cannot %s node '%s' because its PackedScene owner is not editable" % [operation, node.name],
+		false,
+		"Call packed_scene_instance_editable_children_enable for '%s' before editing its descendants."
+		% instance_path,
+		{"instance_path": instance_path}
+	)
+
+
+func _require_packed_scene_instance_root(node: Node, scene_root: Node) -> Dictionary:
+	if not _is_packed_scene_instance_root(node, scene_root):
+		return Errors.make(
+			"PACKED_SCENE_INSTANCE_REQUIRED",
+			"Node '%s' is not an instanced PackedScene root" % node.name,
+			false,
+			"Pass the root path returned by node_instance_scene or scene_get_hierarchy."
+		)
+	return {"instance": node}
+
+
+func _require_editable_instance_parent(instance: Node, scene_root: Node) -> Variant:
+	if instance.owner == scene_root:
+		return null
+	if instance.owner != null and scene_root.is_editable_instance(instance.owner):
+		return null
+	var owner_path := ""
+	if instance.owner != null and scene_root.is_ancestor_of(instance.owner):
+		owner_path = ScenePath.from_node(instance.owner, scene_root)
+	return Errors.make(
+		"PACKED_SCENE_EDITABLE_CHILDREN_REQUIRED",
+		"Enable the parent PackedScene before enabling nested instance '%s'" % instance.name,
+		false,
+		"Call packed_scene_instance_editable_children_enable for '%s' first." % owner_path,
+		{"instance_path": owner_path}
+	)
+
+
+func _is_packed_scene_instance_root(node: Node, scene_root: Node) -> bool:
+	return node != scene_root and not node.scene_file_path.is_empty()
+
+
+func _serialize_packed_scene_instance(instance: Node, scene_root: Node) -> Dictionary:
+	var subtree_node_count := 0
+	var local_override_node_count := 0
+	for descendant in _collect_subtree(instance):
+		subtree_node_count += 1
+		if descendant != instance and descendant.owner == scene_root:
+			local_override_node_count += 1
+	return {
+		"path": ScenePath.from_node(instance, scene_root),
+		"type": instance.get_class(),
+		"scene_path": instance.scene_file_path,
+		"editable_children": scene_root.is_editable_instance(instance),
+		"load_as_placeholder": instance.get_scene_instance_load_placeholder(),
+		"subtree_node_count": subtree_node_count,
+		"local_override_node_count": local_override_node_count,
+	}
+
+
+func _collect_local_owner_paths(root: Node, scene_root: Node) -> Array[String]:
+	var paths: Array[String] = []
+	for descendant in _collect_subtree(root):
+		if descendant != root and descendant.owner != scene_root:
+			continue
+		paths.append("" if descendant == root else String(root.get_path_to(descendant)))
+	return paths
+
+
+func _resolve_duplicate_owner_nodes(duplicate: Node, local_owner_paths: Array[String]) -> Dictionary:
+	var nodes: Array[Node] = []
+	for path in local_owner_paths:
+		var duplicate_node := duplicate if path.is_empty() else duplicate.get_node_or_null(NodePath(path))
+		if duplicate_node == null:
+			return Errors.make(
+				"DUPLICATION_OVERRIDE_LOST",
+				"Godot did not preserve local override node '%s' while duplicating the PackedScene" % path,
+				false,
+				"Duplicate the instance again after reopening the scene."
+			)
+		nodes.append(duplicate_node)
+	return {"nodes": nodes}
+
+
 func _require_locally_owned(node: Node, scene_root: Node, operation: String) -> Variant:
 	if node == scene_root or node.owner == scene_root:
 		return null
@@ -952,29 +1109,6 @@ func _require_local_subtree(node: Node, scene_root: Node, operation: String) -> 
 				"Cannot %s '%s' because its subtree contains an instanced scene" % [operation, node.name],
 				false,
 				"Edit the source PackedScene or operate on a fully local subtree."
-			)
-	return null
-
-
-func _require_complete_packed_scene_instance(
-	node: Node, scene_root: Node, operation: String
-) -> Variant:
-	for descendant in _collect_subtree(node):
-		if not TypePolicy.is_supported_node_class(descendant.get_class()):
-			return Errors.make(
-				"UNSUPPORTED_2D_TYPE",
-				"Cannot %s '%s' because its instance subtree contains unsupported node type %s"
-				% [operation, node.name, descendant.get_class()],
-				false,
-				"Use this tool only with a fully supported 2D or UI PackedScene instance."
-			)
-		if descendant != node and descendant.owner == scene_root:
-			return Errors.make(
-				"PACKED_SCENE_PARTIAL_OVERRIDE",
-				"Cannot %s PackedScene instance '%s' after adding local override node '%s'"
-				% [operation, node.name, descendant.name],
-				false,
-				"Duplicate or reparent the complete instance before adding local override children."
 			)
 	return null
 

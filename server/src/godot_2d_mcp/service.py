@@ -1146,6 +1146,32 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def packed_scene_instance_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "packed_scene_instance_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
+    async def packed_scene_instance_editable_children_enable(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "packed_scene_instance_editable_children_enable",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def scene_create(
         self,
         scene_path: str,

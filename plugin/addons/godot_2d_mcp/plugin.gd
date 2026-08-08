@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.55.0"
+const PLUGIN_VERSION := "0.56.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 const RUNTIME_AUTOLOAD_NAME := "Godot2DMcpRuntime"
 const RUNTIME_AUTOLOAD_PATH := "res://addons/godot_2d_mcp/runtime/runtime_bridge.gd"
@@ -221,6 +221,11 @@ func _register_handlers() -> void:
 	_dispatcher.register("node_script_bind", node_handler.bind_script)
 	_dispatcher.register("node_script_clear", node_handler.clear_script)
 	_dispatcher.register("node_instance_scene", node_handler.instance_packed_scene)
+	_dispatcher.register("packed_scene_instance_get", node_handler.get_packed_scene_instance)
+	_dispatcher.register(
+		"packed_scene_instance_editable_children_enable",
+		node_handler.enable_packed_scene_editable_children
+	)
 	_dispatcher.register("node_set_properties", node_handler.set_properties)
 	_dispatcher.register("node_delete", node_handler.delete_node)
 	_dispatcher.register("node_rename", node_handler.rename_node)
