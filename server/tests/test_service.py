@@ -532,6 +532,74 @@ async def test_button_menu_item_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_resource_tools_forward_validated_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    resource_path = "res://generated/agent_gradient.tres"
+    properties = {
+        "offsets": [0.0, 1.0],
+        "colors": [
+            {"r": 0.1, "g": 0.2, "b": 0.3, "a": 1.0},
+            {"r": 0.8, "g": 0.7, "b": 0.6, "a": 1.0},
+        ],
+    }
+
+    await service.resource_get(resource_path, fields=["colors"], session_id="project@a1b2")
+    await service.resource_create(
+        "Gradient", resource_path, properties=properties, session_id="project@a1b2"
+    )
+    await service.resource_set_properties(
+        resource_path, {"offsets": [0.0, 0.75]}, session_id="project@a1b2"
+    )
+    await service.resource_save(resource_path, session_id="project@a1b2")
+    await service.resource_undo(resource_path, session_id="project@a1b2")
+    await service.resource_redo(resource_path, session_id="project@a1b2")
+
+    assert bridge.calls == [
+        (
+            "resource_get",
+            {"resource_path": resource_path, "fields": ["colors"]},
+            "project@a1b2",
+        ),
+        (
+            "resource_create",
+            {"type": "Gradient", "resource_path": resource_path, "properties": properties},
+            "project@a1b2",
+        ),
+        (
+            "resource_set_properties",
+            {"resource_path": resource_path, "properties": {"offsets": [0.0, 0.75]}},
+            "project@a1b2",
+        ),
+        ("resource_save", {"resource_path": resource_path}, "project@a1b2"),
+        ("resource_undo", {"resource_path": resource_path}, "project@a1b2"),
+        ("resource_redo", {"resource_path": resource_path}, "project@a1b2"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_resource_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="standalone"):
+        await service.resource_create("Gradient", "res://generated/gradient.png")
+    with pytest.raises(ValueError, match="type"):
+        await service.resource_create("", "res://generated/gradient.tres")
+    with pytest.raises(ValueError, match="properties"):
+        await service.resource_create(
+            "Gradient", "res://generated/gradient.tres", properties=[]  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="properties"):
+        await service.resource_set_properties("res://generated/gradient.tres", {})
+    with pytest.raises(ValueError, match="fields"):
+        await service.resource_get("res://generated/gradient.tres", fields=["colors", "colors"])
+    with pytest.raises(ValueError, match="JSON-compatible"):
+        await service.resource_set_properties(
+            "res://generated/gradient.tres", {"colors": {1, 2}}
+        )
+
+
+@pytest.mark.asyncio
 async def test_editor_run_and_stop_forward_validated_modes() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

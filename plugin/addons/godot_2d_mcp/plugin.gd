@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.59.0"
+const PLUGIN_VERSION := "0.60.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 const RUNTIME_AUTOLOAD_NAME := "Godot2DMcpRuntime"
 const RUNTIME_AUTOLOAD_PATH := "res://addons/godot_2d_mcp/runtime/runtime_bridge.gd"
@@ -36,6 +36,7 @@ const CpuParticleResourcesHandlerScript := preload("res://addons/godot_2d_mcp/ha
 const Draw2DHandlerScript := preload("res://addons/godot_2d_mcp/handlers/draw_2d_handler.gd")
 const AnimatedSpriteHandlerScript := preload("res://addons/godot_2d_mcp/handlers/animated_sprite_handler.gd")
 const ButtonHandlerScript := preload("res://addons/godot_2d_mcp/handlers/button_handler.gd")
+const ResourceHandlerScript := preload("res://addons/godot_2d_mcp/handlers/resource_handler.gd")
 const RuntimeHandlerScript := preload("res://addons/godot_2d_mcp/handlers/runtime_handler.gd")
 const RuntimeDebuggerBridgeScript := preload("res://addons/godot_2d_mcp/runtime/runtime_debugger_bridge.gd")
 
@@ -120,6 +121,7 @@ func _register_handlers() -> void:
 	var draw_2d_handler: RefCounted = Draw2DHandlerScript.new(get_undo_redo())
 	var animated_sprite_handler: RefCounted = AnimatedSpriteHandlerScript.new(get_undo_redo())
 	var button_handler: RefCounted = ButtonHandlerScript.new(get_undo_redo())
+	var resource_handler: RefCounted = ResourceHandlerScript.new(get_undo_redo())
 	var runtime_handler: RefCounted = RuntimeHandlerScript.new(_runtime_debugger)
 	_handlers.assign([
 		editor_handler, input_map_handler, scene_handler, node_handler, class_handler, signal_handler, animation_handler,
@@ -130,6 +132,7 @@ func _register_handlers() -> void:
 		canvas_item_shader_handler, cpu_particles_handler, cpu_particle_resources_handler, draw_2d_handler,
 		animated_sprite_handler,
 		button_handler,
+		resource_handler,
 		runtime_handler
 	])
 
@@ -213,6 +216,7 @@ func _register_handlers() -> void:
 	_dispatcher.register("sprite_frames_get", animated_sprite_handler.get_sprite_frames)
 	_dispatcher.register("button_2d_get", button_handler.get_button_2d)
 	_dispatcher.register("button_menu_items_get", button_handler.get_button_menu_items)
+	_dispatcher.register("resource_get", resource_handler.get_resource)
 	_dispatcher.register("light_2d_get", lighting_handler.get_light_2d)
 	_dispatcher.register("light_occluder_2d_get", lighting_handler.get_light_occluder_2d)
 	_dispatcher.register("tile_map_layer_get", tile_map_handler.get_tile_map_layer)
@@ -332,6 +336,11 @@ func _register_handlers() -> void:
 	_dispatcher.register("button_2d_set", button_handler.set_button_2d)
 	_dispatcher.register("button_menu_items_set", button_handler.set_button_menu_items)
 	_dispatcher.register("button_menu_items_clear", button_handler.clear_button_menu_items)
+	_dispatcher.register("resource_create", resource_handler.create_resource)
+	_dispatcher.register("resource_set_properties", resource_handler.set_resource_properties)
+	_dispatcher.register("resource_save", resource_handler.save_resource)
+	_dispatcher.register("resource_undo", resource_handler.undo_resource)
+	_dispatcher.register("resource_redo", resource_handler.redo_resource)
 	_dispatcher.register("light_2d_set", lighting_handler.set_light_2d)
 	_dispatcher.register("light_occluder_2d_set", lighting_handler.set_light_occluder_2d)
 	_dispatcher.register("tile_set_create", tile_map_handler.create_tile_set)

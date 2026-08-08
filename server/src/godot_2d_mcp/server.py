@@ -608,6 +608,19 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def resource_get(
+        resource_path: str,
+        fields: list[str] | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Read public properties from an audited project-local 2D Resource."""
+        return await service.resource_get(
+            resource_path=resource_path,
+            fields=fields,
+            session_id=session_id,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def animation_list(
         player_path: str,
         session_id: str | None = None,
@@ -1372,6 +1385,58 @@ def create_application(
             session_id=session_id,
             scene_file=scene_file,
         )
+
+    @mcp.tool(annotations=WRITE)
+    async def resource_create(
+        type_name: str,
+        resource_path: str,
+        properties: dict[str, Any] | None = None,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Create and save a new audited 2D Resource at an unused .tres or .res path."""
+        return await service.resource_create(
+            type_name=type_name,
+            resource_path=resource_path,
+            properties=properties,
+            session_id=session_id,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def resource_set_properties(
+        resource_path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Atomically update audited standalone resource properties in resource UndoRedo history."""
+        return await service.resource_set_properties(
+            resource_path=resource_path,
+            properties=properties,
+            session_id=session_id,
+        )
+
+    @mcp.tool(annotations=SAVE)
+    async def resource_save(
+        resource_path: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Persist the current in-memory state of an audited standalone 2D Resource."""
+        return await service.resource_save(resource_path=resource_path, session_id=session_id)
+
+    @mcp.tool(annotations=WRITE)
+    async def resource_undo(
+        resource_path: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Undo the previous MCP resource-property update for one standalone resource."""
+        return await service.resource_undo(resource_path=resource_path, session_id=session_id)
+
+    @mcp.tool(annotations=WRITE)
+    async def resource_redo(
+        resource_path: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Redo the next MCP resource-property update for one standalone resource."""
+        return await service.resource_redo(resource_path=resource_path, session_id=session_id)
 
     @mcp.tool(annotations=WRITE)
     async def sprite_frames_animation_upsert(
