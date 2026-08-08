@@ -364,6 +364,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         spin_box_coverage = await app.service.class_2d_coverage(
             query="SpinBox", scope="node", limit=20
         )
+        text_input_coverage = await app.service.class_2d_coverage(
+            query="Edit", scope="node", limit=20
+        )
 
         if hierarchy.get("total") != 5:
             raise RuntimeError(f"Unexpected scene node count: {hierarchy.get('total')}")
@@ -671,6 +674,21 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
                 raise RuntimeError(
                     f"{class_name} Range coverage audit was incomplete: "
                     f"slider={slider_coverage}, bar={bar_coverage}, spin_box={spin_box_coverage}"
+                )
+        text_input_entries = {
+            entry.get("name"): entry for entry in text_input_coverage.get("entries", [])
+        }
+        for class_name in ("LineEdit", "TextEdit", "CodeEdit"):
+            text_input_entry = text_input_entries.get(class_name)
+            if (
+                text_input_entry is None
+                or {"text_input_2d_get", "text_input_2d_set"}
+                - set(text_input_entry.get("semantic_tools", []))
+                or text_input_entry.get("test_status") != "semantic_smoke"
+            ):
+                raise RuntimeError(
+                    f"{class_name} text input coverage audit was incomplete: "
+                    f"{text_input_coverage}"
                 )
 
         scene_file = state.get("current_scene", "")
@@ -5085,6 +5103,156 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("SpinBox semantic configuration was not persisted")
         _trace_smoke("Range control smoke completed")
 
+        _trace_smoke("starting text input control smoke")
+        line_edit = await app.service.node_create(
+            type_name="LineEdit",
+            name="AgentLineEdit",
+            parent_path="/Main/UI",
+            scene_file=scene_file,
+        )
+        line_edit_path = line_edit["path"]
+        line_edit_configuration = await app.service.text_input_2d_set(
+            line_edit_path,
+            {
+                "max_length": 64,
+                "text": "agent@example.com",
+                "placeholder_text": "Email address",
+                "alignment": "fill",
+                "editable": False,
+                "keep_editing_on_text_submit": True,
+                "clear_button_enabled": True,
+                "select_all_on_focus": True,
+                "virtual_keyboard_type": "email",
+                "secret": True,
+                "secret_character": "#",
+                "text_direction": "ltr",
+                "language": "en",
+            },
+            scene_file=scene_file,
+        )
+        line_edit_state = line_edit_configuration["configuration"]
+        if (
+            line_edit_state["text"] != "agent@example.com"
+            or line_edit_state["alignment"] != "fill"
+            or line_edit_state["virtual_keyboard_type"] != "email"
+            or line_edit_state["secret_character"] != "#"
+            or line_edit_state["editable"] is not False
+        ):
+            raise RuntimeError("LineEdit semantic configuration was not applied")
+        unchanged_line_edit = await app.service.text_input_2d_set(
+            line_edit_path,
+            {"text": "agent@example.com"},
+            scene_file=scene_file,
+        )
+        if unchanged_line_edit.get("changed") or unchanged_line_edit.get("undoable"):
+            raise RuntimeError("LineEdit updates were not idempotent")
+        await _expect_godot_error(
+            app.service.text_input_2d_set(
+                line_edit_path,
+                {"wrap_mode": "boundary"},
+                scene_file=scene_file,
+            ),
+            "UNSUPPORTED_TEXT_INPUT_PROPERTY",
+        )
+
+        text_edit = await app.service.node_create(
+            type_name="TextEdit",
+            name="AgentTextEdit",
+            parent_path="/Main/UI",
+            scene_file=scene_file,
+        )
+        text_edit_path = text_edit["path"]
+        text_edit_configuration = await app.service.text_input_2d_set(
+            text_edit_path,
+            {
+                "text": "one two three\\nfour five six",
+                "placeholder_text": "Body text",
+                "editable": False,
+                "wrap_mode": "boundary",
+                "autowrap_mode": "smart_word",
+                "indent_wrapped_lines": True,
+                "tab_input_mode": False,
+                "scroll_smooth": True,
+                "scroll_v_scroll_speed": 42.0,
+                "minimap_draw": True,
+                "minimap_width": 96,
+                "caret_type": "block",
+                "caret_multiple": True,
+                "draw_tabs": True,
+                "text_direction": "ltr",
+                "language": "en",
+            },
+            scene_file=scene_file,
+        )
+        text_edit_state = text_edit_configuration["configuration"]
+        if (
+            text_edit_state["text"] != "one two three\\nfour five six"
+            or text_edit_state["wrap_mode"] != "boundary"
+            or text_edit_state["autowrap_mode"] != "smart_word"
+            or text_edit_state["caret_type"] != "block"
+            or text_edit_state["minimap_width"] != 96
+        ):
+            raise RuntimeError("TextEdit semantic configuration was not applied")
+
+        code_edit = await app.service.node_create(
+            type_name="CodeEdit",
+            name="AgentCodeEdit",
+            parent_path="/Main/UI",
+            scene_file=scene_file,
+        )
+        code_edit_path = code_edit["path"]
+        code_edit_configuration = await app.service.text_input_2d_set(
+            code_edit_path,
+            {
+                "text": "func _ready():\\n    print(\\\"agent\\\")",
+                "line_folding": False,
+                "line_length_guidelines": [72, 96],
+                "gutters_draw_line_numbers": False,
+                "gutters_line_numbers_min_digits": 3,
+                "code_completion_enabled": False,
+                "code_completion_prefixes": [".", "@"],
+                "indent_size": 3,
+                "indent_use_spaces": True,
+                "indent_automatic": False,
+                "indent_automatic_prefixes": ["if", "for"],
+                "auto_brace_completion_enabled": False,
+                "auto_brace_completion_highlight_matching": False,
+                "auto_brace_completion_pairs": {"(": ")", "[": "]"},
+            },
+            scene_file=scene_file,
+        )
+        code_edit_state = code_edit_configuration["configuration"]
+        if (
+            code_edit_state["indent_size"] != 3
+            or code_edit_state["line_length_guidelines"] != [72, 96]
+            or code_edit_state["code_completion_prefixes"] != [".", "@"]
+            or code_edit_state["auto_brace_completion_pairs"] != {"(": ")", "[": "]"}
+        ):
+            raise RuntimeError("CodeEdit semantic configuration was not applied")
+        await _expect_godot_error(
+            app.service.text_input_2d_get(semantic_line_path, scene_file=scene_file),
+            "TEXT_INPUT_2D_REQUIRED",
+        )
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("CodeEdit semantic configuration was not undoable")
+        restored_code_edit = await app.service.text_input_2d_get(
+            code_edit_path, scene_file=scene_file
+        )
+        if restored_code_edit["configuration"]["indent_size"] == 3:
+            raise RuntimeError("Undo did not restore CodeEdit configuration")
+        if not (await app.service.scene_redo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("CodeEdit semantic configuration was not redoable")
+        if not (await app.service.scene_save(scene_file=scene_file)).get("saved"):
+            raise RuntimeError("Text input controls could not be saved")
+        if not (await app.service.scene_open(scene_file)).get("opened"):
+            raise RuntimeError("Scene could not reopen after saving text input controls")
+        reopened_code_edit = await app.service.text_input_2d_get(
+            code_edit_path, scene_file=scene_file
+        )
+        if reopened_code_edit["configuration"]["indent_size"] != 3:
+            raise RuntimeError("CodeEdit semantic configuration was not persisted")
+        _trace_smoke("text input control smoke completed")
+
         _trace_smoke("starting Container smoke")
         hbox = await app.service.node_create(
             type_name="HBoxContainer",
@@ -7274,7 +7442,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 79 or _has_node(
+        if final_hierarchy.get("total") != 82 or _has_node(
             final_hierarchy, marker_path
         ):
             raise RuntimeError("Unexpected final hierarchy after write operations")
@@ -7619,7 +7787,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or label_tween_data.get("path") != "/RuntimeSmoke/Canvas/Label"
             or label_tween_data.get("track_count") != 2
             or label_tween_data.get("loops") != 1
-            or label_tween_data.get("elapsed_seconds", 0.0) < 0.1
+            # Completion is sampled from the engine clock and can occur one frame before
+            # the nominal 0.1-second duration on a fast editor process.
+            or label_tween_data.get("elapsed_seconds", 0.0) < 0.08
         ):
             raise RuntimeError(f"Runtime finite tween did not complete: {label_tween}")
         cancellable_tween_request = await app.service.runtime_tween_start(

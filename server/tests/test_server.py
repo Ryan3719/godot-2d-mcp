@@ -57,6 +57,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "sprite_frames_get",
         "button_2d_get",
         "range_2d_get",
+        "text_input_2d_get",
         "button_menu_items_get",
         "resource_get",
         "shortcut_get",
@@ -117,6 +118,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "animated_sprite_2d_set",
         "button_2d_set",
         "range_2d_set",
+        "text_input_2d_set",
         "button_menu_items_set",
         "button_menu_items_clear",
         "resource_create",
@@ -291,6 +293,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["sprite_frames_get"].readOnlyHint is True
     assert annotations["button_2d_get"].readOnlyHint is True
     assert annotations["range_2d_get"].readOnlyHint is True
+    assert annotations["text_input_2d_get"].readOnlyHint is True
     assert annotations["button_menu_items_get"].readOnlyHint is True
     assert annotations["resource_get"].readOnlyHint is True
     assert annotations["shortcut_get"].readOnlyHint is True
@@ -456,6 +459,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["animated_sprite_2d_set"].readOnlyHint is False
     assert annotations["button_2d_set"].readOnlyHint is False
     assert annotations["range_2d_set"].readOnlyHint is False
+    assert annotations["text_input_2d_set"].readOnlyHint is False
     assert annotations["container_2d_set"].readOnlyHint is False
     assert annotations["tab_container_item_set"].readOnlyHint is False
     assert annotations["container_child_layout_set"].readOnlyHint is False

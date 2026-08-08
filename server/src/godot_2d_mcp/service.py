@@ -951,6 +951,19 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def text_input_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "text_input_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def animated_sprite_2d_set(
         self,
         path: str,
@@ -992,6 +1005,21 @@ class GodotService:
         _validate_range_2d_properties(properties)
         return await self.bridge.call(
             "range_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def text_input_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_text_input_2d_properties(properties)
+        return await self.bridge.call(
+            "text_input_2d_set",
             _scene_params(scene_file, path=path, properties=properties),
             session_id=session_id,
         )
@@ -6256,6 +6284,226 @@ def _validate_range_2d_properties(properties: dict[str, Any]) -> None:
     for name in {"prefix", "suffix"} & properties.keys():
         if not isinstance(properties[name], str) or len(properties[name]) > 256:
             raise ValueError(f"{name} must be a string up to 256 characters")
+
+
+def _validate_text_input_2d_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "max_length",
+        "text",
+        "placeholder_text",
+        "alignment",
+        "editable",
+        "keep_editing_on_text_submit",
+        "expand_to_text_length",
+        "context_menu_enabled",
+        "emoji_menu_enabled",
+        "backspace_deletes_composite_character_enabled",
+        "clear_button_enabled",
+        "shortcut_keys_enabled",
+        "middle_mouse_paste_enabled",
+        "selecting_enabled",
+        "deselect_on_focus_loss_enabled",
+        "drag_and_drop_selection_enabled",
+        "flat",
+        "draw_control_chars",
+        "select_all_on_focus",
+        "virtual_keyboard_enabled",
+        "virtual_keyboard_show_on_focus",
+        "virtual_keyboard_type",
+        "caret_blink",
+        "caret_blink_interval",
+        "caret_force_displayed",
+        "caret_mid_grapheme",
+        "secret",
+        "secret_character",
+        "text_direction",
+        "language",
+        "empty_selection_clipboard_enabled",
+        "wrap_mode",
+        "autowrap_mode",
+        "indent_wrapped_lines",
+        "tab_input_mode",
+        "scroll_smooth",
+        "scroll_v_scroll_speed",
+        "scroll_past_end_of_file",
+        "scroll_fit_content_height",
+        "scroll_fit_content_width",
+        "minimap_draw",
+        "minimap_width",
+        "caret_type",
+        "caret_draw_when_editable_disabled",
+        "caret_move_on_right_click",
+        "caret_multiple",
+        "use_default_word_separators",
+        "use_custom_word_separators",
+        "custom_word_separators",
+        "highlight_all_occurrences",
+        "highlight_current_line",
+        "draw_tabs",
+        "draw_spaces",
+        "symbol_lookup_on_click",
+        "symbol_tooltip_on_hover",
+        "line_folding",
+        "line_length_guidelines",
+        "gutters_draw_breakpoints_gutter",
+        "gutters_draw_bookmarks",
+        "gutters_draw_executing_lines",
+        "gutters_draw_line_numbers",
+        "gutters_zero_pad_line_numbers",
+        "gutters_line_numbers_min_digits",
+        "gutters_draw_fold_gutter",
+        "code_completion_enabled",
+        "code_completion_prefixes",
+        "indent_size",
+        "indent_use_spaces",
+        "indent_automatic",
+        "indent_automatic_prefixes",
+        "auto_brace_completion_enabled",
+        "auto_brace_completion_highlight_matching",
+        "auto_brace_completion_pairs",
+    }
+    _validate_draw_2d_property_names(properties, allowed, "text input", maximum=64)
+    boolean_properties = {
+        "editable",
+        "keep_editing_on_text_submit",
+        "expand_to_text_length",
+        "context_menu_enabled",
+        "emoji_menu_enabled",
+        "backspace_deletes_composite_character_enabled",
+        "clear_button_enabled",
+        "shortcut_keys_enabled",
+        "middle_mouse_paste_enabled",
+        "selecting_enabled",
+        "deselect_on_focus_loss_enabled",
+        "drag_and_drop_selection_enabled",
+        "flat",
+        "draw_control_chars",
+        "select_all_on_focus",
+        "virtual_keyboard_enabled",
+        "virtual_keyboard_show_on_focus",
+        "caret_blink",
+        "caret_force_displayed",
+        "caret_mid_grapheme",
+        "secret",
+        "empty_selection_clipboard_enabled",
+        "indent_wrapped_lines",
+        "tab_input_mode",
+        "scroll_smooth",
+        "scroll_past_end_of_file",
+        "scroll_fit_content_height",
+        "scroll_fit_content_width",
+        "minimap_draw",
+        "caret_draw_when_editable_disabled",
+        "caret_move_on_right_click",
+        "caret_multiple",
+        "use_default_word_separators",
+        "use_custom_word_separators",
+        "highlight_all_occurrences",
+        "highlight_current_line",
+        "draw_tabs",
+        "draw_spaces",
+        "symbol_lookup_on_click",
+        "symbol_tooltip_on_hover",
+        "line_folding",
+        "gutters_draw_breakpoints_gutter",
+        "gutters_draw_bookmarks",
+        "gutters_draw_executing_lines",
+        "gutters_draw_line_numbers",
+        "gutters_zero_pad_line_numbers",
+        "gutters_draw_fold_gutter",
+        "code_completion_enabled",
+        "indent_use_spaces",
+        "indent_automatic",
+        "auto_brace_completion_enabled",
+        "auto_brace_completion_highlight_matching",
+    }
+    for name in boolean_properties & properties.keys():
+        _validate_boolean(properties[name], name)
+    for name, minimum, maximum in (
+        ("max_length", 0, 1_000_000),
+        ("minimap_width", 1, 4096),
+        ("gutters_line_numbers_min_digits", 1, 5),
+        ("indent_size", 1, 64),
+    ):
+        if name in properties:
+            _validate_draw_2d_integer(properties[name], name, minimum=minimum, maximum=maximum)
+    for name, minimum, maximum in (
+        ("caret_blink_interval", 0.1, 10.0),
+        ("scroll_v_scroll_speed", 0.0, 100_000.0),
+    ):
+        if name in properties and (
+            not _is_finite_number(properties[name])
+            or not minimum <= float(properties[name]) <= maximum
+        ):
+            raise ValueError(f"{name} must be a finite number between {minimum} and {maximum}")
+    for name, maximum in (
+        ("text", 65_536),
+        ("placeholder_text", 65_536),
+        ("language", 128),
+        ("custom_word_separators", 65_536),
+    ):
+        if name in properties and (
+            not isinstance(properties[name], str) or len(properties[name]) > maximum
+        ):
+            raise ValueError(f"{name} must be a string up to {maximum} characters")
+    if "secret_character" in properties and (
+        not isinstance(properties["secret_character"], str)
+        or len(properties["secret_character"]) != 1
+    ):
+        raise ValueError("secret_character must contain exactly one character")
+    _validate_draw_2d_enum(properties, "alignment", {"left", "center", "right", "fill"})
+    _validate_draw_2d_enum(
+        properties,
+        "virtual_keyboard_type",
+        {"default", "multiline", "number", "decimal", "phone", "email", "password", "url"},
+    )
+    _validate_draw_2d_enum(properties, "text_direction", {"auto", "ltr", "rtl", "inherited"})
+    _validate_draw_2d_enum(properties, "wrap_mode", {"none", "boundary"})
+    _validate_draw_2d_enum(properties, "autowrap_mode", {"off", "arbitrary", "word", "smart_word"})
+    _validate_draw_2d_enum(properties, "caret_type", {"line", "block"})
+    for name in {"code_completion_prefixes", "indent_automatic_prefixes"} & properties.keys():
+        value = properties[name]
+        if (
+            not isinstance(value, list)
+            or len(value) > 128
+            or any(not isinstance(entry, str) or len(entry) > 256 for entry in value)
+        ):
+            raise ValueError(f"{name} must contain at most 128 strings up to 256 characters")
+    if "line_length_guidelines" in properties:
+        value = properties["line_length_guidelines"]
+        if (
+            not isinstance(value, list)
+            or len(value) > 128
+            or any(
+                isinstance(entry, bool)
+                or not isinstance(entry, int)
+                or not 1 <= entry <= 100_000
+                for entry in value
+            )
+            or len(set(value)) != len(value)
+        ):
+            raise ValueError(
+                "line_length_guidelines must contain at most 128 unique integers from 1 to 100000"
+            )
+    if "auto_brace_completion_pairs" in properties:
+        value = properties["auto_brace_completion_pairs"]
+        if (
+            not isinstance(value, dict)
+            or len(value) > 64
+            or any(
+                not isinstance(key, str)
+                or not isinstance(item, str)
+                or not key
+                or not item
+                or len(key) > 128
+                or len(item) > 128
+                for key, item in value.items()
+            )
+        ):
+            raise ValueError(
+                "auto_brace_completion_pairs must contain at most 64 non-empty string pairs "
+                "up to 128 characters"
+            )
 
 
 def _validate_button_menu_page(offset: int, limit: int) -> None:
