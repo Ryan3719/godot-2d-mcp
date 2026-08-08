@@ -367,6 +367,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         text_input_coverage = await app.service.class_2d_coverage(
             query="Edit", scope="node", limit=20
         )
+        text_display_coverage = await app.service.class_2d_coverage(
+            query="Label", scope="node", limit=20
+        )
 
         if hierarchy.get("total") != 5:
             raise RuntimeError(f"Unexpected scene node count: {hierarchy.get('total')}")
@@ -689,6 +692,21 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
                 raise RuntimeError(
                     f"{class_name} text input coverage audit was incomplete: "
                     f"{text_input_coverage}"
+                )
+        text_display_entries = {
+            entry.get("name"): entry for entry in text_display_coverage.get("entries", [])
+        }
+        for class_name in ("Label", "RichTextLabel"):
+            text_display_entry = text_display_entries.get(class_name)
+            if (
+                text_display_entry is None
+                or {"text_display_2d_get", "text_display_2d_set"}
+                - set(text_display_entry.get("semantic_tools", []))
+                or text_display_entry.get("test_status") != "semantic_smoke"
+            ):
+                raise RuntimeError(
+                    f"{class_name} text display coverage audit was incomplete: "
+                    f"{text_display_coverage}"
                 )
 
         scene_file = state.get("current_scene", "")
@@ -5253,6 +5271,145 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("CodeEdit semantic configuration was not persisted")
         _trace_smoke("text input control smoke completed")
 
+        _trace_smoke("starting text display control smoke")
+        label_settings_path = "res://generated/agent_label_settings.tres"
+        await app.service.resource_create("LabelSettings", label_settings_path)
+        if not (await app.service.resource_save(label_settings_path)).get("saved"):
+            raise RuntimeError("LabelSettings resource could not be saved")
+        label = await app.service.node_create(
+            type_name="Label",
+            name="AgentLabel",
+            parent_path="/Main/UI",
+            scene_file=scene_file,
+        )
+        label_path = label["path"]
+        label_configuration = await app.service.text_display_2d_set(
+            label_path,
+            {
+                "text": "Agent progress\\nReady",
+                "label_settings_path": label_settings_path,
+                "horizontal_alignment": "center",
+                "vertical_alignment": "fill",
+                "autowrap_mode": "word",
+                "autowrap_trim_flags": ["trim_start", "trim_end"],
+                "justification_flags": ["word_bound", "skip_last_line"],
+                "paragraph_separator": "\\n",
+                "clip_text": True,
+                "text_overrun_behavior": "ellipsis",
+                "ellipsis_char": ".",
+                "uppercase": True,
+                "tab_stops": [24.0, 48.0],
+                "lines_skipped": 1,
+                "max_lines_visible": 3,
+                "visible_characters_behavior": "glyphs_ltr",
+                "visible_ratio": 0.6,
+                "text_direction": "ltr",
+                "language": "en",
+            },
+            scene_file=scene_file,
+        )
+        label_state = label_configuration["configuration"]
+        if (
+            label_state["label_settings"].get("resource_path") != label_settings_path
+            or label_state["horizontal_alignment"] != "center"
+            or label_state["justification_flags"] != ["skip_last_line", "word_bound"]
+            or label_state["tab_stops"] != [24.0, 48.0]
+            or label_state["visible_characters_behavior"] != "glyphs_ltr"
+        ):
+            raise RuntimeError("Label semantic configuration was not applied")
+        unchanged_label = await app.service.text_display_2d_set(
+            label_path,
+            {"uppercase": True},
+            scene_file=scene_file,
+        )
+        if unchanged_label.get("changed") or unchanged_label.get("undoable"):
+            raise RuntimeError("Label updates were not idempotent")
+        await _expect_godot_error(
+            app.service.text_display_2d_set(
+                label_path,
+                {"bbcode_enabled": True},
+                scene_file=scene_file,
+            ),
+            "UNSUPPORTED_TEXT_DISPLAY_PROPERTY",
+        )
+
+        rich_text_label = await app.service.node_create(
+            type_name="RichTextLabel",
+            name="AgentRichTextLabel",
+            parent_path="/Main/UI",
+            scene_file=scene_file,
+        )
+        rich_text_label_path = rich_text_label["path"]
+        initial_rich_text = await app.service.text_display_2d_get(
+            rich_text_label_path, scene_file=scene_file
+        )
+        initial_rich_tab_size = initial_rich_text["configuration"]["tab_size"]
+        updated_rich_tab_size = 8 if initial_rich_tab_size != 8 else 3
+        rich_text_configuration = await app.service.text_display_2d_set(
+            rich_text_label_path,
+            {
+                "bbcode_enabled": True,
+                "text": "[b]Agent[/b] [color=green]Ready[/color]",
+                "fit_content": True,
+                "scroll_active": True,
+                "scroll_following": True,
+                "scroll_following_visible_characters": True,
+                "autowrap_mode": "smart_word",
+                "autowrap_trim_flags": ["trim_end"],
+                "tab_size": updated_rich_tab_size,
+                "context_menu_enabled": False,
+                "shortcut_keys_enabled": False,
+                "horizontal_alignment": "right",
+                "vertical_alignment": "center",
+                "justification_flags": ["kashida", "do_not_skip_single_line"],
+                "tab_stops": [12.0, 36.0],
+                "meta_underlined": False,
+                "hint_underlined": False,
+                "threaded": False,
+                "progress_bar_delay": 50,
+                "selection_enabled": True,
+                "deselect_on_focus_loss_enabled": False,
+                "drag_and_drop_selection_enabled": False,
+                "visible_characters_behavior": "after_shaping",
+                "visible_ratio": 0.75,
+                "text_direction": "ltr",
+                "language": "en",
+            },
+            scene_file=scene_file,
+        )
+        rich_text_state = rich_text_configuration["configuration"]
+        if (
+            rich_text_state["bbcode_enabled"] is not True
+            or rich_text_state["text"] != "[b]Agent[/b] [color=green]Ready[/color]"
+            or rich_text_state["horizontal_alignment"] != "right"
+            or rich_text_state["tab_size"] != updated_rich_tab_size
+            or rich_text_state["visible_characters_behavior"] != "after_shaping"
+        ):
+            raise RuntimeError("RichTextLabel semantic configuration was not applied")
+        await _expect_godot_error(
+            app.service.text_display_2d_get(semantic_line_path, scene_file=scene_file),
+            "TEXT_DISPLAY_2D_REQUIRED",
+        )
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("RichTextLabel semantic configuration was not undoable")
+        restored_rich_text = await app.service.text_display_2d_get(
+            rich_text_label_path, scene_file=scene_file
+        )
+        if restored_rich_text["configuration"]["tab_size"] != initial_rich_tab_size:
+            raise RuntimeError("Undo did not restore RichTextLabel configuration")
+        if not (await app.service.scene_redo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("RichTextLabel semantic configuration was not redoable")
+        if not (await app.service.scene_save(scene_file=scene_file)).get("saved"):
+            raise RuntimeError("Text display controls could not be saved")
+        if not (await app.service.scene_open(scene_file)).get("opened"):
+            raise RuntimeError("Scene could not reopen after saving text display controls")
+        reopened_rich_text = await app.service.text_display_2d_get(
+            rich_text_label_path, scene_file=scene_file
+        )
+        if reopened_rich_text["configuration"]["bbcode_enabled"] is not True:
+            raise RuntimeError("RichTextLabel semantic configuration was not persisted")
+        _trace_smoke("text display control smoke completed")
+
         _trace_smoke("starting Container smoke")
         hbox = await app.service.node_create(
             type_name="HBoxContainer",
@@ -7442,7 +7599,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 82 or _has_node(
+        if final_hierarchy.get("total") != 84 or _has_node(
             final_hierarchy, marker_path
         ):
             raise RuntimeError("Unexpected final hierarchy after write operations")
