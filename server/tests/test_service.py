@@ -1522,6 +1522,54 @@ async def test_node_set_properties_forwards_one_atomic_payload() -> None:
 
 
 @pytest.mark.asyncio
+async def test_node_group_tools_forward_persistent_scene_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    path = "/Main/Actors/Enemy"
+    scene_file = "res://main.tscn"
+
+    await service.node_groups_get(path, scene_file=scene_file, session_id="project@a1b2")
+    await service.node_group_add(
+        path,
+        "actors/enemies",
+        scene_file=scene_file,
+        session_id="project@a1b2",
+    )
+    await service.node_group_remove(path, "actors/enemies", scene_file=scene_file)
+
+    assert bridge.calls == [
+        (
+            "node_groups_get",
+            {"path": path, "scene_file": scene_file},
+            "project@a1b2",
+        ),
+        (
+            "node_group_add",
+            {"path": path, "group": "actors/enemies", "scene_file": scene_file},
+            "project@a1b2",
+        ),
+        (
+            "node_group_remove",
+            {"path": path, "group": "actors/enemies", "scene_file": scene_file},
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_node_group_tools_reject_invalid_group_names() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="path"):
+        await service.node_groups_get("")
+    for group in ("", " enemies", "enemies ", "_vp_input", "a" * 129, "enemy\nteam"):
+        with pytest.raises(ValueError, match="group"):
+            await service.node_group_add("/Main/Enemy", group)
+        with pytest.raises(ValueError, match="group"):
+            await service.node_group_remove("/Main/Enemy", group)
+
+
+@pytest.mark.asyncio
 async def test_draw_2d_tools_forward_semantic_payloads() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

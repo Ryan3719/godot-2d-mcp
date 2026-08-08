@@ -47,6 +47,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "class_2d_coverage_snapshot",
         "class_2d_coverage_diff",
         "node_get_properties",
+        "node_groups_get",
         "node_get_signals",
         "sprite_2d_get",
         "line_2d_get",
@@ -104,6 +105,8 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "packed_scene_instance_get",
         "packed_scene_instance_editable_children_enable",
         "node_set_properties",
+        "node_group_add",
+        "node_group_remove",
         "sprite_2d_set",
         "line_2d_set",
         "polygon_2d_set",
@@ -269,6 +272,9 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["class_2d_coverage_snapshot"].readOnlyHint is True
     assert annotations["class_2d_coverage_diff"].readOnlyHint is True
     assert annotations["node_get_properties"].readOnlyHint is True
+    assert annotations["node_groups_get"].readOnlyHint is True
+    assert annotations["node_group_add"].readOnlyHint is False
+    assert annotations["node_group_remove"].readOnlyHint is False
     assert annotations["node_get_signals"].readOnlyHint is True
     assert annotations["sprite_2d_get"].readOnlyHint is True
     assert annotations["line_2d_get"].readOnlyHint is True
