@@ -1570,6 +1570,59 @@ async def test_node_group_tools_reject_invalid_group_names() -> None:
 
 
 @pytest.mark.asyncio
+async def test_node_metadata_tools_forward_persistent_scene_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    path = "/Main/Actors/Enemy"
+    scene_file = "res://main.tscn"
+    value = {"spawn": "north", "waves": [1, 2]}
+
+    await service.node_metadata_get(path, scene_file=scene_file, session_id="project@a1b2")
+    await service.node_metadata_set(
+        path,
+        "spawn_config",
+        value,
+        scene_file=scene_file,
+        session_id="project@a1b2",
+    )
+    await service.node_metadata_remove(path, "spawn_config", scene_file=scene_file)
+
+    assert bridge.calls == [
+        (
+            "node_metadata_get",
+            {"path": path, "scene_file": scene_file},
+            "project@a1b2",
+        ),
+        (
+            "node_metadata_set",
+            {"path": path, "key": "spawn_config", "value": value, "scene_file": scene_file},
+            "project@a1b2",
+        ),
+        (
+            "node_metadata_remove",
+            {"path": path, "key": "spawn_config", "scene_file": scene_file},
+            None,
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_node_metadata_tools_reject_invalid_keys_and_values() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="path"):
+        await service.node_metadata_get("")
+    for key in ("", "1enemy", "enemy-id", "_editor", "a" * 129):
+        with pytest.raises(ValueError, match="key"):
+            await service.node_metadata_set("/Main/Enemy", key, {"spawn": 1})
+        with pytest.raises(ValueError, match="key"):
+            await service.node_metadata_remove("/Main/Enemy", key)
+    for value in (None, float("nan"), {1: "invalid"}, [0] * 129):
+        with pytest.raises(ValueError, match="value"):
+            await service.node_metadata_set("/Main/Enemy", "spawn_config", value)
+
+
+@pytest.mark.asyncio
 async def test_draw_2d_tools_forward_semantic_payloads() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

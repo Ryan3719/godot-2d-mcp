@@ -1065,6 +1065,71 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )["groups"] != ["agents/markers"]:
             raise RuntimeError("Undo did not restore the persistent node group")
 
+        initial_marker_metadata = await app.service.node_metadata_get(
+            marker_path, scene_file=scene_file
+        )
+        if initial_marker_metadata["metadata"] != []:
+            raise RuntimeError("New Node2D unexpectedly had persistent metadata")
+        first_marker_metadata = {"role": "marker", "priority": 1}
+        created_marker_metadata = await app.service.node_metadata_set(
+            marker_path,
+            "agent_config",
+            first_marker_metadata,
+            scene_file=scene_file,
+        )
+        if (
+            not created_marker_metadata.get("changed")
+            or created_marker_metadata.get("replaced")
+            or created_marker_metadata["value"] != first_marker_metadata
+            or not created_marker_metadata.get("undoable")
+        ):
+            raise RuntimeError("Persistent node metadata was not created")
+        unchanged_marker_metadata = await app.service.node_metadata_set(
+            marker_path,
+            "agent_config",
+            first_marker_metadata,
+            scene_file=scene_file,
+        )
+        if unchanged_marker_metadata.get("changed") or unchanged_marker_metadata.get("undoable"):
+            raise RuntimeError("Setting unchanged persistent metadata was not idempotent")
+        updated_marker_metadata = {"role": "marker", "priority": 2, "tags": ["agent", "ui"]}
+        replaced_marker_metadata = await app.service.node_metadata_set(
+            marker_path,
+            "agent_config",
+            updated_marker_metadata,
+            scene_file=scene_file,
+        )
+        if (
+            not replaced_marker_metadata.get("changed")
+            or not replaced_marker_metadata.get("replaced")
+            or replaced_marker_metadata["value"] != updated_marker_metadata
+        ):
+            raise RuntimeError("Persistent node metadata was not replaced")
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("Persistent metadata replacement was not undoable")
+        if (
+            await app.service.node_metadata_get(marker_path, scene_file=scene_file)
+        )["metadata"] != [{"key": "agent_config", "value": first_marker_metadata}]:
+            raise RuntimeError("Undo did not restore the earlier persistent metadata value")
+        if not (await app.service.scene_redo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("Persistent metadata replacement was not redoable")
+        removed_marker_metadata = await app.service.node_metadata_remove(
+            marker_path, "agent_config", scene_file=scene_file
+        )
+        if (
+            not removed_marker_metadata.get("changed")
+            or removed_marker_metadata["removed_value"] != updated_marker_metadata
+            or removed_marker_metadata["metadata"] != []
+            or not removed_marker_metadata.get("undoable")
+        ):
+            raise RuntimeError("Persistent node metadata was not removed")
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("Persistent metadata removal was not undoable")
+        if (
+            await app.service.node_metadata_get(marker_path, scene_file=scene_file)
+        )["metadata"] != [{"key": "agent_config", "value": updated_marker_metadata}]:
+            raise RuntimeError("Undo did not restore the persistent metadata")
+
         await _expect_godot_error(
             app.service.node_instance_scene(
                 "res://packed_scene_3d.tscn",
@@ -7073,6 +7138,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentTileMap" not in saved_scene
             or "TileSetAtlasSource" not in saved_scene
             or "agents/markers" not in saved_scene
+            or "agent_config" not in saved_scene
         ):
             raise RuntimeError("Saved scene does not contain the created Button")
         reopened_scene = await app.service.scene_open(scene_file)
@@ -7083,6 +7149,13 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )
         if reopened_marker_groups["groups"] != ["agents/markers"]:
             raise RuntimeError("Persistent node group did not survive duplication and reopening")
+        reopened_marker_metadata = await app.service.node_metadata_get(
+            marker_copy_path, scene_file=scene_file
+        )
+        if reopened_marker_metadata["metadata"] != [
+            {"key": "agent_config", "value": updated_marker_metadata}
+        ]:
+            raise RuntimeError("Persistent node metadata did not survive duplication and reopening")
         reopened_audio_animation = await app.service.animation_get(
             "/Main/ButtonAnimations", "button_hover", scene_file=scene_file
         )

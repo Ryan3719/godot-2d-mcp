@@ -11,6 +11,7 @@ const VariantCodec := preload("res://addons/godot_2d_mcp/utils/variant_codec.gd"
 const MAX_PROPERTIES_PER_REQUEST := 64
 const MAX_PROPERTY_RESULTS := 512
 const MAX_NODE_GROUP_NAME_LENGTH := 128
+const MAX_NODE_METADATA_KEY_LENGTH := 128
 const PROTECTED_PROPERTIES := {
 	"owner": true,
 	"scene_file_path": true,
@@ -75,6 +76,13 @@ func get_node_groups(params: Dictionary) -> Dictionary:
 	if resolved.has("_error"):
 		return resolved
 	return _node_groups_response(resolved["node"], resolved["scene_root"])
+
+
+func get_node_metadata(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_node(params, false)
+	if resolved.has("_error"):
+		return resolved
+	return _node_metadata_response(resolved["node"], resolved["scene_root"])
 
 
 func add_node_group(params: Dictionary) -> Dictionary:
@@ -168,6 +176,132 @@ func remove_node_group(params: Dictionary) -> Dictionary:
 	if result.has("_error"):
 		return result
 	result["group"] = String(group_name)
+	result["changed"] = true
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func set_node_metadata(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_node(params)
+	if resolved.has("_error"):
+		return resolved
+	var node: Node = resolved["node"]
+	var scene_root: Node = resolved["scene_root"]
+	var editability := _require_locally_owned(node, scene_root, "set persistent metadata on")
+	if editability != null:
+		return editability
+	var key_result := _parse_node_metadata_key(params)
+	if key_result.has("_error"):
+		return key_result
+	if not params.has("value"):
+		return Errors.make("MISSING_PARAMETER", "value is required")
+	var decoded := VariantCodec.decode_json_value(params["value"])
+	if decoded.has("_error"):
+		return Errors.make(
+			"INVALID_NODE_METADATA_VALUE",
+			"value must be a bounded JSON-compatible value",
+			false,
+			"Use null only with node_metadata_remove; metadata values support finite JSON primitives, arrays, and objects."
+		)
+	if decoded["value"] == null:
+		return Errors.make(
+			"INVALID_NODE_METADATA_VALUE",
+			"value cannot be null",
+			false,
+			"Call node_metadata_remove to remove a metadata entry."
+		)
+	var key: StringName = key_result["key"]
+	var snapshot := _persistent_metadata(node, scene_root)
+	if snapshot.has("_error"):
+		return snapshot
+	var has_persistent_value := _metadata_contains(snapshot["metadata"], key)
+	if node.has_meta(key) and not has_persistent_value:
+		return Errors.make(
+			"NODE_METADATA_NON_PERSISTENT",
+			"Metadata '%s' is not in the active scene's persistent serialization boundary" % key,
+			false,
+			"Open the source PackedScene or remove the runtime-only metadata before changing it through MCP."
+		)
+	var had_value := node.has_meta(key)
+	var old_value = node.get_meta(key, null)
+	var new_value = decoded["value"]
+	if had_value and old_value == new_value:
+		var unchanged := _node_metadata_response(node, scene_root)
+		if unchanged.has("_error"):
+			return unchanged
+		unchanged["key"] = String(key)
+		unchanged["value"] = VariantCodec.serialize(old_value)
+		unchanged["changed"] = false
+		unchanged["undoable"] = false
+		return unchanged
+	_undo_redo.create_action(
+		"Godot 2D MCP: Set metadata %s on %s" % [key, node.name],
+		UndoRedo.MERGE_DISABLE,
+		scene_root
+	)
+	_undo_redo.add_do_method(node, "set_meta", key, new_value)
+	if had_value:
+		_undo_redo.add_undo_method(node, "set_meta", key, old_value)
+	else:
+		_undo_redo.add_undo_method(node, "remove_meta", key)
+	_undo_redo.commit_action()
+	var result := _node_metadata_response(node, scene_root)
+	if result.has("_error"):
+		return result
+	result["key"] = String(key)
+	result["value"] = VariantCodec.serialize(node.get_meta(key))
+	result["replaced"] = had_value
+	result["changed"] = true
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func remove_node_metadata(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_node(params)
+	if resolved.has("_error"):
+		return resolved
+	var node: Node = resolved["node"]
+	var scene_root: Node = resolved["scene_root"]
+	var editability := _require_locally_owned(node, scene_root, "remove persistent metadata from")
+	if editability != null:
+		return editability
+	var key_result := _parse_node_metadata_key(params)
+	if key_result.has("_error"):
+		return key_result
+	var key: StringName = key_result["key"]
+	var snapshot := _persistent_metadata(node, scene_root)
+	if snapshot.has("_error"):
+		return snapshot
+	if not _metadata_contains(snapshot["metadata"], key):
+		if node.has_meta(key):
+			return Errors.make(
+				"NODE_METADATA_NON_PERSISTENT",
+				"Metadata '%s' is runtime-only and cannot be removed through persistent scene editing" % key,
+				false,
+				"Remove the runtime metadata in Godot, or target an entry returned by node_metadata_get."
+			)
+		return Errors.make(
+			"NODE_METADATA_NOT_FOUND",
+			"Node '%s' has no persistent metadata named '%s'" % [node.name, key],
+			false,
+			"Call node_metadata_get to inspect persistent metadata on this node."
+		)
+	var old_value = node.get_meta(key)
+	_undo_redo.create_action(
+		"Godot 2D MCP: Remove metadata %s from %s" % [key, node.name],
+		UndoRedo.MERGE_DISABLE,
+		scene_root
+	)
+	_undo_redo.add_do_method(node, "remove_meta", key)
+	_undo_redo.add_undo_method(node, "set_meta", key, old_value)
+	_undo_redo.commit_action()
+	var result := _node_metadata_response(node, scene_root)
+	if result.has("_error"):
+		return result
+	result["key"] = String(key)
+	result["removed_value"] = VariantCodec.serialize(old_value)
 	result["changed"] = true
 	result["undoable"] = true
 	result["_scene_mutated"] = true
@@ -1109,6 +1243,71 @@ func _persistent_groups(node: Node, scene_root: Node) -> Dictionary:
 	)
 
 
+func _node_metadata_response(node: Node, scene_root: Node) -> Dictionary:
+	var snapshot := _persistent_metadata(node, scene_root)
+	if snapshot.has("_error"):
+		return snapshot
+	return {
+		"path": ScenePath.from_node(node, scene_root),
+		"type": node.get_class(),
+		"metadata": snapshot["metadata"],
+		"metadata_count": snapshot["metadata"].size(),
+	}
+
+
+func _persistent_metadata(node: Node, scene_root: Node) -> Dictionary:
+	var packed := PackedScene.new()
+	var pack_error := packed.pack(scene_root)
+	if pack_error != OK:
+		return Errors.make(
+			"NODE_METADATA_SNAPSHOT_FAILED",
+			"Godot could not snapshot persistent metadata for the active scene (error %d)" % pack_error,
+			true,
+			"Wait for the editor to finish updating the scene, then retry node_metadata_get."
+		)
+	var scene_state := packed.get_state()
+	var target_path: NodePath = (
+		NodePath(".") if node == scene_root else NodePath("./%s" % scene_root.get_path_to(node))
+	)
+	for node_index in range(scene_state.get_node_count()):
+		if scene_state.get_node_path(node_index) != target_path:
+			continue
+		var metadata: Array[Dictionary] = []
+		for property_index in range(scene_state.get_node_property_count(node_index)):
+			var property_name := String(scene_state.get_node_property_name(node_index, property_index))
+			if not property_name.begins_with("metadata/"):
+				continue
+			var key := property_name.trim_prefix("metadata/")
+			if key.begins_with("_"):
+				continue
+			metadata.append(
+				{
+					"key": key,
+					"value": VariantCodec.serialize(
+						scene_state.get_node_property_value(node_index, property_index)
+					),
+				}
+			)
+		metadata.sort_custom(
+			func(left: Dictionary, right: Dictionary) -> bool: return left["key"] < right["key"]
+		)
+		return {"metadata": metadata}
+	return Errors.make(
+		"NODE_METADATA_SNAPSHOT_UNAVAILABLE",
+		"Node '%s' is outside the active scene's persistent serialization boundary" % node.name,
+		false,
+		"Open the source PackedScene to inspect its metadata, or target a locally owned node."
+	)
+
+
+func _metadata_contains(metadata: Array, key: StringName) -> bool:
+	for entry_value in metadata:
+		var entry: Dictionary = entry_value
+		if StringName(str(entry.get("key", ""))) == key:
+			return true
+	return false
+
+
 func _parse_node_group_name(params: Dictionary) -> Dictionary:
 	var raw_group: Variant = params.get("group", null)
 	if not raw_group is String:
@@ -1128,6 +1327,25 @@ func _parse_node_group_name(params: Dictionary) -> Dictionary:
 			"Use a project group such as enemies, interactables, or ui/hud; names beginning with '_' are reserved by Godot."
 		)
 	return {"group": StringName(group)}
+
+
+func _parse_node_metadata_key(params: Dictionary) -> Dictionary:
+	var raw_key: Variant = params.get("key", null)
+	if not raw_key is String:
+		return Errors.make("INVALID_NODE_METADATA_KEY", "key must be a string")
+	var key := raw_key as String
+	if (
+		key.length() > MAX_NODE_METADATA_KEY_LENGTH
+		or key.begins_with("_")
+		or not key.is_valid_ascii_identifier()
+	):
+		return Errors.make(
+			"INVALID_NODE_METADATA_KEY",
+			"key must be a non-internal ASCII identifier up to %d characters" % MAX_NODE_METADATA_KEY_LENGTH,
+			false,
+			"Use a key such as enemy_id, spawn_state, or ui_variant; names beginning with '_' are reserved by Godot."
+		)
+	return {"key": StringName(key)}
 
 
 func _contains_control_characters(value: String) -> bool:
