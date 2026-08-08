@@ -30,6 +30,11 @@ const METHOD_KEY_FIELDS := {
 	"method": true,
 	"args": true,
 }
+const NESTED_ANIMATION_KEY_FIELDS := {
+	"time": true,
+	"animation": true,
+}
+const NESTED_ANIMATION_STOP := "[stop]"
 const BEZIER_COMPONENTS_BY_TYPE := {
 	TYPE_VECTOR2: {"x": true, "y": true},
 	TYPE_COLOR: {"r": true, "g": true, "b": true, "a": true},
@@ -580,6 +585,82 @@ func upsert_method_track(params: Dictionary) -> Dictionary:
 	}
 
 
+func upsert_nested_animation_track(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_player(params)
+	if resolved.has("_error"):
+		return resolved
+	var player: AnimationPlayer = resolved["player"]
+	var scene_root: Node = resolved["scene_root"]
+	var library_result := _resolve_library(player, params)
+	if library_result.has("_error"):
+		return library_result
+	var library: AnimationLibrary = library_result["library"]
+	var library_editability := _require_editable_library(library)
+	if library_editability != null:
+		return library_editability
+	var animation_result := _resolve_editable_animation(library, params)
+	if animation_result.has("_error"):
+		return animation_result
+	var animation: Animation = animation_result["animation"]
+	var target_result := _resolve_safe_nested_animation_track_target(
+		scene_root, str(params.get("target_path", ""))
+	)
+	if target_result.has("_error"):
+		return target_result
+	var target: AnimationPlayer = target_result["player"]
+	var animation_root_result := _resolve_animation_root(player, scene_root)
+	if animation_root_result.has("_error"):
+		return animation_root_result
+	var keys_result := _parse_nested_animation_track_keys(
+		params.get("keys", []), animation.length, target, player, animation, scene_root
+	)
+	if keys_result.has("_error"):
+		return keys_result
+	var enabled = params.get("enabled", true)
+	if not enabled is bool:
+		return Errors.make("INVALID_PARAMETER", "enabled must be a boolean")
+	var track_path := _make_node_track_path(animation_root_result["root"], target)
+	var existing_index := animation.find_track(track_path, Animation.TYPE_ANIMATION)
+	if existing_index >= 0 and animation.track_is_imported(existing_index):
+		return Errors.make(
+			"IMPORTED_ANIMATION_TRACK",
+			"Cannot replace imported animation track %d" % existing_index,
+			false,
+			"Edit the source animation instead of an imported track."
+		)
+	var replacement := _duplicate_animation(animation)
+	if replacement == null:
+		return Errors.make("ANIMATION_DUPLICATE_FAILED", "Godot failed to duplicate the animation resource")
+	var track_index := existing_index
+	if existing_index >= 0:
+		replacement.remove_track(existing_index)
+	track_index = replacement.add_track(Animation.TYPE_ANIMATION, existing_index)
+	replacement.track_set_path(track_index, track_path)
+	replacement.track_set_enabled(track_index, enabled)
+	for key in keys_result["keys"]:
+		replacement.animation_track_insert_key(track_index, key["time"], StringName(key["animation"]))
+	_commit_animation_replacement(
+		scene_root,
+		player,
+		library,
+		library_result["name"],
+		animation_result["name"],
+		animation,
+		replacement,
+		false,
+		"Godot 2D MCP: Update nested animation track"
+	)
+	return {
+		"player_path": ScenePath.from_node(player, scene_root),
+		"library": library_result["name"],
+		"animation": animation_result["name"],
+		"track": _serialize_track(replacement, track_index, animation_root_result["root"], scene_root),
+		"replaced_existing": existing_index >= 0,
+		"undoable": true,
+		"_scene_mutated": true,
+	}
+
+
 func delete_track(params: Dictionary) -> Dictionary:
 	var resolved := _resolve_player(params)
 	if resolved.has("_error"):
@@ -603,12 +684,13 @@ func delete_track(params: Dictionary) -> Dictionary:
 	var track_index: int = track_index_result["index"]
 	var track_type := animation.track_get_type(track_index)
 	if track_type != Animation.TYPE_VALUE and track_type != Animation.TYPE_AUDIO \
-		and track_type != Animation.TYPE_BEZIER and track_type != Animation.TYPE_METHOD:
+		and track_type != Animation.TYPE_BEZIER and track_type != Animation.TYPE_METHOD \
+		and track_type != Animation.TYPE_ANIMATION:
 		return Errors.make(
 			"UNSUPPORTED_ANIMATION_TRACK",
-			"animation_track_delete supports local 2D/UI value, Bezier, audio, and safe method tracks only",
+			"animation_track_delete supports local 2D/UI value, Bezier, audio, safe method, and nested animation tracks only",
 			false,
-			"Nested-animation and 3D tracks are not editable in this release."
+			"3D tracks are not editable in this release."
 		)
 	if animation.track_is_imported(track_index):
 		return Errors.make(
@@ -631,6 +713,10 @@ func delete_track(params: Dictionary) -> Dictionary:
 		)
 	elif track_type == Animation.TYPE_METHOD:
 		track_scope_result = _resolve_safe_method_track(
+			animation, track_index, animation_root_result["root"], scene_root
+		)
+	elif track_type == Animation.TYPE_ANIMATION:
+		track_scope_result = _resolve_safe_nested_animation_track(
 			animation, track_index, animation_root_result["root"], scene_root
 		)
 	else:
@@ -1236,8 +1322,76 @@ func _resolve_safe_method_track(
 	return {"node": target}
 
 
+func _resolve_safe_nested_animation_track_target(
+	scene_root: Node, target_path: String
+) -> Dictionary:
+	var target_result := _resolve_local_target(scene_root, target_path)
+	if target_result.has("_error"):
+		return target_result
+	var target: Node = target_result["node"]
+	if not target is AnimationPlayer:
+		return Errors.make(
+			"ANIMATION_PLAYER_REQUIRED",
+			"Nested animation tracks must target AnimationPlayer, not %s" % target.get_class(),
+			false,
+			"Create or target a scene-local un-scripted AnimationPlayer node."
+		)
+	var safety_check := _require_safe_method_track_target(target)
+	if safety_check != null:
+		return safety_check
+	return {"player": target as AnimationPlayer}
+
+
+func _resolve_safe_nested_animation_track(
+	animation: Animation, track_index: int, animation_root: Node, scene_root: Node
+) -> Dictionary:
+	var track_path := animation.track_get_path(track_index)
+	if track_path.get_subname_count() != 0:
+		return Errors.make(
+			"UNSUPPORTED_ANIMATION_TRACK_PATH",
+			"Nested animation track %d must target an AnimationPlayer node directly" % track_index,
+			false,
+			"Use animation_nested_track_upsert with a scene-local AnimationPlayer path."
+		)
+	var target := animation_root.get_node_or_null(track_path)
+	if target == null:
+		return Errors.make(
+			"ANIMATION_TARGET_NOT_FOUND",
+			"Animation track %d target no longer exists" % track_index,
+			false,
+			"Repair or replace the track with animation_nested_track_upsert."
+		)
+	if target != scene_root and target.owner != scene_root:
+		return Errors.make(
+			"PACKED_SCENE_BOUNDARY",
+			"Cannot edit a nested track targeting instanced node '%s'" % target.name,
+			false,
+			"Edit the source PackedScene or replace the track with a local target."
+		)
+	if not target is AnimationPlayer:
+		return Errors.make(
+			"ANIMATION_PLAYER_REQUIRED",
+			"Nested track %d targets %s, not AnimationPlayer" % [track_index, target.get_class()],
+			false,
+			"Use animation_nested_track_upsert with a scene-local AnimationPlayer path."
+		)
+	var safety_check := _require_safe_method_track_target(target)
+	if safety_check != null:
+		return safety_check
+	var target_player := target as AnimationPlayer
+	for key_index in animation.track_get_key_count(track_index):
+		var key_check := _resolve_nested_animation_key(
+			target_player,
+			str(animation.animation_track_get_key_animation(track_index, key_index)),
+			scene_root
+		)
+		if key_check.has("_error"):
+			return key_check
+	return {"player": target_player}
+
+
 func _require_2d_animation_track_scope(
-	animation: Animation, animation_root: Node, scene_root: Node
+	animation: Animation, animation_root: Node, scene_root: Node, allow_nested: bool = true
 ) -> Variant:
 	for track_index in animation.get_track_count():
 		var track_type := animation.track_get_type(track_index)
@@ -1269,11 +1423,25 @@ func _require_2d_animation_track_scope(
 			if method_result.has("_error"):
 				return method_result
 			continue
+		if track_type == Animation.TYPE_ANIMATION:
+			if not allow_nested:
+				return Errors.make(
+					"NESTED_ANIMATION_RECURSION",
+					"Nested target animations cannot contain further nested animation tracks",
+					false,
+					"Flatten this animation level into property, audio, Bezier, or safe method tracks."
+				)
+			var nested_result := _resolve_safe_nested_animation_track(
+				animation, track_index, animation_root, scene_root
+			)
+			if nested_result.has("_error"):
+				return nested_result
+			continue
 		return Errors.make(
 			"UNSUPPORTED_ANIMATION_TRACK",
 			"Animation contains an unsupported track at index %d" % track_index,
 			false,
-			"Only local 2D/UI property value, Bezier, safe method tracks, and AudioStreamPlayer2D audio tracks are editable."
+			"Only local 2D/UI property value, Bezier, safe method, one-level nested animation, and AudioStreamPlayer2D audio tracks are editable."
 		)
 	return null
 
@@ -1470,6 +1638,92 @@ func _parse_method_track_keys(
 			}
 		)
 	return {"keys": parsed}
+
+
+func _parse_nested_animation_track_keys(
+	raw_keys: Variant,
+	animation_length: float,
+	target: AnimationPlayer,
+	source_player: AnimationPlayer,
+	source_animation: Animation,
+	scene_root: Node
+) -> Dictionary:
+	if not raw_keys is Array or raw_keys.is_empty():
+		return Errors.make("MISSING_PARAMETER", "keys must be a non-empty array")
+	if raw_keys.size() > MAX_KEYS_PER_TRACK:
+		return Errors.make(
+			"REQUEST_LIMIT_EXCEEDED",
+			"A track can contain at most %d keys" % MAX_KEYS_PER_TRACK
+		)
+	var parsed: Array[Dictionary] = []
+	for raw_key in raw_keys:
+		if not raw_key is Dictionary:
+			return Errors.make("INVALID_NESTED_ANIMATION_KEY", "Every nested animation key must be an object")
+		for field in raw_key:
+			if not field is String or not NESTED_ANIMATION_KEY_FIELDS.has(field):
+				return Errors.make(
+					"INVALID_NESTED_ANIMATION_KEY", "Nested keys allow only time and animation"
+				)
+		if not raw_key.has("time") or not raw_key.has("animation"):
+			return Errors.make(
+				"INVALID_NESTED_ANIMATION_KEY", "Each nested animation key requires time and animation"
+			)
+		var time_result := _parse_key_time(raw_key["time"], animation_length)
+		if time_result.has("_error"):
+			return time_result
+		var animation_check := _resolve_nested_animation_key(
+			target, raw_key["animation"], scene_root
+		)
+		if animation_check.has("_error"):
+			return animation_check
+		if target == source_player and animation_check.get("resource", null) == source_animation:
+			return Errors.make(
+				"NESTED_ANIMATION_RECURSION",
+				"Animation cannot target itself through a nested animation track",
+				false,
+				"Target a different AnimationPlayer animation or use property tracks directly."
+			)
+		for existing_key in parsed:
+			if is_equal_approx(existing_key["time"], time_result["time"]):
+				return Errors.make(
+					"DUPLICATE_ANIMATION_KEY",
+					"A track cannot contain more than one key at the same time"
+				)
+		parsed.append({"time": time_result["time"], "animation": animation_check["name"]})
+	return {"keys": parsed}
+
+
+func _resolve_nested_animation_key(
+	target: AnimationPlayer, raw_animation_name: Variant, scene_root: Node
+) -> Dictionary:
+	if not raw_animation_name is String:
+		return Errors.make("INVALID_NESTED_ANIMATION_KEY", "animation must be a string")
+	var animation_name: String = raw_animation_name.strip_edges()
+	if animation_name.is_empty() or animation_name.length() > 256:
+		return Errors.make(
+			"INVALID_NESTED_ANIMATION_KEY", "animation must contain between 1 and 256 characters"
+		)
+	if animation_name == NESTED_ANIMATION_STOP:
+		return {"name": animation_name, "resource": null}
+	if not target.has_animation(StringName(animation_name)):
+		return Errors.make(
+			"ANIMATION_NOT_FOUND",
+			"AnimationPlayer '%s' has no animation named '%s'" % [target.name, animation_name],
+			false,
+			"Call animation_list to inspect the target AnimationPlayer."
+		)
+	var nested_animation := target.get_animation(StringName(animation_name))
+	if nested_animation == null:
+		return Errors.make("ANIMATION_NOT_FOUND", "Target AnimationPlayer animation is unavailable")
+	var nested_root_result := _resolve_animation_root(target, scene_root)
+	if nested_root_result.has("_error"):
+		return nested_root_result
+	var scope_check := _require_2d_animation_track_scope(
+		nested_animation, nested_root_result["root"], scene_root, false
+	)
+	if scope_check != null:
+		return scope_check
+	return {"name": animation_name, "resource": nested_animation}
 
 
 func _parse_safe_method_track_call(
@@ -1947,6 +2201,10 @@ func _serialize_key(animation: Animation, track_index: int, key_index: int) -> D
 		result["method"] = str(animation.method_track_get_name(track_index, key_index))
 		result["args"] = VariantCodec.serialize(
 			animation.method_track_get_params(track_index, key_index)
+		)
+	elif animation.track_get_type(track_index) == Animation.TYPE_ANIMATION:
+		result["animation"] = str(
+			animation.animation_track_get_key_animation(track_index, key_index)
 		)
 	else:
 		result["value"] = VariantCodec.serialize(animation.track_get_key_value(track_index, key_index))

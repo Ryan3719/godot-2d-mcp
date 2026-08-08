@@ -1652,6 +1652,29 @@ def create_application(
             scene_file=scene_file,
         )
 
+    @mcp.tool(annotations=WRITE)
+    async def animation_nested_track_upsert(
+        player_path: str,
+        animation: str,
+        target_path: str,
+        keys: list[dict[str, Any]],
+        enabled: bool = True,
+        library: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Create or replace a validated one-level nested AnimationPlayer track."""
+        return await service.animation_nested_track_upsert(
+            player_path=player_path,
+            animation=animation,
+            target_path=target_path,
+            keys=keys,
+            enabled=enabled,
+            library=library,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
     @mcp.tool(annotations=DESTRUCTIVE_WRITE)
     async def animation_track_delete(
         player_path: str,
