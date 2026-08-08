@@ -47,3 +47,15 @@ func request_runtime_performance_sample(params: Dictionary) -> Dictionary:
 
 func get_runtime_performance_sample_result(params: Dictionary) -> Dictionary:
 	return _runtime_bridge.get_performance_sample_result(params)
+
+
+func request_runtime_tween_start(params: Dictionary) -> Dictionary:
+	return _runtime_bridge.request_tween_start(params)
+
+
+func get_runtime_tween_result(params: Dictionary) -> Dictionary:
+	return _runtime_bridge.get_tween_result(params)
+
+
+func request_runtime_tween_stop(params: Dictionary) -> Dictionary:
+	return _runtime_bridge.request_tween_stop(params)

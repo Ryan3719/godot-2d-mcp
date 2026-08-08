@@ -9,6 +9,7 @@ const MAX_SCREENSHOT_RESULTS := 8
 const MAX_INPUT_RESULTS := 32
 const MAX_AUDIO_CONTROL_RESULTS := 32
 const MAX_PERFORMANCE_SAMPLE_RESULTS := 16
+const MAX_TWEEN_RESULTS := 32
 
 var _autoload_status: Dictionary = {"available": false, "reason": "not_configured"}
 var _session_states: Dictionary = {}
@@ -23,6 +24,8 @@ var _audio_control_requests: Dictionary = {}
 var _audio_control_order: Array[String] = []
 var _performance_sample_requests: Dictionary = {}
 var _performance_sample_order: Array[String] = []
+var _tween_requests: Dictionary = {}
+var _tween_order: Array[String] = []
 
 
 func configure_autoload(status: Dictionary) -> void:
@@ -75,6 +78,10 @@ func _capture(message: String, data: Array, session_id: int) -> bool:
 			if data.size() == 2 and data[1] is Dictionary:
 				_store_performance_sample_result(str(data[0]), data[1], session_id)
 			return true
+		"tween_result":
+			if data.size() == 2 and data[1] is Dictionary:
+				_store_tween_result(str(data[0]), data[1], session_id)
+			return true
 	return false
 
 
@@ -90,6 +97,7 @@ func get_runtime_state(_params: Dictionary) -> Dictionary:
 		"pending_inputs": _pending_count(_input_requests),
 		"pending_audio_controls": _pending_count(_audio_control_requests),
 		"pending_performance_samples": _pending_count(_performance_sample_requests),
+		"pending_tweens": _pending_count(_tween_requests),
 	}
 
 
@@ -229,6 +237,64 @@ func get_performance_sample_result(params: Dictionary) -> Dictionary:
 	return {"request_id": request_id, "status": result["status"], "result": result.get("result", {})}
 
 
+func request_tween_start(params: Dictionary) -> Dictionary:
+	var session_result := _active_session_result()
+	if session_result.has("_error"):
+		return session_result
+	var request_id := _new_request_id("tween")
+	_tween_requests[request_id] = {"status": "pending", "session_id": session_result["session_id"]}
+	(session_result["session"] as EditorDebuggerSession).send_message(
+		"%s:tween_start" % CAPTURE_NAME, [request_id, params.duplicate(true)]
+	)
+	return {"request_id": request_id, "status": "pending"}
+
+
+func get_tween_result(params: Dictionary) -> Dictionary:
+	var request_id := str(params.get("request_id", "")).strip_edges()
+	if not _tween_requests.has(request_id):
+		return Errors.make(
+			"RUNTIME_TWEEN_NOT_FOUND",
+			"No runtime tween request exists with this request_id",
+			false,
+			"Call runtime_tween_start first and retain its request_id."
+		)
+	var result: Dictionary = _tween_requests[request_id]
+	return {"request_id": request_id, "status": result["status"], "result": result.get("result", {})}
+
+
+func request_tween_stop(params: Dictionary) -> Dictionary:
+	var request_id := str(params.get("request_id", "")).strip_edges()
+	if not _tween_requests.has(request_id):
+		return Errors.make(
+			"RUNTIME_TWEEN_NOT_FOUND",
+			"No runtime tween request exists with this request_id",
+			false,
+			"Call runtime_tween_start first and retain its request_id."
+		)
+	var request: Dictionary = _tween_requests[request_id]
+	if str(request.get("status", "")) != "pending":
+		return Errors.make(
+			"RUNTIME_TWEEN_NOT_ACTIVE",
+			"The runtime tween is no longer active",
+			false,
+			"Only a pending runtime tween can be stopped."
+		)
+	var session_result := _active_session_result()
+	if session_result.has("_error"):
+		return session_result
+	if int(request.get("session_id", -1)) != int(session_result["session_id"]):
+		return Errors.make(
+			"RUNTIME_TWEEN_SESSION_MISMATCH",
+			"The active runtime session does not own this tween request",
+			true,
+			"Activate the Godot editor session that started the tween before stopping it."
+		)
+	(session_result["session"] as EditorDebuggerSession).send_message(
+		"%s:tween_stop" % CAPTURE_NAME, [request_id]
+	)
+	return {"request_id": request_id, "status": "cancellation_requested"}
+
+
 func _on_session_started(session_id: int) -> void:
 	var state: Dictionary = _session_states.get(session_id, {})
 	state["started"] = true
@@ -240,6 +306,21 @@ func _on_session_stopped(session_id: int) -> void:
 	state["started"] = false
 	state["ready"] = false
 	_session_states[session_id] = state
+	for request_id_value in _tween_requests.keys():
+		var request_id := str(request_id_value)
+		var request: Dictionary = _tween_requests[request_id]
+		if int(request.get("session_id", -1)) != session_id or str(request.get("status", "")) != "pending":
+			continue
+		request["status"] = "error"
+		request["result"] = {
+			"ok": false,
+			"code": "RUNTIME_TWEEN_SESSION_STOPPED",
+			"message": "The game session stopped before the runtime tween completed",
+		}
+		_tween_requests[request_id] = request
+		_tween_order.erase(request_id)
+		_tween_order.append(request_id)
+	_trim_results(_tween_requests, _tween_order, MAX_TWEEN_RESULTS)
 
 
 func _append_logs(entries: Array, session_id: int) -> void:
@@ -318,6 +399,20 @@ func _store_performance_sample_result(request_id: String, result: Dictionary, se
 	_trim_results(
 		_performance_sample_requests, _performance_sample_order, MAX_PERFORMANCE_SAMPLE_RESULTS
 	)
+
+
+func _store_tween_result(request_id: String, result: Dictionary, session_id: int) -> void:
+	if not _tween_requests.has(request_id):
+		return
+	var request: Dictionary = _tween_requests[request_id]
+	if int(request.get("session_id", -1)) != session_id:
+		return
+	request["status"] = "ready" if bool(result.get("ok", false)) else "error"
+	request["result"] = result.duplicate(true)
+	_tween_requests[request_id] = request
+	_tween_order.erase(request_id)
+	_tween_order.append(request_id)
+	_trim_results(_tween_requests, _tween_order, MAX_TWEEN_RESULTS)
 
 
 func _active_session_result() -> Dictionary:

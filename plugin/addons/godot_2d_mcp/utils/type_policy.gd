@@ -216,7 +216,8 @@ const NODE_SEMANTIC_CATALOG := [
 			"canvas_item_material_set", "canvas_item_material_clear", "canvas_item_shader_get",
 			"canvas_item_shader_create", "canvas_item_shader_bind", "canvas_item_shader_set",
 			"canvas_item_shader_uniforms_set", "canvas_item_shader_uniforms_clear",
-			"canvas_item_shader_clear",
+			"canvas_item_shader_clear", "runtime_tween_start", "runtime_tween_result_get",
+			"runtime_tween_stop",
 		],
 	},
 	{

@@ -7013,6 +7013,135 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             is not False
         ):
             raise RuntimeError(f"Runtime audio did not stop playing: {audio_stop}")
+        missing_tween_request = await app.service.runtime_tween_start(
+            "/RuntimeSmoke/MissingTween",
+            [
+                {
+                    "property": "modulate:a",
+                    "to": 0.5,
+                    "duration_seconds": 0.1,
+                }
+            ],
+        )
+        missing_tween = await _wait_for_runtime_tween_result(
+            app, missing_tween_request["request_id"]
+        )
+        if (
+            missing_tween.get("status") != "error"
+            or missing_tween.get("result", {}).get("code")
+            != "RUNTIME_TWEEN_NODE_NOT_FOUND"
+        ):
+            raise RuntimeError(
+                f"Runtime tween missing-node error was not reported: {missing_tween}"
+            )
+        non_canvas_tween_request = await app.service.runtime_tween_start(
+            "/RuntimeSmoke/Canvas",
+            [{"property": "layer", "to": 1, "duration_seconds": 0.1}],
+        )
+        non_canvas_tween = await _wait_for_runtime_tween_result(
+            app, non_canvas_tween_request["request_id"]
+        )
+        if (
+            non_canvas_tween.get("status") != "error"
+            or non_canvas_tween.get("result", {}).get("code")
+            != "RUNTIME_TWEEN_CANVAS_ITEM_REQUIRED"
+        ):
+            raise RuntimeError(
+                f"Runtime tween non-CanvasItem error was not reported: {non_canvas_tween}"
+            )
+        scripted_property_tween_request = await app.service.runtime_tween_start(
+            "/RuntimeSmoke",
+            [{"property": "tween_script_value", "to": 1.0, "duration_seconds": 0.1}],
+        )
+        scripted_property_tween = await _wait_for_runtime_tween_result(
+            app, scripted_property_tween_request["request_id"]
+        )
+        if (
+            scripted_property_tween.get("status") != "error"
+            or scripted_property_tween.get("result", {}).get("code")
+            != "RUNTIME_TWEEN_PROPERTY_NOT_FOUND"
+        ):
+            raise RuntimeError(
+                "Runtime tween script-defined-property error was not reported: "
+                f"{scripted_property_tween}"
+            )
+        label_tween_request = await app.service.runtime_tween_start(
+            "/RuntimeSmoke/Canvas/Label",
+            [
+                {
+                    "property": "position",
+                    "from": {"x": 24, "y": 24},
+                    "to": {"x": 8, "y": 0},
+                    "duration_seconds": 0.1,
+                    "transition": "sine",
+                    "ease": "out",
+                    "relative": True,
+                },
+                {
+                    "property": "modulate:a",
+                    "from": 1.0,
+                    "to": 0.5,
+                    "duration_seconds": 0.1,
+                    "delay_seconds": 0.02,
+                },
+            ],
+            parallel=True,
+            loops=1,
+        )
+        label_tween = await _wait_for_runtime_tween_result(app, label_tween_request["request_id"])
+        label_tween_data = label_tween.get("result", {})
+        if (
+            label_tween.get("status") != "ready"
+            or label_tween_data.get("state") != "completed"
+            or label_tween_data.get("path") != "/RuntimeSmoke/Canvas/Label"
+            or label_tween_data.get("track_count") != 2
+            or label_tween_data.get("loops") != 1
+            or label_tween_data.get("elapsed_seconds", 0.0) < 0.1
+        ):
+            raise RuntimeError(f"Runtime finite tween did not complete: {label_tween}")
+        cancellable_tween_request = await app.service.runtime_tween_start(
+            "/RuntimeSmoke/Canvas/Label",
+            [
+                {
+                    "property": "modulate:a",
+                    "to": 1.0,
+                    "duration_seconds": 1.0,
+                }
+            ],
+            loops=0,
+        )
+        tween_stop = await app.service.runtime_tween_stop(cancellable_tween_request["request_id"])
+        if tween_stop.get("status") != "cancellation_requested":
+            raise RuntimeError(f"Runtime tween stop was not accepted: {tween_stop}")
+        cancelled_tween = await _wait_for_runtime_tween_result(
+            app, cancellable_tween_request["request_id"]
+        )
+        if (
+            cancelled_tween.get("status") != "ready"
+            or cancelled_tween.get("result", {}).get("state") != "cancelled"
+            or cancelled_tween.get("result", {}).get("loops") != 0
+        ):
+            raise RuntimeError(f"Runtime tween cancellation did not complete: {cancelled_tween}")
+        background_tween_request = await app.service.runtime_tween_start(
+            "/RuntimeSmoke/Canvas/Background",
+            [
+                {
+                    "property": "color",
+                    "to": {"r": 0.25, "g": 0.6, "b": 0.35, "a": 1.0},
+                    "duration_seconds": 0.1,
+                    "transition": "quad",
+                    "ease": "in_out",
+                }
+            ],
+        )
+        background_tween = await _wait_for_runtime_tween_result(
+            app, background_tween_request["request_id"]
+        )
+        if (
+            background_tween.get("status") != "ready"
+            or background_tween.get("result", {}).get("state") != "completed"
+        ):
+            raise RuntimeError(f"Runtime color tween did not complete: {background_tween}")
         screenshot_request = await app.service.runtime_screenshot_request(
             format="png", max_width=128, max_height=128
         )
@@ -7035,9 +7164,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
                 f"Runtime screenshot had unexpected dimensions: {screenshot_result}"
             )
         red, green, blue = _png_top_left_rgb(screenshot_bytes)
-        if red < 128 or green > 128 or blue > 128:
+        if not (60 <= red <= 68 and 149 <= green <= 157 and 85 <= blue <= 93):
             raise RuntimeError(
-                "Runtime screenshot did not contain the rendered smoke-scene background"
+                "Runtime screenshot did not contain the tweened smoke-scene background"
             )
         screenshot_assertions = await app.service.runtime_screenshot_assert(
             screenshot_request["request_id"],
@@ -7047,12 +7176,12 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
                     "kind": "pixel",
                     "x": 0,
                     "y": 0,
-                    "color": {"r": 230, "g": 13, "b": 26},
+                    "color": {"r": 64, "g": 153, "b": 89},
                     "tolerance": 4,
                 },
                 {
                     "kind": "color_presence",
-                    "color": {"r": 230, "g": 13, "b": 26},
+                    "color": {"r": 64, "g": 153, "b": 89},
                     "tolerance": 4,
                     "min_pixels": 100,
                 },
@@ -7415,6 +7544,22 @@ async def _wait_for_runtime_audio_control_result(
         await asyncio.sleep(0.1)
     raise RuntimeError(
         "Runtime audio control did not complete within "
+        f"{timeout_seconds:.0f} seconds; last result: {result}"
+    )
+
+
+async def _wait_for_runtime_tween_result(
+    app: object, request_id: str, timeout_seconds: float = 10.0
+) -> dict:
+    attempts = int(timeout_seconds / 0.1)
+    result: dict = {}
+    for _ in range(attempts):
+        result = await app.service.runtime_tween_result_get(request_id)
+        if result.get("status") != "pending":
+            return result
+        await asyncio.sleep(0.1)
+    raise RuntimeError(
+        "Runtime tween did not complete within "
         f"{timeout_seconds:.0f} seconds; last result: {result}"
     )
 
