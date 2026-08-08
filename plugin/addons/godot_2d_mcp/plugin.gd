@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.66.0"
+const PLUGIN_VERSION := "0.67.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 const RUNTIME_AUTOLOAD_NAME := "Godot2DMcpRuntime"
 const RUNTIME_AUTOLOAD_PATH := "res://addons/godot_2d_mcp/runtime/runtime_bridge.gd"
@@ -38,6 +38,7 @@ const AnimatedSpriteHandlerScript := preload("res://addons/godot_2d_mcp/handlers
 const ButtonHandlerScript := preload("res://addons/godot_2d_mcp/handlers/button_handler.gd")
 const RangeHandlerScript := preload("res://addons/godot_2d_mcp/handlers/range_handler.gd")
 const TextInputHandlerScript := preload("res://addons/godot_2d_mcp/handlers/text_input_handler.gd")
+const TextDisplayHandlerScript := preload("res://addons/godot_2d_mcp/handlers/text_display_handler.gd")
 const ResourceHandlerScript := preload("res://addons/godot_2d_mcp/handlers/resource_handler.gd")
 const ShortcutHandlerScript := preload("res://addons/godot_2d_mcp/handlers/shortcut_handler.gd")
 const RuntimeHandlerScript := preload("res://addons/godot_2d_mcp/handlers/runtime_handler.gd")
@@ -126,6 +127,7 @@ func _register_handlers() -> void:
 	var button_handler: RefCounted = ButtonHandlerScript.new(get_undo_redo())
 	var range_handler: RefCounted = RangeHandlerScript.new(get_undo_redo())
 	var text_input_handler: RefCounted = TextInputHandlerScript.new(get_undo_redo())
+	var text_display_handler: RefCounted = TextDisplayHandlerScript.new(get_undo_redo())
 	var resource_handler: RefCounted = ResourceHandlerScript.new(get_undo_redo())
 	var shortcut_handler: RefCounted = ShortcutHandlerScript.new(get_undo_redo())
 	var runtime_handler: RefCounted = RuntimeHandlerScript.new(_runtime_debugger)
@@ -140,6 +142,7 @@ func _register_handlers() -> void:
 		button_handler,
 		range_handler,
 		text_input_handler,
+		text_display_handler,
 		resource_handler,
 		shortcut_handler,
 		runtime_handler
@@ -228,6 +231,7 @@ func _register_handlers() -> void:
 	_dispatcher.register("button_2d_get", button_handler.get_button_2d)
 	_dispatcher.register("range_2d_get", range_handler.get_range_2d)
 	_dispatcher.register("text_input_2d_get", text_input_handler.get_text_input_2d)
+	_dispatcher.register("text_display_2d_get", text_display_handler.get_text_display_2d)
 	_dispatcher.register("button_menu_items_get", button_handler.get_button_menu_items)
 	_dispatcher.register("resource_get", resource_handler.get_resource)
 	_dispatcher.register("shortcut_get", shortcut_handler.get_shortcut)
@@ -354,6 +358,7 @@ func _register_handlers() -> void:
 	_dispatcher.register("button_2d_set", button_handler.set_button_2d)
 	_dispatcher.register("range_2d_set", range_handler.set_range_2d)
 	_dispatcher.register("text_input_2d_set", text_input_handler.set_text_input_2d)
+	_dispatcher.register("text_display_2d_set", text_display_handler.set_text_display_2d)
 	_dispatcher.register("button_menu_items_set", button_handler.set_button_menu_items)
 	_dispatcher.register("button_menu_items_clear", button_handler.clear_button_menu_items)
 	_dispatcher.register("resource_create", resource_handler.create_resource)

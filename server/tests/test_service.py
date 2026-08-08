@@ -440,6 +440,72 @@ async def test_text_input_2d_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_text_display_2d_tools_forward_validated_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    properties = {
+        "text": "[b]Agent[/b] status",
+        "bbcode_enabled": True,
+        "fit_content": True,
+        "scroll_following": True,
+        "autowrap_mode": "smart_word",
+        "autowrap_trim_flags": ["trim_start", "trim_end"],
+        "horizontal_alignment": "center",
+        "vertical_alignment": "fill",
+        "justification_flags": ["word_bound", "skip_last_line"],
+        "tab_stops": [32.0, 64.0],
+        "visible_characters_behavior": "glyphs_ltr",
+        "visible_ratio": 0.5,
+        "text_direction": "ltr",
+    }
+
+    await service.text_display_2d_get(
+        "/Main/Status", scene_file="res://main.tscn", session_id="project@a1b2"
+    )
+    await service.text_display_2d_set(
+        "/Main/Status",
+        properties,
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
+
+    assert bridge.calls == [
+        (
+            "text_display_2d_get",
+            {"path": "/Main/Status", "scene_file": "res://main.tscn"},
+            "project@a1b2",
+        ),
+        (
+            "text_display_2d_set",
+            {
+                "path": "/Main/Status",
+                "properties": properties,
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_text_display_2d_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    for properties, label in (
+        ({"label_settings_path": "../style.tres"}, "label_settings_path"),
+        ({"ellipsis_char": "..."}, "ellipsis_char"),
+        ({"visible_ratio": 1.1}, "visible_ratio"),
+        ({"autowrap_trim_flags": ["trim_start", "trim_start"]}, "autowrap_trim_flags"),
+        ({"justification_flags": ["unknown"]}, "justification_flags"),
+        ({"tab_stops": [32.0, 16.0]}, "tab_stops"),
+        ({"visible_characters_behavior": "glyphs"}, "visible_characters_behavior"),
+        ({"unknown": True}, "unsupported text display property"),
+    ):
+        with pytest.raises(ValueError, match=label):
+            await service.text_display_2d_set("/Main/Status", properties)
+
+
+@pytest.mark.asyncio
 async def test_container_2d_tools_forward_validated_payloads() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

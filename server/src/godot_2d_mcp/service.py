@@ -964,6 +964,19 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def text_display_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "text_display_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def animated_sprite_2d_set(
         self,
         path: str,
@@ -1020,6 +1033,21 @@ class GodotService:
         _validate_text_input_2d_properties(properties)
         return await self.bridge.call(
             "text_input_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def text_display_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_text_display_2d_properties(properties)
+        return await self.bridge.call(
+            "text_display_2d_set",
             _scene_params(scene_file, path=path, properties=properties),
             session_id=session_id,
         )
@@ -6503,6 +6531,167 @@ def _validate_text_input_2d_properties(properties: dict[str, Any]) -> None:
             raise ValueError(
                 "auto_brace_completion_pairs must contain at most 64 non-empty string pairs "
                 "up to 128 characters"
+            )
+
+
+def _validate_text_display_2d_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "text",
+        "label_settings_path",
+        "horizontal_alignment",
+        "vertical_alignment",
+        "autowrap_mode",
+        "autowrap_trim_flags",
+        "justification_flags",
+        "paragraph_separator",
+        "clip_text",
+        "text_overrun_behavior",
+        "ellipsis_char",
+        "uppercase",
+        "tab_stops",
+        "lines_skipped",
+        "max_lines_visible",
+        "visible_characters",
+        "visible_characters_behavior",
+        "visible_ratio",
+        "text_direction",
+        "language",
+        "bbcode_enabled",
+        "fit_content",
+        "scroll_active",
+        "scroll_following",
+        "scroll_following_visible_characters",
+        "tab_size",
+        "context_menu_enabled",
+        "shortcut_keys_enabled",
+        "meta_underlined",
+        "hint_underlined",
+        "threaded",
+        "progress_bar_delay",
+        "selection_enabled",
+        "deselect_on_focus_loss_enabled",
+        "drag_and_drop_selection_enabled",
+    }
+    _validate_draw_2d_property_names(properties, allowed, "text display", maximum=40)
+    for name in {
+        "bbcode_enabled",
+        "fit_content",
+        "scroll_active",
+        "scroll_following",
+        "scroll_following_visible_characters",
+        "context_menu_enabled",
+        "shortcut_keys_enabled",
+        "meta_underlined",
+        "hint_underlined",
+        "threaded",
+        "selection_enabled",
+        "deselect_on_focus_loss_enabled",
+        "drag_and_drop_selection_enabled",
+        "clip_text",
+        "uppercase",
+    } & properties.keys():
+        _validate_boolean(properties[name], name)
+    if "label_settings_path" in properties:
+        _validate_optional_project_resource_path(
+            properties["label_settings_path"], "label_settings_path"
+        )
+    for name, maximum in (
+        ("text", 65_536),
+        ("paragraph_separator", 128),
+        ("language", 128),
+    ):
+        if name in properties and (
+            not isinstance(properties[name], str) or len(properties[name]) > maximum
+        ):
+            raise ValueError(f"{name} must be a string up to {maximum} characters")
+    if "ellipsis_char" in properties and (
+        not isinstance(properties["ellipsis_char"], str)
+        or len(properties["ellipsis_char"]) != 1
+    ):
+        raise ValueError("ellipsis_char must contain exactly one character")
+    for name, minimum, maximum in (
+        ("lines_skipped", 0, 999),
+        ("max_lines_visible", -1, 999),
+        ("visible_characters", -1, 128_000),
+        ("tab_size", 0, 24),
+        ("progress_bar_delay", 0, 10_000),
+    ):
+        if name in properties:
+            _validate_draw_2d_integer(properties[name], name, minimum=minimum, maximum=maximum)
+    if "visible_ratio" in properties and (
+        not _is_finite_number(properties["visible_ratio"])
+        or not 0 <= float(properties["visible_ratio"]) <= 1
+    ):
+        raise ValueError("visible_ratio must be a finite number between 0 and 1")
+    _validate_draw_2d_enum(
+        properties, "horizontal_alignment", {"left", "center", "right", "fill"}
+    )
+    _validate_draw_2d_enum(
+        properties, "vertical_alignment", {"top", "center", "bottom", "fill"}
+    )
+    _validate_draw_2d_enum(properties, "autowrap_mode", {"off", "arbitrary", "word", "smart_word"})
+    _validate_draw_2d_enum(
+        properties,
+        "text_overrun_behavior",
+        {
+            "no_trimming",
+            "trim_characters",
+            "trim_words",
+            "ellipsis",
+            "word_ellipsis",
+            "ellipsis_force",
+            "word_ellipsis_force",
+        },
+    )
+    _validate_draw_2d_enum(
+        properties,
+        "visible_characters_behavior",
+        {"before_shaping", "after_shaping", "glyphs_auto", "glyphs_ltr", "glyphs_rtl"},
+    )
+    _validate_draw_2d_enum(properties, "text_direction", {"auto", "ltr", "rtl", "inherited"})
+    for name, allowed_names in (
+        ("autowrap_trim_flags", {"trim_start", "trim_end"}),
+        (
+            "justification_flags",
+            {
+                "kashida",
+                "word_bound",
+                "after_last_tab",
+                "skip_last_line",
+                "skip_last_line_with_visible_characters",
+                "do_not_skip_single_line",
+            },
+        ),
+    ):
+        if name in properties:
+            value = properties[name]
+            if (
+                not isinstance(value, list)
+                or len(value) > len(allowed_names)
+                or any(
+                    not isinstance(entry, str) or entry.strip().lower() not in allowed_names
+                    for entry in value
+                )
+                or len({entry.strip().lower() for entry in value}) != len(value)
+            ):
+                raise ValueError(f"{name} must contain unique supported names")
+    if "tab_stops" in properties:
+        value = properties["tab_stops"]
+        if (
+            not isinstance(value, list)
+            or len(value) > 32
+            or any(
+                not _is_finite_number(entry) or not 0 <= float(entry) <= 100_000
+                for entry in value
+            )
+            or any(
+                float(value[index]) >= float(value[index + 1])
+                for index in range(len(value) - 1)
+            )
+        ):
+            raise ValueError(
+                "tab_stops must contain at most 32 strictly increasing finite numbers "
+                "from 0 to 100000"
             )
 
 
