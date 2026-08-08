@@ -311,6 +311,43 @@ def create_application(
         )
 
     @mcp.tool(annotations=WRITE)
+    async def runtime_tween_start(
+        path: str,
+        tracks: list[dict[str, Any]],
+        parallel: bool = True,
+        loops: int = 1,
+        process_mode: str = "idle",
+        pause_mode: str = "bound",
+        ignore_time_scale: bool = False,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Start bounded native Tween property tracks on one running 2D CanvasItem."""
+        return await service.runtime_tween_start(
+            path=path,
+            tracks=tracks,
+            parallel=parallel,
+            loops=loops,
+            process_mode=process_mode,
+            pause_mode=pause_mode,
+            ignore_time_scale=ignore_time_scale,
+            session_id=session_id,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
+    async def runtime_tween_result_get(
+        request_id: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        """Poll a runtime Tween for completion, cancellation, or a structured error."""
+        return await service.runtime_tween_result_get(request_id=request_id, session_id=session_id)
+
+    @mcp.tool(annotations=WRITE)
+    async def runtime_tween_stop(
+        request_id: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        """Cancel one pending runtime Tween; poll its paired result tool for the terminal state."""
+        return await service.runtime_tween_stop(request_id=request_id, session_id=session_id)
+
+    @mcp.tool(annotations=WRITE)
     async def runtime_test_run(
         mode: str = "current",
         scene_file: str = "",

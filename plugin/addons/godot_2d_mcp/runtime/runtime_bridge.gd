@@ -1,5 +1,7 @@
 extends Node
 
+const VariantCodec := preload("res://addons/godot_2d_mcp/utils/variant_codec.gd")
+
 const CAPTURE_NAME := "godot_2d_mcp"
 const MAX_LOG_ENTRY_LENGTH := 2048
 const MAX_PENDING_LOGS := 512
@@ -15,12 +17,66 @@ const MAX_AUDIO_POSITION_SECONDS := 3600.0
 const MIN_PERFORMANCE_SAMPLE_SECONDS := 0.1
 const MAX_PERFORMANCE_SAMPLE_SECONDS := 30.0
 const MAX_PENDING_PERFORMANCE_SAMPLES := 4
+const MAX_ACTIVE_TWEENS := 32
+const MAX_TWEEN_TRACKS := 16
+const MAX_TWEEN_DURATION_SECONDS := 60.0
+const MAX_TWEEN_DELAY_SECONDS := 60.0
+const MAX_TWEEN_LOOPS := 100
+const TWEEN_PROTECTED_PROPERTIES := {
+	"owner": true,
+	"scene_file_path": true,
+	"script": true,
+}
+const TWEEN_COMPONENTS_BY_TYPE := {
+	TYPE_VECTOR2: {"x": true, "y": true},
+	TYPE_COLOR: {"r": true, "g": true, "b": true, "a": true},
+}
+const TWEEN_SUPPORTED_VALUE_TYPES := {
+	TYPE_INT: true,
+	TYPE_FLOAT: true,
+	TYPE_VECTOR2: true,
+	TYPE_VECTOR2I: true,
+	TYPE_RECT2: true,
+	TYPE_RECT2I: true,
+	TYPE_TRANSFORM2D: true,
+	TYPE_COLOR: true,
+}
+const TWEEN_TRANSITIONS := {
+	"linear": Tween.TRANS_LINEAR,
+	"sine": Tween.TRANS_SINE,
+	"quint": Tween.TRANS_QUINT,
+	"quart": Tween.TRANS_QUART,
+	"quad": Tween.TRANS_QUAD,
+	"expo": Tween.TRANS_EXPO,
+	"elastic": Tween.TRANS_ELASTIC,
+	"cubic": Tween.TRANS_CUBIC,
+	"circ": Tween.TRANS_CIRC,
+	"bounce": Tween.TRANS_BOUNCE,
+	"back": Tween.TRANS_BACK,
+	"spring": Tween.TRANS_SPRING,
+}
+const TWEEN_EASES := {
+	"in": Tween.EASE_IN,
+	"out": Tween.EASE_OUT,
+	"in_out": Tween.EASE_IN_OUT,
+	"out_in": Tween.EASE_OUT_IN,
+}
+const TWEEN_PROCESS_MODES := {
+	"idle": Tween.TWEEN_PROCESS_IDLE,
+	"physics": Tween.TWEEN_PROCESS_PHYSICS,
+}
+const TWEEN_PAUSE_MODES := {
+	"bound": Tween.TWEEN_PAUSE_BOUND,
+	"stop": Tween.TWEEN_PAUSE_STOP,
+	"process": Tween.TWEEN_PAUSE_PROCESS,
+}
 
 var _logger: Logger
 var _pending_logs: Array[Dictionary] = []
 var _pending_log_mutex := Mutex.new()
 var _pending_screenshots: Array[Dictionary] = []
 var _pending_performance_samples: Array[Dictionary] = []
+var _active_tweens: Dictionary = {}
 var _debugger_active := false
 
 
@@ -48,13 +104,17 @@ func _ready() -> void:
 		[
 			{
 				"protocol_version": 1,
-				"capabilities": ["logs", "screenshot", "input", "touch_input", "audio_stream_player_2d", "performance_sample"],
+				"capabilities": [
+					"logs", "screenshot", "input", "touch_input", "audio_stream_player_2d",
+					"performance_sample", "tween",
+				],
 			}
 		]
 	)
 
 
 func _exit_tree() -> void:
+	_clear_active_tweens()
 	if _logger != null:
 		OS.remove_logger(_logger)
 		_logger = null
@@ -64,6 +124,7 @@ func _exit_tree() -> void:
 
 func _process(delta: float) -> void:
 	_flush_logs()
+	_sweep_active_tweens()
 	_update_performance_samples(delta)
 	if _pending_screenshots.is_empty():
 		return
@@ -126,6 +187,22 @@ func _capture_debugger_message(message: String, data: Array) -> bool:
 			if performance_request_id.is_empty() or performance_request_id.length() > 128:
 				return true
 			_request_performance_sample(performance_request_id, data[1])
+			return true
+		"tween_start":
+			if data.size() != 2 or not data[1] is Dictionary:
+				return true
+			var tween_request_id := str(data[0]).strip_edges()
+			if tween_request_id.is_empty() or tween_request_id.length() > 128:
+				return true
+			_handle_tween_start(tween_request_id, data[1])
+			return true
+		"tween_stop":
+			if data.size() != 1:
+				return true
+			var tween_stop_request_id := str(data[0]).strip_edges()
+			if tween_stop_request_id.is_empty() or tween_stop_request_id.length() > 128:
+				return true
+			_handle_tween_stop(tween_stop_request_id)
 			return true
 	return false
 
@@ -221,6 +298,390 @@ func _safe_performance_monitor(monitor: Performance.Monitor) -> float:
 
 func _send_performance_sample_error(request_id: String, code: String, message: String) -> void:
 	_send_message("performance_sample_result", [request_id, {"ok": false, "code": code, "message": message}])
+
+
+func _handle_tween_start(request_id: String, request: Dictionary) -> void:
+	if _active_tweens.has(request_id):
+		_send_tween_error(request_id, "RUNTIME_TWEEN_DUPLICATE_REQUEST", "A tween with this request_id is already active")
+		return
+	if _active_tweens.size() >= MAX_ACTIVE_TWEENS:
+		_send_tween_error(
+			request_id,
+			"RUNTIME_TWEEN_QUEUE_FULL",
+			"At most %d runtime tweens may be active at once" % MAX_ACTIVE_TWEENS
+		)
+		return
+	var settings_result := _parse_tween_settings(request)
+	if settings_result.has("error"):
+		_send_tween_error(request_id, settings_result["code"], settings_result["error"])
+		return
+	var raw_path: Variant = request.get("path", null)
+	if not raw_path is String:
+		_send_tween_error(
+			request_id, "RUNTIME_TWEEN_PATH_INVALID", "path must be a bounded absolute scene node path"
+		)
+		return
+	var path: String = raw_path.strip_edges()
+	var path_result := _resolve_runtime_tween_node(path)
+	if path_result.has("error"):
+		_send_tween_error(request_id, path_result["code"], path_result["error"])
+		return
+	var node: Node = path_result["node"]
+	if not node is CanvasItem:
+		_send_tween_error(
+			request_id,
+			"RUNTIME_TWEEN_CANVAS_ITEM_REQUIRED",
+			"Node '%s' is %s, not a 2D CanvasItem" % [node.name, node.get_class()]
+		)
+		return
+	var tracks_result := _parse_tween_tracks(request.get("tracks", null), node)
+	if tracks_result.has("error"):
+		_send_tween_error(request_id, tracks_result["code"], tracks_result["error"])
+		return
+	var settings: Dictionary = settings_result["settings"]
+	var tracks: Array = tracks_result["tracks"]
+	var tween: Tween = node.create_tween()
+	if tween == null or not tween.is_valid():
+		_send_tween_error(request_id, "RUNTIME_TWEEN_CREATE_FAILED", "Godot could not create a runtime Tween")
+		return
+	tween.set_parallel(bool(settings["parallel"]))
+	tween.set_loops(int(settings["loops"]))
+	tween.set_process_mode(int(settings["process_mode"]))
+	tween.set_pause_mode(int(settings["pause_mode"]))
+	tween.set_ignore_time_scale(bool(settings["ignore_time_scale"]))
+	for track_value in tracks:
+		var track: Dictionary = track_value
+		var tweener := tween.tween_property(
+			node,
+			NodePath(str(track["property"])),
+			track["to"],
+			float(track["duration_seconds"])
+		)
+		if tweener == null:
+			tween.kill()
+			_send_tween_error(
+				request_id,
+				"RUNTIME_TWEEN_PROPERTY_REJECTED",
+				"Godot rejected the tween property '%s'" % str(track["property"])
+			)
+			return
+		if track.has("from"):
+			tweener.from(track["from"])
+		if bool(track["relative"]):
+			tweener.as_relative()
+		tweener.set_delay(float(track["delay_seconds"]))
+		tweener.set_trans(int(track["transition"]))
+		tweener.set_ease(int(track["ease"]))
+	_active_tweens[request_id] = {
+		"tween": tween,
+		"path": path,
+		"track_count": tracks.size(),
+		"loops": int(settings["loops"]),
+		"started_msec": Time.get_ticks_msec(),
+	}
+	tween.finished.connect(_on_runtime_tween_finished.bind(request_id), CONNECT_ONE_SHOT)
+
+
+func _handle_tween_stop(request_id: String) -> void:
+	if not _active_tweens.has(request_id):
+		_send_tween_error(
+			request_id,
+			"RUNTIME_TWEEN_NOT_ACTIVE",
+			"No active runtime tween exists with this request_id"
+		)
+		return
+	var entry: Dictionary = _active_tweens[request_id]
+	var tween_value: Variant = entry.get("tween", null)
+	if tween_value is Tween:
+		var tween := tween_value as Tween
+		if tween.is_valid():
+			tween.kill()
+	_finish_runtime_tween(request_id, "cancelled")
+
+
+func _parse_tween_settings(request: Dictionary) -> Dictionary:
+	for field in request:
+		if field not in ["path", "tracks", "parallel", "loops", "process_mode", "pause_mode", "ignore_time_scale"]:
+			return {
+				"code": "INVALID_RUNTIME_TWEEN_REQUEST",
+				"error": "Runtime tween requests contain an unsupported field: %s" % str(field),
+			}
+	var raw_parallel: Variant = request.get("parallel", true)
+	if not raw_parallel is bool:
+		return {"code": "RUNTIME_TWEEN_PARALLEL_INVALID", "error": "parallel must be a boolean"}
+	var raw_loops: Variant = request.get("loops", 1)
+	if not (raw_loops is int or raw_loops is float) or raw_loops is bool \
+		or not is_finite(float(raw_loops)) or float(raw_loops) != floorf(float(raw_loops)) \
+		or int(raw_loops) < 0 or int(raw_loops) > MAX_TWEEN_LOOPS:
+		return {
+			"code": "RUNTIME_TWEEN_LOOPS_INVALID",
+			"error": "loops must be an integer between 0 and %d" % MAX_TWEEN_LOOPS,
+		}
+	var process_mode_result := _parse_tween_enum(
+		request.get("process_mode", "idle"), TWEEN_PROCESS_MODES, "process_mode"
+	)
+	if process_mode_result.has("error"):
+		return process_mode_result
+	var pause_mode_result := _parse_tween_enum(
+		request.get("pause_mode", "bound"), TWEEN_PAUSE_MODES, "pause_mode"
+	)
+	if pause_mode_result.has("error"):
+		return pause_mode_result
+	var raw_ignore_time_scale: Variant = request.get("ignore_time_scale", false)
+	if not raw_ignore_time_scale is bool:
+		return {
+			"code": "RUNTIME_TWEEN_IGNORE_TIME_SCALE_INVALID",
+			"error": "ignore_time_scale must be a boolean",
+		}
+	return {
+		"settings": {
+			"parallel": raw_parallel,
+			"loops": int(raw_loops),
+			"process_mode": process_mode_result["value"],
+			"pause_mode": pause_mode_result["value"],
+			"ignore_time_scale": raw_ignore_time_scale,
+		}
+	}
+
+
+func _parse_tween_tracks(raw_tracks: Variant, node: Node) -> Dictionary:
+	if not raw_tracks is Array or raw_tracks.is_empty() or raw_tracks.size() > MAX_TWEEN_TRACKS:
+		return {
+			"code": "RUNTIME_TWEEN_TRACKS_INVALID",
+			"error": "tracks must contain between 1 and %d entries" % MAX_TWEEN_TRACKS,
+		}
+	var tracks: Array[Dictionary] = []
+	var used_properties: Dictionary = {}
+	for index in range(raw_tracks.size()):
+		var raw_track_value: Variant = raw_tracks[index]
+		if not raw_track_value is Dictionary:
+			return _tween_track_error(index, "each track must be an object")
+		var raw_track: Dictionary = raw_track_value
+		for field in raw_track:
+			if field not in ["property", "to", "from", "duration_seconds", "delay_seconds", "transition", "ease", "relative"]:
+				return _tween_track_error(index, "track contains an unsupported field: %s" % str(field))
+		if not raw_track.has("property") or not raw_track.has("to") or not raw_track.has("duration_seconds"):
+			return _tween_track_error(index, "each track requires property, to, and duration_seconds")
+		if not raw_track["property"] is String:
+			return _tween_track_error(index, "property must be a string")
+		var property: String = str(raw_track["property"]).strip_edges()
+		var property_result := _resolve_runtime_tween_property(node, property)
+		if property_result.has("error"):
+			return _tween_track_error(index, property_result["error"], property_result["code"])
+		if used_properties.has(property):
+			return _tween_track_error(index, "tracks cannot target the same property more than once")
+		var raw_duration: Variant = raw_track["duration_seconds"]
+		if not (raw_duration is int or raw_duration is float) or not is_finite(float(raw_duration)) \
+			or float(raw_duration) <= 0.0 or float(raw_duration) > MAX_TWEEN_DURATION_SECONDS:
+			return _tween_track_error(
+				index,
+				"duration_seconds must be a finite number greater than 0 and at most %.0f" % MAX_TWEEN_DURATION_SECONDS
+			)
+		var raw_delay: Variant = raw_track.get("delay_seconds", 0.0)
+		if not (raw_delay is int or raw_delay is float) or not is_finite(float(raw_delay)) \
+			or float(raw_delay) < 0.0 or float(raw_delay) > MAX_TWEEN_DELAY_SECONDS:
+			return _tween_track_error(
+				index,
+				"delay_seconds must be a finite number between 0 and %.0f" % MAX_TWEEN_DELAY_SECONDS
+			)
+		var transition_result := _parse_tween_enum(
+			raw_track.get("transition", "linear"), TWEEN_TRANSITIONS, "transition"
+		)
+		if transition_result.has("error"):
+			return _tween_track_error(index, transition_result["error"], transition_result["code"])
+		var ease_result := _parse_tween_enum(raw_track.get("ease", "in_out"), TWEEN_EASES, "ease")
+		if ease_result.has("error"):
+			return _tween_track_error(index, ease_result["error"], ease_result["code"])
+		var raw_relative: Variant = raw_track.get("relative", false)
+		if not raw_relative is bool:
+			return _tween_track_error(index, "relative must be a boolean")
+		var property_info: Dictionary = property_result["property_info"].duplicate(true)
+		property_info["type"] = int(property_result["value_type"])
+		var current_value: Variant = node.get_indexed(NodePath(property))
+		var decoded_to := VariantCodec.decode(raw_track["to"], property_info, current_value)
+		if decoded_to.has("_error"):
+			return _tween_track_error(
+				index,
+				"to %s" % str((decoded_to["_error"] as Dictionary).get("message", "is invalid")),
+				"RUNTIME_TWEEN_VALUE_INVALID"
+			)
+		if not _is_finite_tween_value(decoded_to["value"]):
+			return _tween_track_error(index, "to must contain only finite numeric values")
+		var track := {
+			"property": property,
+			"to": decoded_to["value"],
+			"duration_seconds": float(raw_duration),
+			"delay_seconds": float(raw_delay),
+			"transition": transition_result["value"],
+			"ease": ease_result["value"],
+			"relative": raw_relative,
+		}
+		if raw_track.has("from"):
+			var decoded_from := VariantCodec.decode(raw_track["from"], property_info, current_value)
+			if decoded_from.has("_error"):
+				return _tween_track_error(
+					index,
+					"from %s" % str((decoded_from["_error"] as Dictionary).get("message", "is invalid")),
+					"RUNTIME_TWEEN_VALUE_INVALID"
+				)
+			if not _is_finite_tween_value(decoded_from["value"]):
+				return _tween_track_error(index, "from must contain only finite numeric values")
+			track["from"] = decoded_from["value"]
+		tracks.append(track)
+		used_properties[property] = true
+	return {"tracks": tracks}
+
+
+func _parse_tween_enum(value: Variant, choices: Dictionary, label: String) -> Dictionary:
+	if not value is String:
+		return {
+			"code": "RUNTIME_TWEEN_%s_INVALID" % label.to_upper(),
+			"error": "%s must be a supported string value" % label,
+		}
+	var normalized: String = str(value).strip_edges().to_lower()
+	if not choices.has(normalized):
+		return {
+			"code": "RUNTIME_TWEEN_%s_INVALID" % label.to_upper(),
+			"error": "%s is not supported" % label,
+		}
+	return {"value": choices[normalized]}
+
+
+func _tween_track_error(index: int, message: String, code: String = "RUNTIME_TWEEN_TRACK_INVALID") -> Dictionary:
+	return {"code": code, "error": "tracks[%d] %s" % [index, message]}
+
+
+func _resolve_runtime_tween_property(node: Node, property_path: String) -> Dictionary:
+	if property_path.is_empty() or property_path.length() > 256 or property_path.contains("/"):
+		return {"code": "RUNTIME_TWEEN_PROPERTY_INVALID", "error": "property must be a bounded property path"}
+	var parts := property_path.split(":", false)
+	if parts.size() < 1 or parts.size() > 2 or parts[0].is_empty():
+		return {
+			"code": "RUNTIME_TWEEN_PROPERTY_INVALID",
+			"error": "property must name one native property or one supported component",
+		}
+	for part in parts:
+		if part.is_empty() or part.length() > 128:
+			return {"code": "RUNTIME_TWEEN_PROPERTY_INVALID", "error": "property path contains an empty segment"}
+	var property_name: String = parts[0]
+	if TWEEN_PROTECTED_PROPERTIES.has(property_name):
+		return {
+			"code": "RUNTIME_TWEEN_PROPERTY_PROTECTED",
+			"error": "Property '%s' cannot be tweened" % property_name,
+		}
+	for property_info_value in ClassDB.class_get_property_list(StringName(node.get_class())):
+		var property_info: Dictionary = property_info_value
+		if str(property_info.get("name", "")) != property_name:
+			continue
+		var usage := int(property_info.get("usage", PROPERTY_USAGE_NONE))
+		if bool(usage & PROPERTY_USAGE_READ_ONLY) \
+			or not bool(usage & (PROPERTY_USAGE_EDITOR | PROPERTY_USAGE_STORAGE)):
+			return {
+				"code": "RUNTIME_TWEEN_PROPERTY_NOT_WRITABLE",
+				"error": "Property '%s' is not public and writable" % property_name,
+			}
+		var property_type := int(property_info.get("type", TYPE_NIL))
+		if not TWEEN_SUPPORTED_VALUE_TYPES.has(property_type):
+			return {
+				"code": "RUNTIME_TWEEN_PROPERTY_TYPE_UNSUPPORTED",
+				"error": "Property '%s' has unsupported tween type %s" % [property_name, type_string(property_type)],
+			}
+		if parts.size() == 1:
+			return {"property_info": property_info, "value_type": property_type}
+		var component: String = parts[1]
+		if not TWEEN_COMPONENTS_BY_TYPE.has(property_type) \
+			or not TWEEN_COMPONENTS_BY_TYPE[property_type].has(component):
+			return {
+				"code": "RUNTIME_TWEEN_COMPONENT_UNSUPPORTED",
+				"error": "Property '%s' does not expose tween component '%s'" % [property_name, component],
+			}
+		return {"property_info": property_info, "value_type": TYPE_FLOAT}
+	return {
+		"code": "RUNTIME_TWEEN_PROPERTY_NOT_FOUND",
+		"error": "Property '%s' is not a native property of %s" % [property_name, node.get_class()],
+	}
+
+
+func _is_finite_tween_value(value: Variant) -> bool:
+	match typeof(value):
+		TYPE_INT, TYPE_STRING, TYPE_STRING_NAME:
+			return true
+		TYPE_FLOAT:
+			return is_finite(float(value))
+		TYPE_VECTOR2:
+			return is_finite(value.x) and is_finite(value.y)
+		TYPE_VECTOR2I:
+			return true
+		TYPE_RECT2:
+			return _is_finite_tween_value(value.position) and _is_finite_tween_value(value.size)
+		TYPE_RECT2I:
+			return true
+		TYPE_TRANSFORM2D:
+			return _is_finite_tween_value(value.x) and _is_finite_tween_value(value.y) \
+				and _is_finite_tween_value(value.origin)
+		TYPE_COLOR:
+			return is_finite(value.r) and is_finite(value.g) and is_finite(value.b) and is_finite(value.a)
+	return false
+
+
+func _on_runtime_tween_finished(request_id: String) -> void:
+	_finish_runtime_tween(request_id, "completed")
+
+
+func _finish_runtime_tween(request_id: String, state: String) -> void:
+	if not _active_tweens.has(request_id):
+		return
+	var entry: Dictionary = _active_tweens[request_id]
+	_active_tweens.erase(request_id)
+	var elapsed_msec := maxi(0, Time.get_ticks_msec() - int(entry.get("started_msec", 0)))
+	_send_message(
+		"tween_result",
+		[
+			request_id,
+			{
+				"ok": true,
+				"state": state,
+				"path": str(entry.get("path", "")),
+				"track_count": int(entry.get("track_count", 0)),
+				"loops": int(entry.get("loops", 1)),
+				"elapsed_seconds": float(elapsed_msec) / 1000.0,
+			},
+		]
+	)
+
+
+func _sweep_active_tweens() -> void:
+	for request_id_value in _active_tweens.keys():
+		var request_id := str(request_id_value)
+		if not _active_tweens.has(request_id):
+			continue
+		var entry: Dictionary = _active_tweens[request_id]
+		var tween_value: Variant = entry.get("tween", null)
+		if tween_value is Tween and (tween_value as Tween).is_valid():
+			continue
+		_active_tweens.erase(request_id)
+		_send_tween_error(
+			request_id,
+			"RUNTIME_TWEEN_INVALIDATED",
+			"The runtime tween was invalidated before it completed; its target may have left the scene"
+		)
+
+
+func _clear_active_tweens() -> void:
+	for entry_value in _active_tweens.values():
+		var entry: Dictionary = entry_value
+		var tween_value: Variant = entry.get("tween", null)
+		if tween_value is Tween and (tween_value as Tween).is_valid():
+			(tween_value as Tween).kill()
+	_active_tweens.clear()
+
+
+func _resolve_runtime_tween_node(path: String) -> Dictionary:
+	return _resolve_runtime_scene_node_with_prefix(path, "RUNTIME_TWEEN")
+
+
+func _send_tween_error(request_id: String, code: String, message: String) -> void:
+	_send_message("tween_result", [request_id, {"ok": false, "code": code, "message": message}])
 
 
 func _capture_screenshot(request_id: String, options: Dictionary) -> void:
@@ -412,33 +873,37 @@ func _parse_audio_position(request: Dictionary, required: bool) -> Dictionary:
 
 
 func _resolve_runtime_scene_node(path: String) -> Dictionary:
+	return _resolve_runtime_scene_node_with_prefix(path, "RUNTIME_AUDIO")
+
+
+func _resolve_runtime_scene_node_with_prefix(path: String, error_prefix: String) -> Dictionary:
 	if path.is_empty() or path.length() > MAX_RUNTIME_NODE_PATH_LENGTH or not path.begins_with("/") \
 		or path.contains("//"):
 		return {
-			"code": "RUNTIME_AUDIO_PATH_INVALID",
+			"code": "%s_PATH_INVALID" % error_prefix,
 			"error": "path must be a bounded absolute scene node path"
 		}
 	var segments := path.trim_prefix("/").split("/", false)
 	if segments.is_empty() or segments[0].is_empty():
 		return {
-			"code": "RUNTIME_AUDIO_PATH_INVALID",
+			"code": "%s_PATH_INVALID" % error_prefix,
 			"error": "path must name the running scene root"
 		}
 	for segment in segments:
 		if segment in [".", ".."]:
 			return {
-				"code": "RUNTIME_AUDIO_PATH_INVALID",
+				"code": "%s_PATH_INVALID" % error_prefix,
 				"error": "path cannot contain . or .. segments"
 			}
 	var scene_root := get_tree().current_scene
 	if scene_root == null:
 		return {
-			"code": "RUNTIME_AUDIO_SCENE_UNAVAILABLE",
+			"code": "%s_SCENE_UNAVAILABLE" % error_prefix,
 			"error": "The running game does not expose a current scene"
 		}
 	if str(segments[0]) != scene_root.name:
 		return {
-			"code": "RUNTIME_AUDIO_SCENE_ROOT_MISMATCH",
+			"code": "%s_SCENE_ROOT_MISMATCH" % error_prefix,
 			"error": "path must begin with the running scene root '%s'" % scene_root.name
 		}
 	var node: Node = scene_root
@@ -446,7 +911,7 @@ func _resolve_runtime_scene_node(path: String) -> Dictionary:
 		var child := node.get_node_or_null(NodePath(str(segments[index])))
 		if child == null:
 			return {
-				"code": "RUNTIME_AUDIO_NODE_NOT_FOUND",
+				"code": "%s_NODE_NOT_FOUND" % error_prefix,
 				"error": "No runtime node exists at path: %s" % path
 			}
 		node = child

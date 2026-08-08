@@ -718,6 +718,29 @@ async def test_runtime_feedback_tools_forward_validated_payloads() -> None:
     await service.runtime_performance_sample_result_get(
         "performance-123", session_id="project@a1b2"
     )
+    tween_tracks = [
+        {
+            "property": "modulate:a",
+            "from": 0.25,
+            "to": 1.0,
+            "duration_seconds": 0.2,
+            "delay_seconds": 0.05,
+            "transition": "SINE",
+            "ease": "OUT",
+        }
+    ]
+    await service.runtime_tween_start(
+        "/RuntimeSmoke/Canvas/Background",
+        tween_tracks,
+        parallel=False,
+        loops=2,
+        process_mode="physics",
+        pause_mode="process",
+        ignore_time_scale=True,
+        session_id="project@a1b2",
+    )
+    await service.runtime_tween_result_get("tween-123", session_id="project@a1b2")
+    await service.runtime_tween_stop("tween-123", session_id="project@a1b2")
 
     assert bridge.calls == [
         ("runtime_get_state", {}, "project@a1b2"),
@@ -754,6 +777,32 @@ async def test_runtime_feedback_tools_forward_validated_payloads() -> None:
             {"request_id": "performance-123"},
             "project@a1b2",
         ),
+        (
+            "runtime_tween_start",
+            {
+                "path": "/RuntimeSmoke/Canvas/Background",
+                "tracks": [
+                    {
+                        "property": "modulate:a",
+                        "from": 0.25,
+                        "to": 1.0,
+                        "duration_seconds": 0.2,
+                        "delay_seconds": 0.05,
+                        "transition": "sine",
+                        "ease": "out",
+                        "relative": False,
+                    }
+                ],
+                "parallel": False,
+                "loops": 2,
+                "process_mode": "physics",
+                "pause_mode": "process",
+                "ignore_time_scale": True,
+            },
+            "project@a1b2",
+        ),
+        ("runtime_tween_result_get", {"request_id": "tween-123"}, "project@a1b2"),
+        ("runtime_tween_stop", {"request_id": "tween-123"}, "project@a1b2"),
     ]
 
 
@@ -825,6 +874,38 @@ async def test_runtime_feedback_tools_reject_invalid_payloads() -> None:
         await service.runtime_performance_sample_request(0.01)
     with pytest.raises(ValueError, match="request_id"):
         await service.runtime_performance_sample_result_get("")
+    with pytest.raises(ValueError, match="tracks"):
+        await service.runtime_tween_start("/Main/Node", [])
+    with pytest.raises(ValueError, match="loops"):
+        await service.runtime_tween_start(
+            "/Main/Node",
+            [{"property": "position", "to": {"x": 1, "y": 2}, "duration_seconds": 0.2}],
+            loops=101,
+        )
+    with pytest.raises(ValueError, match="property"):
+        await service.runtime_tween_start(
+            "/Main/Node", [{"property": "position/x", "to": 1, "duration_seconds": 0.2}]
+        )
+    with pytest.raises(ValueError, match="duration_seconds"):
+        await service.runtime_tween_start(
+            "/Main/Node", [{"property": "position", "to": {"x": 1, "y": 2}, "duration_seconds": 0}]
+        )
+    with pytest.raises(ValueError, match="transition"):
+        await service.runtime_tween_start(
+            "/Main/Node",
+            [
+                {
+                    "property": "position",
+                    "to": {"x": 1, "y": 2},
+                    "duration_seconds": 0.2,
+                    "transition": "unknown",
+                }
+            ],
+        )
+    with pytest.raises(ValueError, match="request_id"):
+        await service.runtime_tween_result_get("")
+    with pytest.raises(ValueError, match="request_id"):
+        await service.runtime_tween_stop("")
     with pytest.raises(ValueError, match="requires a screenshot"):
         await service.runtime_test_run(
             screenshot_assertions=[{"kind": "dimensions", "width": 1, "height": 1}]

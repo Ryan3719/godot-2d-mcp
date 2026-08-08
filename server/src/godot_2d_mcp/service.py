@@ -342,6 +342,45 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def runtime_tween_start(
+        self,
+        path: str,
+        tracks: list[dict[str, Any]],
+        parallel: bool = True,
+        loops: int = 1,
+        process_mode: str = "idle",
+        pause_mode: str = "bound",
+        ignore_time_scale: bool = False,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        params = _validate_runtime_tween_request(
+            path=path,
+            tracks=tracks,
+            parallel=parallel,
+            loops=loops,
+            process_mode=process_mode,
+            pause_mode=pause_mode,
+            ignore_time_scale=ignore_time_scale,
+        )
+        return await self.bridge.call("runtime_tween_start", params, session_id=session_id)
+
+    async def runtime_tween_result_get(
+        self, request_id: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        _validate_runtime_request_id(request_id)
+        return await self.bridge.call(
+            "runtime_tween_result_get", {"request_id": request_id}, session_id=session_id
+        )
+
+    async def runtime_tween_stop(
+        self, request_id: str, session_id: str | None = None
+    ) -> dict[str, Any]:
+        _validate_runtime_request_id(request_id)
+        return await self.bridge.call(
+            "runtime_tween_stop", {"request_id": request_id}, session_id=session_id
+        )
+
     async def runtime_test_run(
         self,
         mode: str = "current",
@@ -4284,6 +4323,130 @@ def _validate_runtime_request_id(value: str) -> None:
 def _validate_runtime_performance_sample_duration(value: float) -> None:
     if not _is_finite_number(value) or not 0.1 <= float(value) <= 30.0:
         raise ValueError("duration_seconds must be a finite number between 0.1 and 30.0")
+
+
+def _validate_runtime_tween_request(
+    *,
+    path: str,
+    tracks: list[dict[str, Any]],
+    parallel: bool,
+    loops: int,
+    process_mode: str,
+    pause_mode: str,
+    ignore_time_scale: bool,
+) -> dict[str, Any]:
+    _validate_boolean(parallel, "parallel")
+    if isinstance(loops, bool) or not isinstance(loops, int) or not 0 <= loops <= 100:
+        raise ValueError("loops must be an integer between 0 and 100")
+    normalized_process_mode = _validate_runtime_tween_choice(
+        process_mode, "process_mode", {"idle", "physics"}
+    )
+    normalized_pause_mode = _validate_runtime_tween_choice(
+        pause_mode, "pause_mode", {"bound", "stop", "process"}
+    )
+    _validate_boolean(ignore_time_scale, "ignore_time_scale")
+    if not isinstance(tracks, list) or not 1 <= len(tracks) <= 16:
+        raise ValueError("tracks must contain between 1 and 16 entries")
+    normalized_tracks: list[dict[str, Any]] = []
+    used_properties: set[str] = set()
+    for index, raw_track in enumerate(tracks):
+        label = f"tracks[{index}]"
+        if not isinstance(raw_track, dict):
+            raise ValueError(f"{label} must be an object")
+        allowed = {
+            "property",
+            "to",
+            "from",
+            "duration_seconds",
+            "delay_seconds",
+            "transition",
+            "ease",
+            "relative",
+        }
+        unknown = sorted(set(raw_track) - allowed)
+        if unknown:
+            raise ValueError(f"{label} contains unsupported fields: {', '.join(unknown)}")
+        if not {"property", "to", "duration_seconds"}.issubset(raw_track):
+            raise ValueError(f"{label} requires property, to, and duration_seconds")
+        property_path = _validate_runtime_tween_property(raw_track["property"], label)
+        if property_path in used_properties:
+            raise ValueError("tracks cannot target the same property more than once")
+        if not _is_json_bind_value(raw_track["to"]):
+            raise ValueError(f"{label}.to must be a bounded JSON-compatible value")
+        if "from" in raw_track and not _is_json_bind_value(raw_track["from"]):
+            raise ValueError(f"{label}.from must be a bounded JSON-compatible value")
+        duration_seconds = raw_track["duration_seconds"]
+        if not _is_finite_number(duration_seconds) or not 0 < float(duration_seconds) <= 60:
+            raise ValueError(f"{label}.duration_seconds must be a finite number between 0 and 60")
+        delay_seconds = raw_track.get("delay_seconds", 0.0)
+        if not _is_finite_number(delay_seconds) or not 0 <= float(delay_seconds) <= 60:
+            raise ValueError(f"{label}.delay_seconds must be a finite number between 0 and 60")
+        transition = _validate_runtime_tween_choice(
+            raw_track.get("transition", "linear"),
+            f"{label}.transition",
+            {
+                "linear",
+                "sine",
+                "quint",
+                "quart",
+                "quad",
+                "expo",
+                "elastic",
+                "cubic",
+                "circ",
+                "bounce",
+                "back",
+                "spring",
+            },
+        )
+        ease = _validate_runtime_tween_choice(
+            raw_track.get("ease", "in_out"), f"{label}.ease", {"in", "out", "in_out", "out_in"}
+        )
+        relative = raw_track.get("relative", False)
+        _validate_boolean(relative, f"{label}.relative")
+        normalized_track: dict[str, Any] = {
+            "property": property_path,
+            "to": raw_track["to"],
+            "duration_seconds": float(duration_seconds),
+            "delay_seconds": float(delay_seconds),
+            "transition": transition,
+            "ease": ease,
+            "relative": relative,
+        }
+        if "from" in raw_track:
+            normalized_track["from"] = raw_track["from"]
+        normalized_tracks.append(normalized_track)
+        used_properties.add(property_path)
+    return {
+        "path": path,
+        "tracks": normalized_tracks,
+        "parallel": parallel,
+        "loops": loops,
+        "process_mode": normalized_process_mode,
+        "pause_mode": normalized_pause_mode,
+        "ignore_time_scale": ignore_time_scale,
+    }
+
+
+def _validate_runtime_tween_property(value: Any, label: str) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{label}.property must be a string")
+    property_path = value.strip()
+    if not 1 <= len(property_path) <= 256 or "/" in property_path:
+        raise ValueError(f"{label}.property must contain between 1 and 256 characters without '/'")
+    parts = property_path.split(":")
+    if len(parts) > 2 or any(not part or len(part) > 128 for part in parts):
+        raise ValueError(f"{label}.property must name one property or one property component")
+    return property_path
+
+
+def _validate_runtime_tween_choice(value: Any, label: str, allowed: set[str]) -> str:
+    if not isinstance(value, str):
+        raise ValueError(f"{label} must be one of: {', '.join(sorted(allowed))}")
+    normalized = value.strip().lower()
+    if normalized not in allowed:
+        raise ValueError(f"{label} must be one of: {', '.join(sorted(allowed))}")
+    return normalized
 
 
 def _validate_runtime_test_mode(mode: str, scene_file: str) -> str:

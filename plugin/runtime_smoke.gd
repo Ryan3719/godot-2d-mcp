@@ -1,5 +1,7 @@
 extends Node2D
 
+@export var tween_script_value := 0.0
+
 
 func _ready() -> void:
 	print("GODOT_2D_MCP_RUNTIME_SMOKE_READY")

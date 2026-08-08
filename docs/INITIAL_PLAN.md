@@ -1,6 +1,6 @@
 # Godot 2D MCP 初始化规划
 
-状态：阶段 0 至阶段 7 的当前交付批次已完成。阶段 1 至阶段 5 已交付广泛的 2D/UI 场景、动画、物理、导航、TileMap、视觉、粒子与控件语义能力；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图、键盘/鼠标/多点触摸输入模拟、项目 Input Map 动作与键盘/鼠标/手柄绑定编辑、`AudioStreamPlayer2D` 运行时状态/播放/停止/定位控制、受限性能采样、客户端 PNG 内容断言和有总超时/自动清理边界的游戏测试编排；阶段 7 已交付运行时 `ClassDB` 2D 覆盖审计、完整快照、跨版本差异、类型详情反射和全允许节点生命周期验收（v0.58.0）
+状态：阶段 0 至阶段 7 的当前交付批次已完成。阶段 1 至阶段 5 已交付广泛的 2D/UI 场景、动画、物理、导航、TileMap、视觉、粒子与控件语义能力；阶段 6 已交付场景启动/停止、游戏日志、真实运行时截图、键盘/鼠标/多点触摸输入模拟、项目 Input Map 动作与键盘/鼠标/手柄绑定编辑、`AudioStreamPlayer2D` 运行时状态/播放/停止/定位控制、受控 CanvasItem 运行时 Tween、受限性能采样、客户端 PNG 内容断言和有总超时/自动清理边界的游戏测试编排；阶段 7 已交付运行时 `ClassDB` 2D 覆盖审计、完整快照、跨版本差异、类型详情反射和全允许节点生命周期验收（v0.59.0）
 目标引擎：Godot 4.7+  
 参考实现：[`hi-godot/godot-ai`](https://github.com/hi-godot/godot-ai)
 
@@ -131,7 +131,7 @@ Codex / Claude Code / MCP Client
 - 内置 `ClassDB` 2D/UI 节点创建、兼容项目内非 `@tool` Script 的直接创建/绑定/显式解绑、原子属性修改、删除、撤销/重做和显式保存；脚本必须具有兼容的受支持 2D/UI 原生基类，`@tool` 脚本会被拒绝以避免编辑器内代码执行。对 Godot 声明为 `Resource` 的公开属性，以及 `TypedArray`/`TypedDictionary` 中声明为 Resource 的元素，可通过严格类型检查的 `{ "resource_path": "res://..." }` 引用安全绑定项目资源，且不会修改外部资源。读取类型化容器时会返回 `container_type` 元数据；每个元素在写入前按 Godot 声明转换，非字符串键字典以 `{ "entries": [{ "key": ..., "value": ... }] }` 传输以保持键类型，场景 Node 引用和脚本约束对象明确拒绝。`node_instance_scene` 仅实例化完整受支持的 2D/UI PackedScene，保留内部 owner，支持撤销/重做与完整实例根删除；`packed_scene_instance_get` 可读取源路径、Editable Children 状态和本地 override 数量，`packed_scene_instance_editable_children_enable` 显式开启 Godot 的实例覆盖模式。开启后仅允许使用通用 `node_set_properties` 修改实例内部节点的公开属性；`node_rename`、`node_duplicate`/`node_reparent` 可处理带本地 override 子节点的完整实例根且绝不展平其内部节点。
 - `node_rename`、`node_duplicate`、`node_reparent` 和 `node_move`。
 - `node_get_signals`、`signal_connect` 和 `signal_disconnect`，支持连接已有节点方法、绑定 JSON 参数、deferred 与 one-shot 选项。
-- `animation_list`、`animation_get`、`animation_create`、`animation_delete`、属性轨道、`AudioStreamPlayer2D` 音频轨道、受控数值 Bezier 轨道与安全原生方法轨道 upsert/delete，以及属性关键帧 upsert/delete；Bezier 轨道仅允许本地可写的直接 `float` 属性，以及 `Vector2`/`Color` 的单一分量。方法轨道仅限本地无脚本节点的显示/隐藏、动画播放、音频播放、`AnimatedSprite2D` 播放和粒子重启；支持场景内嵌动画库、撤销/重做与保存。
+- `animation_list`、`animation_get`、`animation_create`、`animation_delete`、属性轨道、`AudioStreamPlayer2D` 音频轨道、受控数值 Bezier 轨道、安全原生方法轨道及单层嵌套动画轨道 upsert/delete，以及属性关键帧 upsert/delete；Bezier 轨道仅允许本地可写的直接 `float` 属性，以及 `Vector2`/`Color` 的单一分量。方法轨道仅限本地无脚本节点的显示/隐藏、动画播放、音频播放、`AnimatedSprite2D` 播放和粒子重启；支持场景内嵌动画库、撤销/重做与保存。`runtime_tween_start`、`runtime_tween_result_get`、`runtime_tween_stop` 则在运行中场景的本地 CanvasItem 上创建不持久化的原生 Tween，支持严格类型的数值/向量/矩形/变换/颜色属性、过渡、缓动、延迟、并行或串行、循环和显式取消，禁止回调、方法、Resource 及脚本定义属性。
 - `control_get_layout`、`control_set_layout`、`control_set_layout_preset`，支持精确 anchors/offsets 与 Godot 布局预设；Container 子节点会明确拒绝。
 - `container_2d_get`、`container_2d_set`、`container_child_layout_set`，支持 Box、Grid、Center、AspectRatio、Flow、Split、Scroll、Tab、SubViewport 容器的已核验公开布局配置，以及直接 Control 子节点的 `custom_minimum_size`、两轴尺寸标志和伸缩比例；可读尺寸标志为 `fill`、`expand`、`shrink_begin`、`shrink_center`、`shrink_end`。`tab_container_items_get`、`tab_container_item_set` 支持 TabContainer 直接 Control 子项的标题、提示、项目内图标、图标最大宽度、禁用/隐藏、JSON metadata 和关闭按钮图标；使用已有 `node_move` 重排子项。
 - `control_get_styleboxes`、`control_stylebox_flat_upsert`、`control_stylebox_override_clear`，支持节点本地 `StyleBoxFlat` 状态覆盖及撤销/重做。

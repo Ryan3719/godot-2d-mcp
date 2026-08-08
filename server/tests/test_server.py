@@ -34,6 +34,9 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "runtime_audio_stream_player_2d_control_result_get",
         "runtime_performance_sample_request",
         "runtime_performance_sample_result_get",
+        "runtime_tween_start",
+        "runtime_tween_result_get",
+        "runtime_tween_stop",
         "runtime_test_run",
         "scene_get_hierarchy",
         "scene_create",
@@ -245,6 +248,9 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["runtime_audio_stream_player_2d_control_result_get"].readOnlyHint is True
     assert annotations["runtime_performance_sample_request"].readOnlyHint is False
     assert annotations["runtime_performance_sample_result_get"].readOnlyHint is True
+    assert annotations["runtime_tween_start"].readOnlyHint is False
+    assert annotations["runtime_tween_result_get"].readOnlyHint is True
+    assert annotations["runtime_tween_stop"].readOnlyHint is False
     assert annotations["runtime_test_run"].readOnlyHint is False
     assert annotations["class_2d_describe"].readOnlyHint is True
     assert annotations["class_2d_coverage"].readOnlyHint is True
