@@ -656,6 +656,23 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def item_list_items_get(
+        path: str,
+        offset: int = 0,
+        limit: int = 100,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read paginated persistent ItemList entries."""
+        return await service.item_list_items_get(
+            path=path,
+            offset=offset,
+            limit=limit,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def button_menu_items_get(
         path: str,
         offset: int = 0,
@@ -1532,6 +1549,34 @@ def create_application(
         return await service.text_display_2d_set(
             path=path,
             properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def item_list_items_set(
+        path: str,
+        items: list[dict[str, Any]],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically replace persistent ItemList entries on a local ItemList."""
+        return await service.item_list_items_set(
+            path=path,
+            items=items,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=DESTRUCTIVE_WRITE)
+    async def item_list_items_clear(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Remove all ItemList entries in one undoable transaction."""
+        return await service.item_list_items_clear(
+            path=path,
             session_id=session_id,
             scene_file=scene_file,
         )
