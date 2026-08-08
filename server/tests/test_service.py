@@ -1262,6 +1262,41 @@ async def test_node_instance_scene_forwards_project_scene_and_rejects_invalid_pa
 
 
 @pytest.mark.asyncio
+async def test_packed_scene_instance_tools_forward_scene_guards_and_validate_paths() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+
+    inspected = await service.packed_scene_instance_get(
+        "/Main/PlayerVisual",
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
+    enabled = await service.packed_scene_instance_editable_children_enable(
+        "/Main/PlayerVisual",
+        scene_file="res://main.tscn",
+    )
+
+    assert inspected == {"command": "packed_scene_instance_get"}
+    assert enabled == {"command": "packed_scene_instance_editable_children_enable"}
+    assert bridge.calls == [
+        (
+            "packed_scene_instance_get",
+            {"path": "/Main/PlayerVisual", "scene_file": "res://main.tscn"},
+            "project@a1b2",
+        ),
+        (
+            "packed_scene_instance_editable_children_enable",
+            {"path": "/Main/PlayerVisual", "scene_file": "res://main.tscn"},
+            None,
+        ),
+    ]
+    with pytest.raises(ValueError, match="path"):
+        await service.packed_scene_instance_get("")
+    with pytest.raises(ValueError, match="path"):
+        await service.packed_scene_instance_editable_children_enable("")
+
+
+@pytest.mark.asyncio
 async def test_node_set_properties_forwards_one_atomic_payload() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

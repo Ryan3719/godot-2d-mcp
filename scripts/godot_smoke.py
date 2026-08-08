@@ -901,6 +901,54 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         redo_packed_instance = await app.service.scene_redo(scene_file=scene_file)
         if not redo_packed_instance.get("changed"):
             raise RuntimeError("PackedScene instance was not redoable")
+        packed_instance_details = await app.service.packed_scene_instance_get(
+            packed_instance_path, scene_file=scene_file
+        )
+        if (
+            packed_instance_details.get("scene_path") != "res://packed_scene_2d.tscn"
+            or packed_instance_details.get("editable_children") is not False
+            or packed_instance_details.get("local_override_node_count") != 0
+        ):
+            raise RuntimeError(
+                f"PackedScene instance inspection was incomplete: {packed_instance_details}"
+            )
+        packed_internal_sprite_path = f"{packed_instance_path}/PackedSceneInternalSprite"
+        await _expect_godot_error(
+            app.service.node_set_properties(
+                packed_internal_sprite_path,
+                {"position": {"x": 18, "y": 30}},
+                scene_file=scene_file,
+            ),
+            "PACKED_SCENE_EDITABLE_CHILDREN_REQUIRED",
+        )
+        packed_editable = await app.service.packed_scene_instance_editable_children_enable(
+            packed_instance_path, scene_file=scene_file
+        )
+        if (
+            packed_editable.get("changed") is not True
+            or packed_editable.get("editable_children") is not True
+        ):
+            raise RuntimeError(f"Editable Children was not enabled: {packed_editable}")
+        undo_packed_editable = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_packed_editable.get("changed"):
+            raise RuntimeError("Editable Children enable was not undoable")
+        packed_after_editable_undo = await app.service.packed_scene_instance_get(
+            packed_instance_path, scene_file=scene_file
+        )
+        if packed_after_editable_undo.get("editable_children") is not False:
+            raise RuntimeError("Undo did not disable Editable Children")
+        redo_packed_editable = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_packed_editable.get("changed"):
+            raise RuntimeError("Editable Children enable was not redoable")
+        packed_internal_update = await app.service.node_set_properties(
+            packed_internal_sprite_path,
+            {"position": {"x": 18, "y": 30}},
+            scene_file=scene_file,
+        )
+        if packed_internal_update.get("updated", {}).get("position") != {"x": 18.0, "y": 30.0}:
+            raise RuntimeError(
+                f"PackedScene internal property override was not applied: {packed_internal_update}"
+            )
         deleted_packed_instance = await app.service.node_delete(
             packed_instance_path, scene_file=scene_file
         )
@@ -935,6 +983,45 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         redo_packed_reparent = await app.service.scene_redo(scene_file=scene_file)
         if not redo_packed_reparent.get("changed"):
             raise RuntimeError("PackedScene instance reparenting was not redoable")
+        packed_override = await app.service.node_create(
+            type_name="Node2D",
+            name="AgentPackedOverride",
+            parent_path=packed_instance_path,
+            scene_file=scene_file,
+        )
+        if packed_override.get("parent_path") != packed_instance_path:
+            raise RuntimeError("PackedScene local override child was not created")
+        packed_after_override = await app.service.packed_scene_instance_get(
+            packed_instance_path, scene_file=scene_file
+        )
+        if packed_after_override.get("local_override_node_count") != 1:
+            raise RuntimeError(
+                f"PackedScene local override was not reported: {packed_after_override}"
+            )
+        renamed_packed_instance = await app.service.node_rename(
+            packed_instance_path,
+            "AgentPackedVisualRenamed",
+            scene_file=scene_file,
+        )
+        old_packed_instance_path = packed_instance_path
+        packed_instance_path = renamed_packed_instance["path"]
+        if (
+            renamed_packed_instance.get("old_path") != old_packed_instance_path
+            or packed_instance_path == old_packed_instance_path
+        ):
+            raise RuntimeError("PackedScene instance rename did not return stable paths")
+        undo_packed_rename = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_packed_rename.get("changed"):
+            raise RuntimeError("PackedScene instance rename was not undoable")
+        hierarchy_after_packed_rename_undo = await app.service.scene_get_hierarchy(limit=200)
+        if not _has_node(hierarchy_after_packed_rename_undo, old_packed_instance_path):
+            raise RuntimeError("Undo did not restore the PackedScene instance name")
+        redo_packed_rename = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_packed_rename.get("changed"):
+            raise RuntimeError("PackedScene instance rename was not redoable")
+        hierarchy_after_packed_rename_redo = await app.service.scene_get_hierarchy(limit=200)
+        if not _has_node(hierarchy_after_packed_rename_redo, packed_instance_path):
+            raise RuntimeError("Redo did not restore the PackedScene instance name")
         packed_instance_copy = await app.service.node_duplicate(
             packed_instance_path,
             name="AgentPackedVisualCopy",
@@ -944,11 +1031,16 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if (
             not packed_instance_copy.get("packed_scene_instance")
             or packed_instance_copy.get("scene_path") != "res://packed_scene_2d.tscn"
-            or packed_instance_copy.get("copied_node_count") != 2
+            or packed_instance_copy.get("copied_node_count") != 3
         ):
             raise RuntimeError(
                 "PackedScene instance duplication did not preserve the source boundary"
             )
+        packed_copy_hierarchy = await app.service.scene_get_hierarchy(limit=200)
+        if not _has_node(
+            packed_copy_hierarchy, f"{packed_instance_copy_path}/AgentPackedOverride"
+        ):
+            raise RuntimeError("PackedScene duplication lost the local override child")
         await _expect_godot_error(
             app.service.node_duplicate(
                 f"{packed_instance_path}/PackedSceneInternalSprite",
@@ -6503,13 +6595,26 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 73 or _has_node(
+        if final_hierarchy.get("total") != 75 or _has_node(
             final_hierarchy, marker_path
         ):
             raise RuntimeError("Unexpected final hierarchy after write operations")
         saved = await app.service.scene_save(scene_file=scene_file)
         if not saved.get("saved"):
             raise RuntimeError("Scene save did not report success")
+        reopened_after_packed_overrides = await app.service.scene_open(scene_file)
+        if not reopened_after_packed_overrides.get("opened"):
+            raise RuntimeError("Scene did not reopen after PackedScene override save")
+        persisted_packed_properties = await app.service.node_get_properties(
+            f"{packed_instance_path}/PackedSceneInternalSprite",
+            fields=["position"],
+            scene_file=scene_file,
+        )
+        if _property_value(persisted_packed_properties, "position") != {"x": 18.0, "y": 30.0}:
+            raise RuntimeError("PackedScene internal property override did not survive reload")
+        reopened_packed_hierarchy = await app.service.scene_get_hierarchy(limit=200)
+        if not _has_node(reopened_packed_hierarchy, f"{packed_instance_path}/AgentPackedOverride"):
+            raise RuntimeError("PackedScene local override child did not survive reload")
 
         saved_scene = (project_path / "test_scene.tscn").read_text(encoding="utf-8")
         if (
@@ -6551,10 +6656,11 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "AgentSpriteSemantic" not in saved_scene
             or "AgentLineSemantic" not in saved_scene
             or "AgentPolygonSemantic" not in saved_scene
-            or "AgentPackedVisual" not in saved_scene
+            or "AgentPackedVisualRenamed" not in saved_scene
             or "AgentPackedVisualCopy" not in saved_scene
+            or "AgentPackedOverride" not in saved_scene
             or "packed_scene_2d.tscn" not in saved_scene
-            or "PackedSceneInternalSprite" in saved_scene
+            or "PackedSceneInternalSprite" not in saved_scene
             or "test_node_2d.gd" not in saved_scene
             or "accent_colors =" not in saved_scene
             or "color_labels =" not in saved_scene
