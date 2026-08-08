@@ -600,6 +600,61 @@ async def test_resource_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_shortcut_tools_forward_validated_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    resource_path = "res://generated/agent_save_shortcut.tres"
+    initial_events = [
+        {"type": "key", "keycode": 83, "ctrl": True},
+        {"type": "mouse_button", "button": 4, "device": -1},
+    ]
+    replacement_events = [{"type": "joypad_button", "button": 0, "device": 2}]
+
+    await service.shortcut_get(resource_path, session_id="project@a1b2")
+    await service.shortcut_create(resource_path, initial_events, session_id="project@a1b2")
+    await service.shortcut_set(resource_path, replacement_events, session_id="project@a1b2")
+    await service.shortcut_save(resource_path, session_id="project@a1b2")
+    await service.shortcut_undo(resource_path, session_id="project@a1b2")
+    await service.shortcut_redo(resource_path, session_id="project@a1b2")
+
+    assert bridge.calls == [
+        ("shortcut_get", {"resource_path": resource_path}, "project@a1b2"),
+        (
+            "shortcut_create",
+            {"resource_path": resource_path, "events": initial_events},
+            "project@a1b2",
+        ),
+        (
+            "shortcut_set",
+            {"resource_path": resource_path, "events": replacement_events},
+            "project@a1b2",
+        ),
+        ("shortcut_save", {"resource_path": resource_path}, "project@a1b2"),
+        ("shortcut_undo", {"resource_path": resource_path}, "project@a1b2"),
+        ("shortcut_redo", {"resource_path": resource_path}, "project@a1b2"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_shortcut_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="standalone"):
+        await service.shortcut_get("res://generated/shortcut.png")
+    with pytest.raises(ValueError, match="at least one"):
+        await service.shortcut_create("res://generated/shortcut.tres", [])
+    with pytest.raises(ValueError, match="Input Map event type"):
+        await service.shortcut_set(
+            "res://generated/shortcut.tres", [{"type": "gesture"}]
+        )
+    with pytest.raises(ValueError, match="axis_value"):
+        await service.shortcut_create(
+            "res://generated/shortcut.tres",
+            [{"type": "joypad_motion", "axis": 0, "axis_value": 0}],
+        )
+
+
+@pytest.mark.asyncio
 async def test_editor_run_and_stop_forward_validated_modes() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

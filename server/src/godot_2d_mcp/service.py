@@ -1077,6 +1077,82 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def shortcut_get(
+        self,
+        resource_path: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        _validate_standalone_resource_path(resource_path)
+        return await self.bridge.call(
+            "shortcut_get",
+            {"resource_path": resource_path},
+            session_id=session_id,
+        )
+
+    async def shortcut_create(
+        self,
+        resource_path: str,
+        events: list[dict[str, Any]],
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        _validate_standalone_resource_path(resource_path)
+        _validate_shortcut_events(events, allow_empty=False)
+        return await self.bridge.call(
+            "shortcut_create",
+            {"resource_path": resource_path, "events": events},
+            session_id=session_id,
+        )
+
+    async def shortcut_set(
+        self,
+        resource_path: str,
+        events: list[dict[str, Any]],
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        _validate_standalone_resource_path(resource_path)
+        _validate_shortcut_events(events, allow_empty=True)
+        return await self.bridge.call(
+            "shortcut_set",
+            {"resource_path": resource_path, "events": events},
+            session_id=session_id,
+        )
+
+    async def shortcut_save(
+        self,
+        resource_path: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        _validate_standalone_resource_path(resource_path)
+        return await self.bridge.call(
+            "shortcut_save",
+            {"resource_path": resource_path},
+            session_id=session_id,
+        )
+
+    async def shortcut_undo(
+        self,
+        resource_path: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        _validate_standalone_resource_path(resource_path)
+        return await self.bridge.call(
+            "shortcut_undo",
+            {"resource_path": resource_path},
+            session_id=session_id,
+        )
+
+    async def shortcut_redo(
+        self,
+        resource_path: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        _validate_standalone_resource_path(resource_path)
+        return await self.bridge.call(
+            "shortcut_redo",
+            {"resource_path": resource_path},
+            session_id=session_id,
+        )
+
     async def sprite_frames_animation_upsert(
         self,
         path: str,
@@ -4806,6 +4882,12 @@ def _validate_input_map_events(events: list[dict[str, Any]]) -> None:
             raise ValueError(
                 "Input Map event type must be key, mouse_button, joypad_button, or joypad_motion"
             )
+
+
+def _validate_shortcut_events(events: list[dict[str, Any]], *, allow_empty: bool) -> None:
+    _validate_input_map_events(events)
+    if not allow_empty and not events:
+        raise ValueError("Shortcut events must contain at least one event when creating a Shortcut")
 
 
 def _validate_input_map_key_event(event: dict[str, Any]) -> None:
