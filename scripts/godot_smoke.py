@@ -355,6 +355,15 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         container_coverage = await app.service.class_2d_coverage(
             query="Container", scope="node", limit=40
         )
+        slider_coverage = await app.service.class_2d_coverage(
+            query="Slider", scope="node", limit=20
+        )
+        bar_coverage = await app.service.class_2d_coverage(
+            query="Bar", scope="node", limit=20
+        )
+        spin_box_coverage = await app.service.class_2d_coverage(
+            query="SpinBox", scope="node", limit=20
+        )
 
         if hierarchy.get("total") != 5:
             raise RuntimeError(f"Unexpected scene node count: {hierarchy.get('total')}")
@@ -635,6 +644,33 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
                 raise RuntimeError(
                     f"{class_name} container coverage audit was incomplete: "
                     f"{container_coverage}"
+                )
+        range_entries = {
+            entry.get("name"): entry
+            for entry in (
+                slider_coverage.get("entries", [])
+                + bar_coverage.get("entries", [])
+                + spin_box_coverage.get("entries", [])
+            )
+        }
+        for class_name in (
+            "ProgressBar",
+            "HSlider",
+            "VSlider",
+            "HScrollBar",
+            "VScrollBar",
+            "SpinBox",
+        ):
+            range_entry = range_entries.get(class_name)
+            if (
+                range_entry is None
+                or {"range_2d_get", "range_2d_set"}
+                - set(range_entry.get("semantic_tools", []))
+                or range_entry.get("test_status") != "semantic_smoke"
+            ):
+                raise RuntimeError(
+                    f"{class_name} Range coverage audit was incomplete: "
+                    f"slider={slider_coverage}, bar={bar_coverage}, spin_box={spin_box_coverage}"
                 )
 
         scene_file = state.get("current_scene", "")
@@ -4860,6 +4896,195 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             "BUTTON_MENU_REQUIRED",
         )
 
+        _trace_smoke("starting Range control smoke")
+        progress_bar = await app.service.node_create(
+            type_name="ProgressBar",
+            name="AgentProgressBar",
+            parent_path="/Main/UI",
+            scene_file=scene_file,
+        )
+        progress_bar_path = progress_bar["path"]
+        progress_bar_configuration = await app.service.range_2d_set(
+            progress_bar_path,
+            {
+                "min_value": 0,
+                "max_value": 250,
+                "value": 125,
+                "step": 5,
+                "page": 25,
+                "rounded": True,
+                "fill_mode": "bottom_to_top",
+                "indeterminate": True,
+                "show_percentage": False,
+                "editor_preview_indeterminate": True,
+            },
+            scene_file=scene_file,
+        )
+        progress_bar_state = progress_bar_configuration["configuration"]
+        if (
+            not progress_bar_configuration.get("changed")
+            or not progress_bar_configuration.get("undoable")
+            or progress_bar_state["min_value"] != 0
+            or progress_bar_state["max_value"] != 250
+            or progress_bar_state["value"] != 125
+            or progress_bar_state["page"] != 25
+            or progress_bar_state["progress_bar"]
+            != {
+                "fill_mode": "bottom_to_top",
+                "indeterminate": True,
+                "show_percentage": False,
+                "editor_preview_indeterminate": True,
+            }
+        ):
+            raise RuntimeError("ProgressBar semantic configuration was not applied")
+        unchanged_progress_bar = await app.service.range_2d_set(
+            progress_bar_path,
+            {"value": 125},
+            scene_file=scene_file,
+        )
+        if unchanged_progress_bar.get("changed") or unchanged_progress_bar.get("undoable"):
+            raise RuntimeError("Range control updates were not idempotent")
+        await _expect_godot_error(
+            app.service.range_2d_set(
+                progress_bar_path,
+                {"tick_count": 4},
+                scene_file=scene_file,
+            ),
+            "UNSUPPORTED_RANGE_PROPERTY",
+        )
+        await _expect_godot_error(
+            app.service.range_2d_set(
+                progress_bar_path,
+                {"value": 240},
+                scene_file=scene_file,
+            ),
+            "INVALID_RANGE_CONFIGURATION",
+        )
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("ProgressBar semantic configuration was not undoable")
+        restored_progress_bar = await app.service.range_2d_get(
+            progress_bar_path, scene_file=scene_file
+        )
+        if restored_progress_bar["configuration"]["max_value"] != 100:
+            raise RuntimeError("Undo did not restore ProgressBar range state")
+        if not (await app.service.scene_redo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("ProgressBar semantic configuration was not redoable")
+
+        slider = await app.service.node_create(
+            type_name="HSlider",
+            name="AgentSlider",
+            parent_path="/Main/UI",
+            scene_file=scene_file,
+        )
+        slider_path = slider["path"]
+        slider_configuration = await app.service.range_2d_set(
+            slider_path,
+            {
+                "min_value": -10,
+                "max_value": 10,
+                "value": 5,
+                "step": 1,
+                "editable": False,
+                "scrollable": False,
+                "tick_count": 5,
+                "ticks_on_borders": True,
+                "ticks_position": "both",
+            },
+            scene_file=scene_file,
+        )
+        slider_state = slider_configuration["configuration"]
+        if (
+            slider_state["value"] != 5
+            or slider_state["slider"]
+            != {
+                "editable": False,
+                "scrollable": False,
+                "tick_count": 5,
+                "ticks_on_borders": True,
+                "ticks_position": "both",
+            }
+        ):
+            raise RuntimeError("HSlider semantic configuration was not applied")
+
+        scroll_bar = await app.service.node_create(
+            type_name="VScrollBar",
+            name="AgentScrollBar",
+            parent_path="/Main/UI",
+            scene_file=scene_file,
+        )
+        scroll_bar_path = scroll_bar["path"]
+        scroll_bar_configuration = await app.service.range_2d_set(
+            scroll_bar_path,
+            {
+                "min_value": 0,
+                "max_value": 500,
+                "value": 80,
+                "step": 8,
+                "page": 100,
+                "custom_step": 24,
+            },
+            scene_file=scene_file,
+        )
+        if (
+            scroll_bar_configuration["configuration"]["value"] != 80
+            or scroll_bar_configuration["configuration"]["scroll_bar"]["custom_step"] != 24
+        ):
+            raise RuntimeError("VScrollBar semantic configuration was not applied")
+
+        spin_box = await app.service.node_create(
+            type_name="SpinBox",
+            name="AgentSpinBox",
+            parent_path="/Main/UI",
+            scene_file=scene_file,
+        )
+        spin_box_path = spin_box["path"]
+        spin_box_configuration = await app.service.range_2d_set(
+            spin_box_path,
+            {
+                "min_value": 0,
+                "max_value": 99,
+                "value": 42,
+                "step": 2,
+                "alignment": "right",
+                "custom_arrow_round": True,
+                "custom_arrow_step": 4,
+                "editable": False,
+                "prefix": "$",
+                "suffix": "kg",
+                "select_all_on_focus": True,
+                "update_on_text_changed": True,
+            },
+            scene_file=scene_file,
+        )
+        spin_box_state = spin_box_configuration["configuration"]
+        if (
+            spin_box_state["value"] != 42
+            or spin_box_state["spin_box"]
+            != {
+                "alignment": "right",
+                "custom_arrow_round": True,
+                "custom_arrow_step": 4,
+                "editable": False,
+                "prefix": "$",
+                "suffix": "kg",
+                "select_all_on_focus": True,
+                "update_on_text_changed": True,
+            }
+        ):
+            raise RuntimeError("SpinBox semantic configuration was not applied")
+        await _expect_godot_error(
+            app.service.range_2d_get(semantic_line_path, scene_file=scene_file),
+            "RANGE_2D_REQUIRED",
+        )
+        if not (await app.service.scene_save(scene_file=scene_file)).get("saved"):
+            raise RuntimeError("Range controls could not be saved")
+        if not (await app.service.scene_open(scene_file)).get("opened"):
+            raise RuntimeError("Scene could not reopen after saving Range controls")
+        reopened_spin_box = await app.service.range_2d_get(spin_box_path, scene_file=scene_file)
+        if reopened_spin_box["configuration"]["spin_box"]["suffix"] != "kg":
+            raise RuntimeError("SpinBox semantic configuration was not persisted")
+        _trace_smoke("Range control smoke completed")
+
         _trace_smoke("starting Container smoke")
         hbox = await app.service.node_create(
             type_name="HBoxContainer",
@@ -7049,7 +7274,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 75 or _has_node(
+        if final_hierarchy.get("total") != 79 or _has_node(
             final_hierarchy, marker_path
         ):
             raise RuntimeError("Unexpected final hierarchy after write operations")

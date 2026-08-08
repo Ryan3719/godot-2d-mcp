@@ -938,6 +938,19 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def range_2d_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "range_2d_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def animated_sprite_2d_set(
         self,
         path: str,
@@ -964,6 +977,21 @@ class GodotService:
         _validate_button_2d_properties(properties)
         return await self.bridge.call(
             "button_2d_set",
+            _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def range_2d_set(
+        self,
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_range_2d_properties(properties)
+        return await self.bridge.call(
+            "range_2d_set",
             _scene_params(scene_file, path=path, properties=properties),
             session_id=session_id,
         )
@@ -6120,6 +6148,114 @@ def _validate_button_2d_properties(properties: dict[str, Any]) -> None:
         not isinstance(properties["ellipsis_char"], str) or len(properties["ellipsis_char"]) != 1
     ):
         raise ValueError("ellipsis_char must contain exactly one character")
+
+
+def _validate_range_2d_properties(properties: dict[str, Any]) -> None:
+    allowed = {
+        "min_value",
+        "max_value",
+        "value",
+        "step",
+        "page",
+        "allow_greater",
+        "allow_lesser",
+        "exp_edit",
+        "rounded",
+        "fill_mode",
+        "indeterminate",
+        "show_percentage",
+        "editor_preview_indeterminate",
+        "editable",
+        "scrollable",
+        "tick_count",
+        "ticks_on_borders",
+        "ticks_position",
+        "custom_step",
+        "alignment",
+        "custom_arrow_round",
+        "custom_arrow_step",
+        "prefix",
+        "suffix",
+        "select_all_on_focus",
+        "update_on_text_changed",
+    }
+    _validate_draw_2d_property_names(properties, allowed, "Range", maximum=20)
+    for name in {
+        "allow_greater",
+        "allow_lesser",
+        "exp_edit",
+        "rounded",
+        "indeterminate",
+        "show_percentage",
+        "editor_preview_indeterminate",
+        "editable",
+        "scrollable",
+        "ticks_on_borders",
+        "custom_arrow_round",
+        "select_all_on_focus",
+        "update_on_text_changed",
+    } & properties.keys():
+        _validate_boolean(properties[name], name)
+    for name in {
+        "min_value",
+        "max_value",
+        "value",
+        "step",
+        "page",
+        "custom_step",
+        "custom_arrow_step",
+    } & properties.keys():
+        if (
+            not _is_finite_number(properties[name])
+            or abs(float(properties[name])) > 1_000_000_000.0
+        ):
+            raise ValueError(f"{name} must be a finite number between -1000000000 and 1000000000")
+    for name in {"step", "page", "custom_arrow_step"} & properties.keys():
+        if float(properties[name]) < 0:
+            raise ValueError(f"{name} must be greater than or equal to zero")
+    if "custom_step" in properties and (
+        float(properties["custom_step"]) < -1
+        or -1 < float(properties["custom_step"]) < 0
+    ):
+        raise ValueError("custom_step must be -1 or a non-negative number")
+    if (
+        "min_value" in properties
+        and "max_value" in properties
+        and properties["min_value"] > properties["max_value"]
+    ):
+        raise ValueError("min_value must be less than or equal to max_value")
+    if (
+        "page" in properties
+        and {"min_value", "max_value"} <= properties.keys()
+        and properties["page"] > properties["max_value"] - properties["min_value"]
+    ):
+        raise ValueError("page must be between zero and max_value - min_value")
+    if properties.get("exp_edit") is True and properties.get("min_value", 0) < 0:
+        raise ValueError("exp_edit requires min_value to be greater than or equal to zero")
+    if (
+        {"min_value", "max_value", "page", "value", "allow_greater"} <= properties.keys()
+        and properties["allow_greater"] is False
+        and properties["value"] > properties["max_value"] - properties["page"]
+    ):
+        raise ValueError(
+            "value cannot be greater than max_value - page unless allow_greater is true"
+        )
+    if "tick_count" in properties:
+        _validate_draw_2d_integer(properties["tick_count"], "tick_count", minimum=0, maximum=4096)
+    _validate_draw_2d_enum(
+        properties,
+        "fill_mode",
+        {"begin_to_end", "end_to_begin", "top_to_bottom", "bottom_to_top"},
+    )
+    _validate_draw_2d_enum(
+        properties,
+        "ticks_position",
+        {"bottom_right", "top_left", "both", "center"},
+    )
+    _validate_draw_2d_enum(properties, "alignment", {"left", "center", "right", "fill"})
+    for name in {"prefix", "suffix"} & properties.keys():
+        if not isinstance(properties[name], str) or len(properties[name]) > 256:
+            raise ValueError(f"{name} must be a string up to 256 characters")
 
 
 def _validate_button_menu_page(offset: int, limit: int) -> None:
