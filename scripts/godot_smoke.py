@@ -260,6 +260,47 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
                 f"after_undo={after_undo_resource}, redone={redone_resource}, "
                 f"saved={saved_resource}, after_redo={after_redo_resource}"
             )
+        shortcut_path = "res://generated/agent_save_shortcut.tres"
+        initial_shortcut_events = [
+            {"type": "key", "keycode": 83, "ctrl": True},
+            {"type": "mouse_button", "button": 4, "device": -1},
+            {"type": "joypad_motion", "axis": 0, "axis_value": -1.0, "device": 2},
+        ]
+        created_shortcut = await app.service.shortcut_create(shortcut_path, initial_shortcut_events)
+        created_shortcut_data = await app.service.shortcut_get(shortcut_path)
+        replacement_shortcut_events = [
+            {"type": "key", "physical_keycode": 68, "shift": True}
+        ]
+        updated_shortcut = await app.service.shortcut_set(shortcut_path, replacement_shortcut_events)
+        undone_shortcut = await app.service.shortcut_undo(shortcut_path)
+        after_undo_shortcut = await app.service.shortcut_get(shortcut_path)
+        redone_shortcut = await app.service.shortcut_redo(shortcut_path)
+        saved_shortcut = await app.service.shortcut_save(shortcut_path)
+        after_redo_shortcut = await app.service.shortcut_get(shortcut_path)
+        saved_shortcut_file = project_path / "generated" / "agent_save_shortcut.tres"
+        if (
+            created_shortcut.get("created") is not True
+            or created_shortcut.get("saved") is not True
+            or created_shortcut_data.get("resource_type") != "Shortcut"
+            or {event.get("type") for event in created_shortcut_data.get("events", [])}
+            != {"key", "mouse_button", "joypad_motion"}
+            or updated_shortcut.get("updated") is not True
+            or undone_shortcut.get("changed") is not True
+            or {event.get("type") for event in after_undo_shortcut.get("events", [])}
+            != {"key", "mouse_button", "joypad_motion"}
+            or redone_shortcut.get("changed") is not True
+            or saved_shortcut.get("saved") is not True
+            or [event.get("type") for event in after_redo_shortcut.get("events", [])] != ["key"]
+            or not saved_shortcut_file.is_file()
+            or "Shortcut" not in saved_shortcut_file.read_text(encoding="utf-8")
+        ):
+            raise RuntimeError(
+                "Shortcut creation, update, undo/redo, or save was incomplete: "
+                f"created={created_shortcut}, initial={created_shortcut_data}, "
+                f"updated={updated_shortcut}, undone={undone_shortcut}, "
+                f"after_undo={after_undo_shortcut}, redone={redone_shortcut}, "
+                f"saved={saved_shortcut}, after_redo={after_redo_shortcut}"
+            )
         hierarchy = await app.service.scene_get_hierarchy(limit=20)
         classes = await app.service.class_search(query="Button", limit=20)
         button_overview = await app.service.class_2d_describe("Button")
@@ -289,6 +330,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         )
         gradient_coverage = await app.service.class_2d_coverage(
             query="Gradient", scope="resource", limit=20
+        )
+        shortcut_coverage = await app.service.class_2d_coverage(
+            query="Shortcut", scope="resource", limit=20
         )
         navigation_polygon_coverage = await app.service.class_2d_coverage(
             query="NavigationPolygon", scope="resource", limit=20
@@ -440,6 +484,31 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         ):
             raise RuntimeError(
                 f"Gradient resource coverage audit was incomplete: {gradient_coverage}"
+            )
+        shortcut_coverage_entry = next(
+            (
+                entry
+                for entry in shortcut_coverage.get("entries", [])
+                if entry.get("name") == "Shortcut"
+            ),
+            None,
+        )
+        if (
+            shortcut_coverage.get("scope") != "resource"
+            or shortcut_coverage_entry is None
+            or {
+                "shortcut_get",
+                "shortcut_create",
+                "shortcut_set",
+                "shortcut_save",
+                "shortcut_undo",
+                "shortcut_redo",
+            }
+            - set(shortcut_coverage_entry.get("semantic_tools", []))
+            or shortcut_coverage_entry.get("test_status") != "semantic_smoke"
+        ):
+            raise RuntimeError(
+                f"Shortcut coverage audit was incomplete: {shortcut_coverage}"
             )
         navigation_polygon_coverage_entry = next(
             (

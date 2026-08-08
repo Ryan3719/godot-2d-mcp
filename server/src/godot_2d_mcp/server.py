@@ -621,6 +621,14 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def shortcut_get(
+        resource_path: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Read a standalone Shortcut resource and its typed InputEvent bindings."""
+        return await service.shortcut_get(resource_path=resource_path, session_id=session_id)
+
+    @mcp.tool(annotations=READ_ONLY)
     async def animation_list(
         player_path: str,
         session_id: str | None = None,
@@ -1437,6 +1445,56 @@ def create_application(
     ) -> dict[str, Any]:
         """Redo the next MCP resource-property update for one standalone resource."""
         return await service.resource_redo(resource_path=resource_path, session_id=session_id)
+
+    @mcp.tool(annotations=WRITE)
+    async def shortcut_create(
+        resource_path: str,
+        events: list[dict[str, Any]],
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Create and save a native standalone Shortcut with one or more InputEvent bindings."""
+        return await service.shortcut_create(
+            resource_path=resource_path,
+            events=events,
+            session_id=session_id,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def shortcut_set(
+        resource_path: str,
+        events: list[dict[str, Any]],
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Atomically replace a standalone Shortcut binding list in isolated UndoRedo history."""
+        return await service.shortcut_set(
+            resource_path=resource_path,
+            events=events,
+            session_id=session_id,
+        )
+
+    @mcp.tool(annotations=SAVE)
+    async def shortcut_save(
+        resource_path: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Persist the current in-memory Shortcut binding list to its .tres or .res file."""
+        return await service.shortcut_save(resource_path=resource_path, session_id=session_id)
+
+    @mcp.tool(annotations=WRITE)
+    async def shortcut_undo(
+        resource_path: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Undo the previous MCP binding-list change for one standalone Shortcut."""
+        return await service.shortcut_undo(resource_path=resource_path, session_id=session_id)
+
+    @mcp.tool(annotations=WRITE)
+    async def shortcut_redo(
+        resource_path: str,
+        session_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Redo the next MCP binding-list change for one standalone Shortcut."""
+        return await service.shortcut_redo(resource_path=resource_path, session_id=session_id)
 
     @mcp.tool(annotations=WRITE)
     async def sprite_frames_animation_upsert(

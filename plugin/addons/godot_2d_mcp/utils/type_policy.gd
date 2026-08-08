@@ -25,11 +25,12 @@ const RESOURCE_BASELINE_SUPPORT := {
 	"embedded_authoring": false,
 }
 
-# Shader source has a separate bounded canvas_item workflow. Keeping it out of
-# the generic property path prevents bypassing its source and include checks.
+# Shader source and Shortcut InputEvent arrays have dedicated bounded workflows.
+# Keeping them out of the generic property path prevents bypassing those contracts.
 const RESOURCE_MANAGEMENT_EXCLUDED_BASE_TYPES := {
 	"Shader": true,
 	"ShaderMaterial": true,
+	"Shortcut": true,
 }
 
 # Keep this catalog explicit: it documents the 2D resources deliberately in scope,
@@ -187,7 +188,10 @@ const RESOURCE_COVERAGE_CATALOG := [
 	{
 		"base_type": "Shortcut",
 		"category": "input",
-		"tools": ["button_2d_get", "button_2d_set"],
+		"tools": [
+			"button_2d_get", "button_2d_set", "shortcut_get", "shortcut_create",
+			"shortcut_set", "shortcut_save", "shortcut_undo", "shortcut_redo",
+		],
 	},
 	{
 		"base_type": "Texture2D",
@@ -448,6 +452,7 @@ const SEMANTIC_SMOKE_COVERED_CLASSES := {
 	"Theme": true,
 	"StyleBoxFlat": true,
 	"Gradient": true,
+	"Shortcut": true,
 	"ParticleProcessMaterial": true,
 	"CanvasItemMaterial": true,
 	"ShaderMaterial": true,
