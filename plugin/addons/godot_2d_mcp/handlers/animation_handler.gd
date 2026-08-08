@@ -25,6 +25,11 @@ const BEZIER_KEY_FIELDS := {
 	"in_handle": true,
 	"out_handle": true,
 }
+const METHOD_KEY_FIELDS := {
+	"time": true,
+	"method": true,
+	"args": true,
+}
 const BEZIER_COMPONENTS_BY_TYPE := {
 	TYPE_VECTOR2: {"x": true, "y": true},
 	TYPE_COLOR: {"r": true, "g": true, "b": true, "a": true},
@@ -497,6 +502,84 @@ func upsert_bezier_track(params: Dictionary) -> Dictionary:
 	}
 
 
+func upsert_method_track(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_player(params)
+	if resolved.has("_error"):
+		return resolved
+	var player: AnimationPlayer = resolved["player"]
+	var scene_root: Node = resolved["scene_root"]
+	var library_result := _resolve_library(player, params)
+	if library_result.has("_error"):
+		return library_result
+	var library: AnimationLibrary = library_result["library"]
+	var library_editability := _require_editable_library(library)
+	if library_editability != null:
+		return library_editability
+	var animation_result := _resolve_editable_animation(library, params)
+	if animation_result.has("_error"):
+		return animation_result
+	var animation: Animation = animation_result["animation"]
+	var target_result := _resolve_safe_method_track_target(
+		scene_root, str(params.get("target_path", ""))
+	)
+	if target_result.has("_error"):
+		return target_result
+	var target: Node = target_result["node"]
+	var animation_root_result := _resolve_animation_root(player, scene_root)
+	if animation_root_result.has("_error"):
+		return animation_root_result
+	var keys_result := _parse_method_track_keys(params.get("keys", []), animation.length, target)
+	if keys_result.has("_error"):
+		return keys_result
+	var enabled = params.get("enabled", true)
+	if not enabled is bool:
+		return Errors.make("INVALID_PARAMETER", "enabled must be a boolean")
+	var track_path := _make_node_track_path(animation_root_result["root"], target)
+	var existing_index := animation.find_track(track_path, Animation.TYPE_METHOD)
+	if existing_index >= 0 and animation.track_is_imported(existing_index):
+		return Errors.make(
+			"IMPORTED_ANIMATION_TRACK",
+			"Cannot replace imported animation track %d" % existing_index,
+			false,
+			"Edit the source animation instead of an imported track."
+		)
+	var replacement := _duplicate_animation(animation)
+	if replacement == null:
+		return Errors.make("ANIMATION_DUPLICATE_FAILED", "Godot failed to duplicate the animation resource")
+	var track_index := existing_index
+	if existing_index >= 0:
+		replacement.remove_track(existing_index)
+	track_index = replacement.add_track(Animation.TYPE_METHOD, existing_index)
+	replacement.track_set_path(track_index, track_path)
+	replacement.track_set_enabled(track_index, enabled)
+	for key in keys_result["keys"]:
+		replacement.track_insert_key(
+			track_index,
+			key["time"],
+			{"method": StringName(key["method"]), "args": key["args"]}
+		)
+	_commit_animation_replacement(
+		scene_root,
+		player,
+		library,
+		library_result["name"],
+		animation_result["name"],
+		animation,
+		replacement,
+		false,
+		"Godot 2D MCP: Update animation method track"
+	)
+	return {
+		"player_path": ScenePath.from_node(player, scene_root),
+		"library": library_result["name"],
+		"animation": animation_result["name"],
+		"track": _serialize_track(replacement, track_index, animation_root_result["root"], scene_root),
+		"replaced_existing": existing_index >= 0,
+		"undoable": true,
+		"_scene_mutated": true,
+	}
+
+
 func delete_track(params: Dictionary) -> Dictionary:
 	var resolved := _resolve_player(params)
 	if resolved.has("_error"):
@@ -520,12 +603,12 @@ func delete_track(params: Dictionary) -> Dictionary:
 	var track_index: int = track_index_result["index"]
 	var track_type := animation.track_get_type(track_index)
 	if track_type != Animation.TYPE_VALUE and track_type != Animation.TYPE_AUDIO \
-		and track_type != Animation.TYPE_BEZIER:
+		and track_type != Animation.TYPE_BEZIER and track_type != Animation.TYPE_METHOD:
 		return Errors.make(
 			"UNSUPPORTED_ANIMATION_TRACK",
-			"animation_track_delete supports local 2D/UI property value, Bezier, and audio tracks only",
+			"animation_track_delete supports local 2D/UI value, Bezier, audio, and safe method tracks only",
 			false,
-			"Method, nested-animation, and 3D tracks are not editable in this release."
+			"Nested-animation and 3D tracks are not editable in this release."
 		)
 	if animation.track_is_imported(track_index):
 		return Errors.make(
@@ -544,6 +627,10 @@ func delete_track(params: Dictionary) -> Dictionary:
 		)
 	elif track_type == Animation.TYPE_AUDIO:
 		track_scope_result = _resolve_audio_track_target(
+			animation, track_index, animation_root_result["root"], scene_root
+		)
+	elif track_type == Animation.TYPE_METHOD:
+		track_scope_result = _resolve_safe_method_track(
 			animation, track_index, animation_root_result["root"], scene_root
 		)
 	else:
@@ -895,6 +982,34 @@ func _resolve_local_target(scene_root: Node, target_path: String) -> Dictionary:
 	return {"node": target}
 
 
+func _resolve_safe_method_track_target(scene_root: Node, target_path: String) -> Dictionary:
+	var target_result := _resolve_local_target(scene_root, target_path)
+	if target_result.has("_error"):
+		return target_result
+	var safety_check := _require_safe_method_track_target(target_result["node"])
+	if safety_check != null:
+		return safety_check
+	return target_result
+
+
+func _require_safe_method_track_target(target: Node) -> Variant:
+	if target.get_script() != null:
+		return Errors.make(
+			"SCRIPTED_METHOD_TRACK_TARGET",
+			"Method tracks cannot target scripted node '%s'" % target.name,
+			false,
+			"Target an un-scripted built-in 2D node so every method call remains within the safe whitelist."
+		)
+	if target is CanvasItem or target is AnimationPlayer or target is AudioStreamPlayer2D:
+		return null
+	return Errors.make(
+		"UNSAFE_ANIMATION_METHOD_TARGET",
+		"Method tracks do not support target type %s" % target.get_class(),
+		false,
+		"Target a CanvasItem, AnimationPlayer, AudioStreamPlayer2D, AnimatedSprite2D, or 2D particle node."
+	)
+
+
 func _resolve_writable_property(node: Node, property_name: String) -> Dictionary:
 	var clean_name := property_name.strip_edges()
 	if clean_name.is_empty() or clean_name.length() > 256 or clean_name.contains(":"):
@@ -1074,6 +1189,53 @@ func _resolve_audio_track_target(
 	return {"node": target}
 
 
+func _resolve_safe_method_track(
+	animation: Animation, track_index: int, animation_root: Node, scene_root: Node
+) -> Dictionary:
+	var track_path := animation.track_get_path(track_index)
+	if track_path.get_subname_count() != 0:
+		return Errors.make(
+			"UNSUPPORTED_ANIMATION_TRACK_PATH",
+			"Method track %d must target a node directly" % track_index,
+			false,
+			"Use animation_method_track_upsert with a scene-local target path."
+		)
+	var target := animation_root.get_node_or_null(track_path)
+	if target == null:
+		return Errors.make(
+			"ANIMATION_TARGET_NOT_FOUND",
+			"Animation track %d target no longer exists" % track_index,
+			false,
+			"Repair or replace the track with animation_method_track_upsert."
+		)
+	if target != scene_root and target.owner != scene_root:
+		return Errors.make(
+			"PACKED_SCENE_BOUNDARY",
+			"Cannot edit a method track targeting instanced node '%s'" % target.name,
+			false,
+			"Edit the source PackedScene or replace the track with a local target."
+		)
+	if not TypePolicy.is_supported_node_class(target.get_class()):
+		return Errors.make(
+			"UNSUPPORTED_2D_TYPE",
+			"Method track %d targets unsupported type %s" % [track_index, target.get_class()],
+			false,
+			"Use animation_method_track_upsert with a supported 2D target."
+		)
+	var safety_check := _require_safe_method_track_target(target)
+	if safety_check != null:
+		return safety_check
+	for key_index in animation.track_get_key_count(track_index):
+		var key_check := _parse_safe_method_track_call(
+			target,
+			str(animation.method_track_get_name(track_index, key_index)),
+			animation.method_track_get_params(track_index, key_index)
+		)
+		if key_check.has("_error"):
+			return key_check
+	return {"node": target}
+
+
 func _require_2d_animation_track_scope(
 	animation: Animation, animation_root: Node, scene_root: Node
 ) -> Variant:
@@ -1100,11 +1262,18 @@ func _require_2d_animation_track_scope(
 			if bezier_result.has("_error"):
 				return bezier_result
 			continue
+		if track_type == Animation.TYPE_METHOD:
+			var method_result := _resolve_safe_method_track(
+				animation, track_index, animation_root, scene_root
+			)
+			if method_result.has("_error"):
+				return method_result
+			continue
 		return Errors.make(
 			"UNSUPPORTED_ANIMATION_TRACK",
 			"Animation contains an unsupported track at index %d" % track_index,
 			false,
-			"Only local 2D/UI property value and Bezier tracks plus AudioStreamPlayer2D audio tracks are editable."
+			"Only local 2D/UI property value, Bezier, safe method tracks, and AudioStreamPlayer2D audio tracks are editable."
 		)
 	return null
 
@@ -1253,6 +1422,213 @@ func _parse_audio_track_offset(raw_offset: Variant, label: String) -> Dictionary
 			"%s must be between 0 and %s seconds" % [label, MAX_ANIMATION_LENGTH]
 		)
 	return {"offset": offset}
+
+
+func _parse_method_track_keys(
+	raw_keys: Variant, animation_length: float, target: Node
+) -> Dictionary:
+	if not raw_keys is Array or raw_keys.is_empty():
+		return Errors.make("MISSING_PARAMETER", "keys must be a non-empty array")
+	if raw_keys.size() > MAX_KEYS_PER_TRACK:
+		return Errors.make(
+			"REQUEST_LIMIT_EXCEEDED",
+			"A track can contain at most %d keys" % MAX_KEYS_PER_TRACK
+		)
+	var parsed: Array[Dictionary] = []
+	for raw_key in raw_keys:
+		if not raw_key is Dictionary:
+			return Errors.make("INVALID_METHOD_ANIMATION_KEY", "Every method key must be an object")
+		for field in raw_key:
+			if not field is String or not METHOD_KEY_FIELDS.has(field):
+				return Errors.make(
+					"INVALID_METHOD_ANIMATION_KEY",
+					"Method keys allow only time, method, and args"
+				)
+		if not raw_key.has("time") or not raw_key.has("method"):
+			return Errors.make(
+				"INVALID_METHOD_ANIMATION_KEY", "Each method key requires time and method"
+			)
+		var time_result := _parse_key_time(raw_key["time"], animation_length)
+		if time_result.has("_error"):
+			return time_result
+		var call_result := _parse_safe_method_track_call(
+			target, raw_key["method"], raw_key.get("args", [])
+		)
+		if call_result.has("_error"):
+			return call_result
+		for existing_key in parsed:
+			if is_equal_approx(existing_key["time"], time_result["time"]):
+				return Errors.make(
+					"DUPLICATE_ANIMATION_KEY",
+					"A track cannot contain more than one key at the same time"
+				)
+		parsed.append(
+			{
+				"time": time_result["time"],
+				"method": call_result["method"],
+				"args": call_result["args"],
+			}
+		)
+	return {"keys": parsed}
+
+
+func _parse_safe_method_track_call(
+	target: Node, raw_method: Variant, raw_args: Variant
+) -> Dictionary:
+	if not raw_method is String:
+		return Errors.make("INVALID_METHOD_ANIMATION_KEY", "method must be a string")
+	var method: String = raw_method.strip_edges()
+	if method.is_empty() or method.length() > 256:
+		return Errors.make(
+			"INVALID_METHOD_ANIMATION_KEY", "method must contain between 1 and 256 characters"
+		)
+	if not raw_args is Array:
+		return Errors.make("INVALID_METHOD_ANIMATION_KEY", "args must be an array")
+	var args: Array = raw_args
+	if method == "show" or method == "hide":
+		if not target is CanvasItem:
+			return _unsafe_method_error(target, method)
+		return _require_zero_argument_method(method, args)
+	if target is AnimationPlayer:
+		return _parse_animation_player_method_call(target, method, args)
+	if target is AudioStreamPlayer2D:
+		return _parse_audio_stream_player_method_call(method, args)
+	if target is AnimatedSprite2D:
+		return _parse_animated_sprite_method_call(target, method, args)
+	if target is GPUParticles2D or target is CPUParticles2D:
+		if method == "restart":
+			return _require_zero_argument_method(method, args)
+	return _unsafe_method_error(target, method)
+
+
+func _parse_animation_player_method_call(
+	target: AnimationPlayer, method: String, args: Array
+) -> Dictionary:
+	if method == "stop" or method == "pause":
+		return _require_zero_argument_method(method, args)
+	if method == "play" or method == "play_backwards":
+		if args.size() > 1:
+			return Errors.make(
+				"INVALID_METHOD_ANIMATION_KEY",
+				"AnimationPlayer.%s accepts at most one animation name" % method
+			)
+		if args.is_empty():
+			return {"method": method, "args": []}
+		var animation_check := _require_known_animation_name(target, args[0], method)
+		if animation_check.has("_error"):
+			return animation_check
+		return {"method": method, "args": [animation_check["name"]]}
+	if method == "queue":
+		if args.size() != 1:
+			return Errors.make(
+				"INVALID_METHOD_ANIMATION_KEY", "AnimationPlayer.queue requires one animation name"
+			)
+		var queue_animation_check := _require_known_animation_name(target, args[0], method)
+		if queue_animation_check.has("_error"):
+			return queue_animation_check
+		if String(queue_animation_check["name"]).is_empty():
+			return Errors.make(
+				"INVALID_METHOD_ANIMATION_KEY", "AnimationPlayer.queue requires a non-empty animation name"
+			)
+		return {"method": method, "args": [queue_animation_check["name"]]}
+	return _unsafe_method_error(target, method)
+
+
+func _parse_audio_stream_player_method_call(method: String, args: Array) -> Dictionary:
+	if method == "stop":
+		return _require_zero_argument_method(method, args)
+	if method != "play":
+		return _unsafe_method_error(null, method, "AudioStreamPlayer2D")
+	if args.size() > 1:
+		return Errors.make(
+			"INVALID_METHOD_ANIMATION_KEY", "AudioStreamPlayer2D.play accepts at most one start position"
+		)
+	if args.is_empty():
+		return {"method": method, "args": []}
+	if not _is_finite_number(args[0]) or float(args[0]) < 0.0 \
+		or float(args[0]) > MAX_ANIMATION_LENGTH:
+		return Errors.make(
+			"INVALID_METHOD_ANIMATION_KEY",
+			"AudioStreamPlayer2D.play position must be between 0 and %s seconds" % MAX_ANIMATION_LENGTH
+		)
+	return {"method": method, "args": [float(args[0])]}
+
+
+func _parse_animated_sprite_method_call(
+	target: AnimatedSprite2D, method: String, args: Array
+) -> Dictionary:
+	if method == "pause" or method == "stop":
+		return _require_zero_argument_method(method, args)
+	if method != "play":
+		return _unsafe_method_error(target, method)
+	if args.size() > 1:
+		return Errors.make(
+			"INVALID_METHOD_ANIMATION_KEY", "AnimatedSprite2D.play accepts at most one animation name"
+		)
+	if args.is_empty():
+		return {"method": method, "args": []}
+	if not args[0] is String:
+		return Errors.make(
+			"INVALID_METHOD_ANIMATION_KEY", "AnimatedSprite2D.play animation must be a string"
+		)
+	var animation_name: String = args[0].strip_edges()
+	if animation_name.is_empty() or animation_name.length() > 256:
+		return Errors.make(
+			"INVALID_METHOD_ANIMATION_KEY",
+			"AnimatedSprite2D.play animation must contain between 1 and 256 characters"
+		)
+	var frames := target.sprite_frames
+	if frames == null or not frames.has_animation(StringName(animation_name)):
+		return Errors.make(
+			"ANIMATION_NOT_FOUND",
+			"AnimatedSprite2D '%s' has no animation named '%s'" % [target.name, animation_name],
+			false,
+			"Call sprite_frames_get to inspect the available animations."
+		)
+	return {"method": method, "args": [animation_name]}
+
+
+func _require_known_animation_name(
+	target: AnimationPlayer, raw_name: Variant, method: String
+) -> Dictionary:
+	if not raw_name is String:
+		return Errors.make(
+			"INVALID_METHOD_ANIMATION_KEY", "AnimationPlayer.%s animation must be a string" % method
+		)
+	var animation_name: String = raw_name.strip_edges()
+	if animation_name.length() > 256:
+		return Errors.make(
+			"INVALID_METHOD_ANIMATION_KEY",
+			"AnimationPlayer.%s animation cannot exceed 256 characters" % method
+		)
+	if not animation_name.is_empty() and not target.has_animation(StringName(animation_name)):
+		return Errors.make(
+			"ANIMATION_NOT_FOUND",
+			"AnimationPlayer '%s' has no animation named '%s'" % [target.name, animation_name],
+			false,
+			"Call animation_list to inspect the target AnimationPlayer."
+		)
+	return {"name": animation_name}
+
+
+func _require_zero_argument_method(method: String, args: Array) -> Dictionary:
+	if not args.is_empty():
+		return Errors.make(
+			"INVALID_METHOD_ANIMATION_KEY", "%s does not accept arguments" % method
+		)
+	return {"method": method, "args": []}
+
+
+func _unsafe_method_error(target: Variant, method: String, target_name: String = "") -> Dictionary:
+	var type_name: String = target_name
+	if type_name.is_empty():
+		type_name = target.get_class()
+	return Errors.make(
+		"UNSAFE_ANIMATION_METHOD",
+		"Method '%s' is not allowed for %s animation tracks" % [method, type_name],
+		false,
+		"Use the supported show/hide, animation playback, audio playback, AnimatedSprite2D playback, or particle restart methods."
+	)
 
 
 func _parse_bezier_track_keys(raw_keys: Variant, animation_length: float) -> Dictionary:
@@ -1566,6 +1942,11 @@ func _serialize_key(animation: Animation, track_index: int, key_index: int) -> D
 		)
 		result["out_handle"] = VariantCodec.serialize(
 			animation.bezier_track_get_key_out_handle(track_index, key_index)
+		)
+	elif animation.track_get_type(track_index) == Animation.TYPE_METHOD:
+		result["method"] = str(animation.method_track_get_name(track_index, key_index))
+		result["args"] = VariantCodec.serialize(
+			animation.method_track_get_params(track_index, key_index)
 		)
 	else:
 		result["value"] = VariantCodec.serialize(animation.track_get_key_value(track_index, key_index))

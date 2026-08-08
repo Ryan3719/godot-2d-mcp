@@ -1831,6 +1831,68 @@ async def test_animation_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_animation_method_track_upsert_forwards_strict_safe_payload() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    keys = [
+        {"time": 0.0, "method": "show"},
+        {"time": 0.15, "method": "hide", "args": []},
+    ]
+
+    result = await service.animation_method_track_upsert(
+        player_path="/Main/ButtonAnimations",
+        animation="button_hover",
+        target_path="/Main/UI/StartButton",
+        keys=keys,
+        enabled=False,
+        library="ui",
+        session_id="project@a1b2",
+        scene_file="res://main.tscn",
+    )
+
+    assert result == {"command": "animation_method_track_upsert"}
+    assert bridge.calls == [
+        (
+            "animation_method_track_upsert",
+            {
+                "player_path": "/Main/ButtonAnimations",
+                "animation": "button_hover",
+                "target_path": "/Main/UI/StartButton",
+                "keys": keys,
+                "enabled": False,
+                "library": "ui",
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        )
+    ]
+    with pytest.raises(ValueError, match="method"):
+        await service.animation_method_track_upsert(
+            "/Main/ButtonAnimations",
+            "button_hover",
+            "/Main/UI/StartButton",
+            keys=[{"time": 0.0, "method": ""}],
+        )
+    with pytest.raises(ValueError, match="args"):
+        await service.animation_method_track_upsert(
+            "/Main/ButtonAnimations",
+            "button_hover",
+            "/Main/UI/StartButton",
+            keys=[{"time": 0.0, "method": "show", "args": object()}],
+        )
+    with pytest.raises(ValueError, match="duplicate"):
+        await service.animation_method_track_upsert(
+            "/Main/ButtonAnimations",
+            "button_hover",
+            "/Main/UI/StartButton",
+            keys=[
+                {"time": 0.0, "method": "show"},
+                {"time": 0.0, "method": "hide"},
+            ],
+        )
+
+
+@pytest.mark.asyncio
 async def test_animation_audio_track_upsert_forwards_strict_payload() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)

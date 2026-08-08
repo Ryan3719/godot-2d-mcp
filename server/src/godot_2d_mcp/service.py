@@ -1568,6 +1568,37 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def animation_method_track_upsert(
+        self,
+        player_path: str,
+        animation: str,
+        target_path: str,
+        keys: list[dict[str, Any]],
+        enabled: bool = True,
+        library: str = "",
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(player_path)
+        _validate_animation_name(animation)
+        _validate_node_path(target_path)
+        _validate_animation_method_track_keys(keys)
+        _validate_boolean(enabled, "enabled")
+        _validate_animation_library(library)
+        return await self.bridge.call(
+            "animation_method_track_upsert",
+            _scene_params(
+                scene_file,
+                player_path=player_path,
+                animation=animation,
+                target_path=target_path,
+                keys=keys,
+                enabled=enabled,
+                library=library,
+            ),
+            session_id=session_id,
+        )
+
     async def animation_track_delete(
         self,
         player_path: str,
@@ -4739,6 +4770,32 @@ def _validate_animation_bezier_track_keys(keys: list[dict[str, Any]]) -> None:
             _validate_animation_bezier_handle(key["in_handle"], "in_handle", is_in_handle=True)
         if "out_handle" in key:
             _validate_animation_bezier_handle(key["out_handle"], "out_handle", is_in_handle=False)
+        time = float(key["time"])
+        if any(math.isclose(time, existing, rel_tol=1e-9, abs_tol=1e-9) for existing in times):
+            raise ValueError("keys cannot contain duplicate times")
+        times.append(time)
+
+
+def _validate_animation_method_track_keys(keys: list[dict[str, Any]]) -> None:
+    if not isinstance(keys, list) or not keys:
+        raise ValueError("keys must be a non-empty array")
+    if len(keys) > 512:
+        raise ValueError("keys can contain at most 512 entries")
+    allowed = {"time", "method", "args"}
+    times: list[float] = []
+    for key in keys:
+        if not isinstance(key, dict) or set(key) - allowed:
+            raise ValueError("each method key allows only time, method, and args")
+        if "time" not in key or "method" not in key:
+            raise ValueError("each method key requires time and method")
+        _validate_key_time(key["time"])
+        if not isinstance(key["method"], str) or not 1 <= len(key["method"].strip()) <= 256:
+            raise ValueError("method must contain between 1 and 256 characters")
+        args = key.get("args", [])
+        if not isinstance(args, list) or len(args) > 16 or any(
+            not _is_json_bind_value(value) for value in args
+        ):
+            raise ValueError("method args must contain at most 16 bounded JSON-compatible values")
         time = float(key["time"])
         if any(math.isclose(time, existing, rel_tol=1e-9, abs_tol=1e-9) for existing in times):
             raise ValueError("keys cannot contain duplicate times")

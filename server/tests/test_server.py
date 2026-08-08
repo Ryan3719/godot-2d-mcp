@@ -121,6 +121,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
         "animation_track_upsert",
         "animation_audio_track_upsert",
         "animation_bezier_track_upsert",
+        "animation_method_track_upsert",
         "animation_track_delete",
         "animation_key_upsert",
         "animation_key_delete",
@@ -313,6 +314,7 @@ async def test_tool_catalog_exposes_read_and_write_annotations() -> None:
     assert annotations["animation_track_upsert"].readOnlyHint is False
     assert annotations["animation_audio_track_upsert"].readOnlyHint is False
     assert annotations["animation_bezier_track_upsert"].readOnlyHint is False
+    assert annotations["animation_method_track_upsert"].readOnlyHint is False
     assert annotations["animation_track_delete"].destructiveHint is True
     assert annotations["animation_key_upsert"].readOnlyHint is False
     assert annotations["animation_key_delete"].destructiveHint is True

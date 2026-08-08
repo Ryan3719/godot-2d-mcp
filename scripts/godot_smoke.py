@@ -3147,6 +3147,91 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         restore_bezier_track_delete = await app.service.scene_undo(scene_file=scene_file)
         if not restore_bezier_track_delete.get("changed"):
             raise RuntimeError("Undo did not restore the deleted Bezier animation track")
+        await _expect_godot_error(
+            app.service.animation_method_track_upsert(
+                player_path="/Main/ButtonAnimations",
+                animation="button_hover",
+                target_path=reparented_button_path,
+                keys=[{"time": 0.0, "method": "queue_free"}],
+                scene_file=scene_file,
+            ),
+            "UNSAFE_ANIMATION_METHOD",
+        )
+        method_track_create = await app.service.animation_method_track_upsert(
+            player_path="/Main/ButtonAnimations",
+            animation="button_hover",
+            target_path=reparented_button_path,
+            keys=[
+                {"time": 0.0, "method": "show"},
+                {"time": 0.15, "method": "hide", "args": []},
+            ],
+            scene_file=scene_file,
+        )
+        method_track_index = method_track_create["track"]["index"]
+        if (
+            method_track_create["replaced_existing"]
+            or method_track_create["track"]["type"] != "method"
+            or method_track_create["track"]["target_path"] != reparented_button_path
+            or method_track_create["track"]["key_count"] != 2
+        ):
+            raise RuntimeError("Method animation track creation returned an unexpected result")
+        method_animation = await app.service.animation_get(
+            "/Main/ButtonAnimations", "button_hover", scene_file=scene_file
+        )
+        method_track = _method_animation_track(
+            method_animation["animation"], reparented_button_path
+        )
+        if (
+            method_track["keys"][0].get("method") != "show"
+            or method_track["keys"][0].get("args") != []
+            or method_track["keys"][1].get("method") != "hide"
+        ):
+            raise RuntimeError("Method animation keys were not serialized correctly")
+        method_track_update = await app.service.animation_method_track_upsert(
+            player_path="/Main/ButtonAnimations",
+            animation="button_hover",
+            target_path=reparented_button_path,
+            keys=[{"time": 0.1, "method": "hide"}],
+            enabled=False,
+            scene_file=scene_file,
+        )
+        if (
+            method_track_update["replaced_existing"] is not True
+            or method_track_update["track"]["enabled"] is not False
+            or method_track_update["track"]["key_count"] != 1
+        ):
+            raise RuntimeError("Method animation track replacement was incomplete")
+        undo_method_track_update = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_method_track_update.get("changed"):
+            raise RuntimeError("Method animation track replacement was not undoable")
+        restored_method_animation = await app.service.animation_get(
+            "/Main/ButtonAnimations", "button_hover", scene_file=scene_file
+        )
+        restored_method_track = _method_animation_track(
+            restored_method_animation["animation"], reparented_button_path
+        )
+        if restored_method_track["key_count"] != 2 or restored_method_track["enabled"] is not True:
+            raise RuntimeError("Undo did not restore the method animation track")
+        redo_method_track_update = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_method_track_update.get("changed"):
+            raise RuntimeError("Method animation track replacement was not redoable")
+        method_track_delete = await app.service.animation_track_delete(
+            player_path="/Main/ButtonAnimations",
+            animation="button_hover",
+            track_index=method_track_index,
+            scene_file=scene_file,
+        )
+        if method_track_delete["track_index"] != method_track_index:
+            raise RuntimeError("Method animation track delete returned an unexpected index")
+        undo_method_track_delete = await app.service.scene_undo(scene_file=scene_file)
+        if not undo_method_track_delete.get("changed"):
+            raise RuntimeError("Method animation track delete was not undoable")
+        redo_method_track_delete = await app.service.scene_redo(scene_file=scene_file)
+        if not redo_method_track_delete.get("changed"):
+            raise RuntimeError("Method animation track delete was not redoable")
+        restore_method_track_delete = await app.service.scene_undo(scene_file=scene_file)
+        if not restore_method_track_delete.get("changed"):
+            raise RuntimeError("Undo did not restore the deleted method animation track")
 
         sparks = await app.service.node_create(
             type_name="GPUParticles2D",
@@ -6711,6 +6796,16 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or not _is_close(reopened_bezier_track["keys"][0].get("value"), 0.75)
         ):
             raise RuntimeError("Saved Bezier animation track did not survive reopening")
+        reopened_method_track = _method_animation_track(
+            reopened_audio_animation["animation"], reparented_button_path
+        )
+        if (
+            reopened_method_track["key_count"] != 1
+            or reopened_method_track["enabled"] is not False
+            or reopened_method_track["keys"][0].get("method") != "hide"
+            or reopened_method_track["keys"][0].get("args") != []
+        ):
+            raise RuntimeError("Saved method animation track did not survive reopening")
 
         await _expect_godot_error(
             app.service.editor_run(
@@ -7387,6 +7482,13 @@ def _bezier_animation_track(animation: dict, target_path: str, property_name: st
     raise RuntimeError(
         f"Bezier animation track was not returned: {target_path}:{property_name}"
     )
+
+
+def _method_animation_track(animation: dict, target_path: str) -> dict:
+    for track in animation.get("tracks", []):
+        if track.get("type") == "method" and track.get("target_path") == target_path:
+            return track
+    raise RuntimeError(f"Method animation track was not returned: {target_path}")
 
 
 def _vector2_match(actual: object, expected: dict[str, float]) -> bool:
