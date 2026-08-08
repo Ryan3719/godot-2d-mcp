@@ -507,6 +507,19 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def node_metadata_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read persistent scene metadata for one 2D/UI node."""
+        return await service.node_metadata_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def node_get_signals(
         path: str,
         session_id: str | None = None,
@@ -1328,6 +1341,38 @@ def create_application(
         return await service.node_group_remove(
             path=path,
             group=group,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def node_metadata_set(
+        path: str,
+        key: str,
+        value: Any,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Set one persistent JSON metadata entry on a local 2D/UI node."""
+        return await service.node_metadata_set(
+            path=path,
+            key=key,
+            value=value,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def node_metadata_remove(
+        path: str,
+        key: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Remove one persistent metadata entry from a local 2D/UI node."""
+        return await service.node_metadata_remove(
+            path=path,
+            key=key,
             session_id=session_id,
             scene_file=scene_file,
         )

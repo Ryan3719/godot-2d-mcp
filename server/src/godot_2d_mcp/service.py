@@ -823,6 +823,19 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def node_metadata_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "node_metadata_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def node_get_signals(
         self,
         path: str,
@@ -1465,6 +1478,38 @@ class GodotService:
         return await self.bridge.call(
             "node_group_remove",
             _scene_params(scene_file, path=path, group=group),
+            session_id=session_id,
+        )
+
+    async def node_metadata_set(
+        self,
+        path: str,
+        key: str,
+        value: Any,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_node_metadata_key(key)
+        _validate_node_metadata_value(value)
+        return await self.bridge.call(
+            "node_metadata_set",
+            _scene_params(scene_file, path=path, key=key, value=value),
+            session_id=session_id,
+        )
+
+    async def node_metadata_remove(
+        self,
+        path: str,
+        key: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_node_metadata_key(key)
+        return await self.bridge.call(
+            "node_metadata_remove",
+            _scene_params(scene_file, path=path, key=key),
             session_id=session_id,
         )
 
@@ -5047,6 +5092,24 @@ def _validate_node_group_name(group: str) -> None:
         raise ValueError(
             "group must be a trimmed non-internal name containing between 1 and 128 characters"
         )
+
+
+def _validate_node_metadata_key(key: str) -> None:
+    if (
+        not isinstance(key, str)
+        or not 1 <= len(key) <= 128
+        or key.startswith("_")
+        or not key.isascii()
+        or not key.isidentifier()
+    ):
+        raise ValueError(
+            "key must be a non-internal ASCII identifier containing between 1 and 128 characters"
+        )
+
+
+def _validate_node_metadata_value(value: Any) -> None:
+    if value is None or not _is_json_bind_value(value):
+        raise ValueError("value must be a non-null bounded JSON-compatible value")
 
 
 def _validate_scene_root_type(value: str) -> None:
