@@ -810,6 +810,19 @@ class GodotService:
             session_id=session_id,
         )
 
+    async def node_groups_get(
+        self,
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        return await self.bridge.call(
+            "node_groups_get",
+            _scene_params(scene_file, path=path),
+            session_id=session_id,
+        )
+
     async def node_get_signals(
         self,
         path: str,
@@ -1422,6 +1435,36 @@ class GodotService:
         return await self.bridge.call(
             "node_set_properties",
             _scene_params(scene_file, path=path, properties=properties),
+            session_id=session_id,
+        )
+
+    async def node_group_add(
+        self,
+        path: str,
+        group: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_node_group_name(group)
+        return await self.bridge.call(
+            "node_group_add",
+            _scene_params(scene_file, path=path, group=group),
+            session_id=session_id,
+        )
+
+    async def node_group_remove(
+        self,
+        path: str,
+        group: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        _validate_node_path(path)
+        _validate_node_group_name(group)
+        return await self.bridge.call(
+            "node_group_remove",
+            _scene_params(scene_file, path=path, group=group),
             session_id=session_id,
         )
 
@@ -4991,6 +5034,19 @@ def _validate_input_map_modifiers(event: dict[str, Any]) -> None:
 def _validate_node_name(name: str) -> None:
     if not name or len(name) > 256:
         raise ValueError("name must contain between 1 and 256 characters")
+
+
+def _validate_node_group_name(group: str) -> None:
+    if (
+        not isinstance(group, str)
+        or not 1 <= len(group) <= 128
+        or group != group.strip()
+        or group.startswith("_")
+        or any(ord(character) < 32 or ord(character) == 127 for character in group)
+    ):
+        raise ValueError(
+            "group must be a trimmed non-internal name containing between 1 and 128 characters"
+        )
 
 
 def _validate_scene_root_type(value: str) -> None:

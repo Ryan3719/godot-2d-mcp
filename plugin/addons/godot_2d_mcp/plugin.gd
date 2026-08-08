@@ -1,7 +1,7 @@
 @tool
 extends EditorPlugin
 
-const PLUGIN_VERSION := "0.62.0"
+const PLUGIN_VERSION := "0.63.0"
 const WS_PORT_SETTING := "godot_2d_mcp/server/ws_port"
 const RUNTIME_AUTOLOAD_NAME := "Godot2DMcpRuntime"
 const RUNTIME_AUTOLOAD_PATH := "res://addons/godot_2d_mcp/runtime/runtime_bridge.gd"
@@ -176,6 +176,7 @@ func _register_handlers() -> void:
 	_dispatcher.register("scene_undo", scene_handler.undo_scene)
 	_dispatcher.register("scene_redo", scene_handler.redo_scene)
 	_dispatcher.register("node_get_properties", node_handler.get_properties)
+	_dispatcher.register("node_groups_get", node_handler.get_node_groups)
 	_dispatcher.register("node_get_signals", signal_handler.get_signals)
 	_dispatcher.register("animation_list", animation_handler.list_animations)
 	_dispatcher.register("animation_get", animation_handler.get_animation)
@@ -325,6 +326,8 @@ func _register_handlers() -> void:
 	_dispatcher.register("cpu_particles_2d_gradient_set", cpu_particle_resources_handler.set_cpu_particles_2d_gradient)
 	_dispatcher.register("cpu_particles_2d_gradient_clear", cpu_particle_resources_handler.clear_cpu_particles_2d_gradient)
 	_dispatcher.register("sprite_2d_set", draw_2d_handler.set_sprite_2d)
+	_dispatcher.register("node_group_add", node_handler.add_node_group)
+	_dispatcher.register("node_group_remove", node_handler.remove_node_group)
 	_dispatcher.register("line_2d_set", draw_2d_handler.set_line_2d)
 	_dispatcher.register("polygon_2d_set", draw_2d_handler.set_polygon_2d)
 	_dispatcher.register("animated_sprite_2d_set", animated_sprite_handler.set_animated_sprite_2d)

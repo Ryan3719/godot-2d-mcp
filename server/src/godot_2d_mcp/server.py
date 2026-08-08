@@ -494,6 +494,19 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def node_groups_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read persistent scene groups for one 2D/UI node."""
+        return await service.node_groups_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def node_get_signals(
         path: str,
         session_id: str | None = None,
@@ -1285,6 +1298,36 @@ def create_application(
         return await service.node_set_properties(
             path=path,
             properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def node_group_add(
+        path: str,
+        group: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Add a persistent project group to a local 2D/UI node."""
+        return await service.node_group_add(
+            path=path,
+            group=group,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def node_group_remove(
+        path: str,
+        group: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Remove one persistent project group from a local 2D/UI node."""
+        return await service.node_group_remove(
+            path=path,
+            group=group,
             session_id=session_id,
             scene_file=scene_file,
         )

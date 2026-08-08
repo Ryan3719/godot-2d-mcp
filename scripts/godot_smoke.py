@@ -1027,6 +1027,44 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         if not redo_update.get("changed"):
             raise RuntimeError("Property update was not redoable")
 
+        initial_marker_groups = await app.service.node_groups_get(
+            marker_path, scene_file=scene_file
+        )
+        if initial_marker_groups["groups"] != []:
+            raise RuntimeError("New Node2D unexpectedly had persistent groups")
+        added_marker_group = await app.service.node_group_add(
+            marker_path, "agents/markers", scene_file=scene_file
+        )
+        if (
+            not added_marker_group.get("changed")
+            or added_marker_group["groups"] != ["agents/markers"]
+            or not added_marker_group.get("undoable")
+        ):
+            raise RuntimeError("Persistent node group was not added")
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("Node group addition was not undoable")
+        if (
+            await app.service.node_groups_get(marker_path, scene_file=scene_file)
+        )["groups"] != []:
+            raise RuntimeError("Undo did not remove the persistent node group")
+        if not (await app.service.scene_redo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("Node group addition was not redoable")
+        removed_marker_group = await app.service.node_group_remove(
+            marker_path, "agents/markers", scene_file=scene_file
+        )
+        if (
+            not removed_marker_group.get("changed")
+            or removed_marker_group["groups"] != []
+            or not removed_marker_group.get("undoable")
+        ):
+            raise RuntimeError("Persistent node group was not removed")
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("Node group removal was not undoable")
+        if (
+            await app.service.node_groups_get(marker_path, scene_file=scene_file)
+        )["groups"] != ["agents/markers"]:
+            raise RuntimeError("Undo did not restore the persistent node group")
+
         await _expect_godot_error(
             app.service.node_instance_scene(
                 "res://packed_scene_3d.tscn",
@@ -7034,11 +7072,17 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             or "NavigationPolygon" not in saved_scene
             or "AgentTileMap" not in saved_scene
             or "TileSetAtlasSource" not in saved_scene
+            or "agents/markers" not in saved_scene
         ):
             raise RuntimeError("Saved scene does not contain the created Button")
         reopened_scene = await app.service.scene_open(scene_file)
         if reopened_scene.get("scene_file") != scene_file:
             raise RuntimeError("Saved scene did not reopen")
+        reopened_marker_groups = await app.service.node_groups_get(
+            marker_copy_path, scene_file=scene_file
+        )
+        if reopened_marker_groups["groups"] != ["agents/markers"]:
+            raise RuntimeError("Persistent node group did not survive duplication and reopening")
         reopened_audio_animation = await app.service.animation_get(
             "/Main/ButtonAnimations", "button_hover", scene_file=scene_file
         )

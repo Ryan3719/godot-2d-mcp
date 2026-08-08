@@ -10,6 +10,7 @@ const VariantCodec := preload("res://addons/godot_2d_mcp/utils/variant_codec.gd"
 
 const MAX_PROPERTIES_PER_REQUEST := 64
 const MAX_PROPERTY_RESULTS := 512
+const MAX_NODE_GROUP_NAME_LENGTH := 128
 const PROTECTED_PROPERTIES := {
 	"owner": true,
 	"scene_file_path": true,
@@ -67,6 +68,110 @@ func get_properties(params: Dictionary) -> Dictionary:
 		"missing_fields": missing_fields,
 		"truncated": truncated,
 	}
+
+
+func get_node_groups(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_node(params, false)
+	if resolved.has("_error"):
+		return resolved
+	return _node_groups_response(resolved["node"], resolved["scene_root"])
+
+
+func add_node_group(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_node(params)
+	if resolved.has("_error"):
+		return resolved
+	var node: Node = resolved["node"]
+	var scene_root: Node = resolved["scene_root"]
+	var editability := _require_locally_owned(node, scene_root, "add persistent groups to")
+	if editability != null:
+		return editability
+	var group_result := _parse_node_group_name(params)
+	if group_result.has("_error"):
+		return group_result
+	var group_name: StringName = group_result["group"]
+	var snapshot := _persistent_groups(node, scene_root)
+	if snapshot.has("_error"):
+		return snapshot
+	if group_name in snapshot["groups"]:
+		var unchanged := _node_groups_response(node, scene_root)
+		if unchanged.has("_error"):
+			return unchanged
+		unchanged["group"] = String(group_name)
+		unchanged["changed"] = false
+		unchanged["undoable"] = false
+		return unchanged
+	if node.is_in_group(group_name):
+		return Errors.make(
+			"NODE_GROUP_NON_PERSISTENT",
+			"Node '%s' already belongs to runtime-only group '%s'" % [node.name, group_name],
+			false,
+			"Remove the runtime group in Godot before adding a persistent scene group with the same name."
+		)
+	_undo_redo.create_action(
+		"Godot 2D MCP: Add %s to group %s" % [node.name, group_name],
+		UndoRedo.MERGE_DISABLE,
+		scene_root
+	)
+	_undo_redo.add_do_method(node, "add_to_group", group_name, true)
+	_undo_redo.add_undo_method(node, "remove_from_group", group_name)
+	_undo_redo.commit_action()
+	var result := _node_groups_response(node, scene_root)
+	if result.has("_error"):
+		return result
+	result["group"] = String(group_name)
+	result["changed"] = true
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
+
+
+func remove_node_group(params: Dictionary) -> Dictionary:
+	var resolved := _resolve_node(params)
+	if resolved.has("_error"):
+		return resolved
+	var node: Node = resolved["node"]
+	var scene_root: Node = resolved["scene_root"]
+	var editability := _require_locally_owned(node, scene_root, "remove persistent groups from")
+	if editability != null:
+		return editability
+	var group_result := _parse_node_group_name(params)
+	if group_result.has("_error"):
+		return group_result
+	var group_name: StringName = group_result["group"]
+	var snapshot := _persistent_groups(node, scene_root)
+	if snapshot.has("_error"):
+		return snapshot
+	if not group_name in snapshot["groups"]:
+		if node.is_in_group(group_name):
+			return Errors.make(
+				"NODE_GROUP_NON_PERSISTENT",
+				"Group '%s' is runtime-only and cannot be removed through persistent scene editing" % group_name,
+				false,
+				"Use Godot's runtime API for temporary groups, or target a group returned by node_groups_get."
+			)
+		return Errors.make(
+			"NODE_GROUP_NOT_FOUND",
+			"Node '%s' is not in persistent group '%s'" % [node.name, group_name],
+			false,
+			"Call node_groups_get to inspect persistent groups on this node."
+		)
+	_undo_redo.create_action(
+		"Godot 2D MCP: Remove %s from group %s" % [node.name, group_name],
+		UndoRedo.MERGE_DISABLE,
+		scene_root
+	)
+	_undo_redo.add_do_method(node, "remove_from_group", group_name)
+	_undo_redo.add_undo_method(node, "add_to_group", group_name, true)
+	_undo_redo.commit_action()
+	var result := _node_groups_response(node, scene_root)
+	if result.has("_error"):
+		return result
+	result["group"] = String(group_name)
+	result["changed"] = true
+	result["undoable"] = true
+	result["_scene_mutated"] = true
+	return result
 
 
 func create_node(params: Dictionary) -> Dictionary:
@@ -957,6 +1062,80 @@ func _serialize_script(script: Script) -> Dictionary:
 		"global_name": String(script.get_global_name()),
 		"is_tool": script.is_tool(),
 	}
+
+
+func _node_groups_response(node: Node, scene_root: Node) -> Dictionary:
+	var snapshot := _persistent_groups(node, scene_root)
+	if snapshot.has("_error"):
+		return snapshot
+	return {
+		"path": ScenePath.from_node(node, scene_root),
+		"type": node.get_class(),
+		"groups": snapshot["groups"],
+		"group_count": snapshot["groups"].size(),
+	}
+
+
+func _persistent_groups(node: Node, scene_root: Node) -> Dictionary:
+	var packed := PackedScene.new()
+	var pack_error := packed.pack(scene_root)
+	if pack_error != OK:
+		return Errors.make(
+			"NODE_GROUP_SNAPSHOT_FAILED",
+			"Godot could not snapshot persistent groups for the active scene (error %d)" % pack_error,
+			true,
+			"Wait for the editor to finish updating the scene, then retry node_groups_get."
+		)
+	var scene_state := packed.get_state()
+	# SceneState paths are rooted at "." (for example "./Hud/Score"), unlike get_path_to().
+	var target_path: NodePath = (
+		NodePath(".") if node == scene_root else NodePath("./%s" % scene_root.get_path_to(node))
+	)
+	for index in range(scene_state.get_node_count()):
+		if scene_state.get_node_path(index) != target_path:
+			continue
+		var groups: Array[String] = []
+		for group_value in scene_state.get_node_groups(index):
+			var group_name := str(group_value)
+			if not group_name.begins_with("_"):
+				groups.append(group_name)
+		groups.sort()
+		return {"groups": groups}
+	return Errors.make(
+		"NODE_GROUP_SNAPSHOT_UNAVAILABLE",
+		"Node '%s' is outside the active scene's persistent serialization boundary" % node.name,
+		false,
+		"Open the source PackedScene to inspect its groups, or target a locally owned node."
+	)
+
+
+func _parse_node_group_name(params: Dictionary) -> Dictionary:
+	var raw_group: Variant = params.get("group", null)
+	if not raw_group is String:
+		return Errors.make("INVALID_NODE_GROUP", "group must be a string")
+	var group := raw_group as String
+	if (
+		group.is_empty()
+		or group.length() > MAX_NODE_GROUP_NAME_LENGTH
+		or group != group.strip_edges()
+		or group.begins_with("_")
+		or _contains_control_characters(group)
+	):
+		return Errors.make(
+			"INVALID_NODE_GROUP",
+			"group must be a trimmed non-internal name up to %d characters" % MAX_NODE_GROUP_NAME_LENGTH,
+			false,
+			"Use a project group such as enemies, interactables, or ui/hud; names beginning with '_' are reserved by Godot."
+		)
+	return {"group": StringName(group)}
+
+
+func _contains_control_characters(value: String) -> bool:
+	for index in value.length():
+		var codepoint := value.unicode_at(index)
+		if codepoint < 32 or codepoint == 127:
+			return true
+	return false
 
 
 func _serialize_property(node: Node, property_info: Dictionary) -> Dictionary:
