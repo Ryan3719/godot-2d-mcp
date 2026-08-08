@@ -274,6 +274,10 @@ const NODE_SEMANTIC_CATALOG := [
 		"tools": ["text_display_2d_get", "text_display_2d_set"],
 	},
 	{
+		"base_type": "ItemList",
+		"tools": ["item_list_items_get", "item_list_items_set", "item_list_items_clear"],
+	},
+	{
 		"base_type": "OptionButton",
 		"tools": ["button_menu_items_get", "button_menu_items_set", "button_menu_items_clear"],
 	},
@@ -439,6 +443,7 @@ const SEMANTIC_SMOKE_COVERED_CLASSES := {
 	"CodeEdit": true,
 	"Label": true,
 	"RichTextLabel": true,
+	"ItemList": true,
 	"HBoxContainer": true,
 	"GridContainer": true,
 	"AspectRatioContainer": true,

@@ -370,6 +370,9 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
         text_display_coverage = await app.service.class_2d_coverage(
             query="Label", scope="node", limit=20
         )
+        item_list_coverage = await app.service.class_2d_coverage(
+            query="ItemList", scope="node", limit=20
+        )
 
         if hierarchy.get("total") != 5:
             raise RuntimeError(f"Unexpected scene node count: {hierarchy.get('total')}")
@@ -708,6 +711,27 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
                     f"{class_name} text display coverage audit was incomplete: "
                     f"{text_display_coverage}"
                 )
+        item_list_entry = next(
+            (
+                entry
+                for entry in item_list_coverage.get("entries", [])
+                if entry.get("name") == "ItemList"
+            ),
+            None,
+        )
+        if (
+            item_list_entry is None
+            or {
+                "item_list_items_get",
+                "item_list_items_set",
+                "item_list_items_clear",
+            }
+            - set(item_list_entry.get("semantic_tools", []))
+            or item_list_entry.get("test_status") != "semantic_smoke"
+        ):
+            raise RuntimeError(
+                f"ItemList coverage audit was incomplete: {item_list_coverage}"
+            )
 
         scene_file = state.get("current_scene", "")
         coverage_snapshot = await app.service.class_2d_coverage_snapshot()
@@ -5410,6 +5434,93 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("RichTextLabel semantic configuration was not persisted")
         _trace_smoke("text display control smoke completed")
 
+        _trace_smoke("starting ItemList smoke")
+        item_list = await app.service.node_create(
+            type_name="ItemList",
+            name="AgentItemList",
+            parent_path="/Main/UI",
+            scene_file=scene_file,
+        )
+        item_list_path = item_list["path"]
+        item_list_items = [
+            {
+                "text": "Mercury",
+                "icon_path": "res://test_icon.svg",
+                "selectable": True,
+                "disabled": False,
+            },
+            {"text": "Venus", "selectable": False, "disabled": True},
+        ]
+        item_list_configuration = await app.service.item_list_items_set(
+            item_list_path,
+            item_list_items,
+            scene_file=scene_file,
+        )
+        if (
+            item_list_configuration["item_count"] != 2
+            or item_list_configuration["items"][0]["text"] != "Mercury"
+            or item_list_configuration["items"][0]["icon"].get("resource_path")
+            != "res://test_icon.svg"
+            or item_list_configuration["items"][1]["selectable"] is not False
+            or item_list_configuration["items"][1]["disabled"] is not True
+        ):
+            raise RuntimeError("ItemList persistent entries were not applied")
+        item_list_page = await app.service.item_list_items_get(
+            item_list_path, offset=1, limit=1, scene_file=scene_file
+        )
+        if (
+            item_list_page["item_offset"] != 1
+            or item_list_page["items_truncated"] is not False
+            or item_list_page["items"][0]["text"] != "Venus"
+        ):
+            raise RuntimeError("ItemList pagination was not applied")
+        unchanged_item_list = await app.service.item_list_items_set(
+            item_list_path,
+            item_list_items,
+            scene_file=scene_file,
+        )
+        if unchanged_item_list.get("changed") or unchanged_item_list.get("undoable"):
+            raise RuntimeError("ItemList entry updates were not idempotent")
+        await _expect_godot_error(
+            app.service.item_list_items_get(semantic_line_path, scene_file=scene_file),
+            "ITEM_LIST_REQUIRED",
+        )
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("ItemList entry updates were not undoable")
+        restored_item_list = await app.service.item_list_items_get(
+            item_list_path, scene_file=scene_file
+        )
+        if restored_item_list["item_count"] != 0:
+            raise RuntimeError("Undo did not restore ItemList entries")
+        if not (await app.service.scene_redo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("ItemList entry updates were not redoable")
+        cleared_item_list = await app.service.item_list_items_clear(
+            item_list_path, scene_file=scene_file
+        )
+        if cleared_item_list["item_count"] != 0:
+            raise RuntimeError("ItemList entries were not cleared")
+        if not (await app.service.scene_undo(scene_file=scene_file)).get("changed"):
+            raise RuntimeError("ItemList entry clear was not undoable")
+        restored_after_clear = await app.service.item_list_items_get(
+            item_list_path, scene_file=scene_file
+        )
+        if restored_after_clear["item_count"] != 2:
+            raise RuntimeError("Undo did not restore cleared ItemList entries")
+        if not (await app.service.scene_save(scene_file=scene_file)).get("saved"):
+            raise RuntimeError("ItemList entries could not be saved")
+        if not (await app.service.scene_open(scene_file)).get("opened"):
+            raise RuntimeError("Scene could not reopen after saving ItemList entries")
+        reopened_item_list = await app.service.item_list_items_get(
+            item_list_path, scene_file=scene_file
+        )
+        if (
+            reopened_item_list["item_count"] != 2
+            or reopened_item_list["items"][0]["icon"].get("resource_path")
+            != "res://test_icon.svg"
+        ):
+            raise RuntimeError("ItemList persistent entries were not saved")
+        _trace_smoke("ItemList smoke completed")
+
         _trace_smoke("starting Container smoke")
         hbox = await app.service.node_create(
             type_name="HBoxContainer",
@@ -7599,7 +7710,7 @@ async def _run_editor_smoke(godot_binary: str, project_path: Path) -> None:
             raise RuntimeError("Undo did not restore the TileSet resource")
 
         final_hierarchy = await app.service.scene_get_hierarchy(limit=30)
-        if final_hierarchy.get("total") != 84 or _has_node(
+        if final_hierarchy.get("total") != 85 or _has_node(
             final_hierarchy, marker_path
         ):
             raise RuntimeError("Unexpected final hierarchy after write operations")

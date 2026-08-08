@@ -713,6 +713,71 @@ async def test_button_menu_item_tools_forward_validated_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_item_list_item_tools_forward_validated_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    items = [
+        {
+            "text": "Mercury",
+            "icon_path": "res://ui/mercury.svg",
+            "selectable": True,
+            "disabled": False,
+        },
+        {"text": "Venus", "selectable": False, "disabled": True},
+    ]
+
+    await service.item_list_items_get(
+        "/Main/Planets", offset=4, limit=50, scene_file="res://main.tscn", session_id="project@a1b2"
+    )
+    await service.item_list_items_set(
+        "/Main/Planets", items, scene_file="res://main.tscn", session_id="project@a1b2"
+    )
+    await service.item_list_items_clear(
+        "/Main/Planets", scene_file="res://main.tscn", session_id="project@a1b2"
+    )
+
+    assert bridge.calls == [
+        (
+            "item_list_items_get",
+            {"path": "/Main/Planets", "offset": 4, "limit": 50, "scene_file": "res://main.tscn"},
+            "project@a1b2",
+        ),
+        (
+            "item_list_items_set",
+            {"path": "/Main/Planets", "items": items, "scene_file": "res://main.tscn"},
+            "project@a1b2",
+        ),
+        (
+            "item_list_items_clear",
+            {"path": "/Main/Planets", "scene_file": "res://main.tscn"},
+            "project@a1b2",
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_item_list_item_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    with pytest.raises(ValueError, match="offset"):
+        await service.item_list_items_get("/Main/Planets", offset=-1)
+    with pytest.raises(ValueError, match="items"):
+        await service.item_list_items_set("/Main/Planets", [])
+    with pytest.raises(ValueError, match="unsupported ItemList field"):
+        await service.item_list_items_set(
+            "/Main/Planets", [{"text": "Mercury", "metadata": {"planet": 1}}]
+        )
+    with pytest.raises(ValueError, match="icon_path"):
+        await service.item_list_items_set(
+            "/Main/Planets", [{"text": "Mercury", "icon_path": "../mercury.svg"}]
+        )
+    with pytest.raises(ValueError, match="selectable"):
+        await service.item_list_items_set(
+            "/Main/Planets", [{"text": "Mercury", "selectable": 1}]
+        )
+
+
+@pytest.mark.asyncio
 async def test_button_menu_item_tools_reject_invalid_payloads() -> None:
     service = GodotService(SessionRegistry(), FakeBridge())
 
