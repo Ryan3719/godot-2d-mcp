@@ -630,6 +630,19 @@ def create_application(
         )
 
     @mcp.tool(annotations=READ_ONLY)
+    async def text_input_2d_get(
+        path: str,
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Read persistent LineEdit, TextEdit, or CodeEdit configuration."""
+        return await service.text_input_2d_get(
+            path=path,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=READ_ONLY)
     async def button_menu_items_get(
         path: str,
         offset: int = 0,
@@ -1474,6 +1487,21 @@ def create_application(
     ) -> dict[str, Any]:
         """Atomically configure a local Range control with validated subtype options."""
         return await service.range_2d_set(
+            path=path,
+            properties=properties,
+            session_id=session_id,
+            scene_file=scene_file,
+        )
+
+    @mcp.tool(annotations=WRITE)
+    async def text_input_2d_set(
+        path: str,
+        properties: dict[str, Any],
+        session_id: str | None = None,
+        scene_file: str = "",
+    ) -> dict[str, Any]:
+        """Atomically configure a local LineEdit, TextEdit, or CodeEdit."""
+        return await service.text_input_2d_set(
             path=path,
             properties=properties,
             session_id=session_id,

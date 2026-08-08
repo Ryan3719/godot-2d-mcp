@@ -375,6 +375,71 @@ async def test_range_2d_tools_reject_invalid_payloads() -> None:
 
 
 @pytest.mark.asyncio
+async def test_text_input_2d_tools_forward_validated_payloads() -> None:
+    bridge = FakeBridge()
+    service = GodotService(SessionRegistry(), bridge)
+    properties = {
+        "text": "func hello():\n\treturn 1",
+        "placeholder_text": "Enter code",
+        "editable": True,
+        "wrap_mode": " boundary ",
+        "autowrap_mode": "word",
+        "minimap_draw": True,
+        "caret_type": "block",
+        "line_length_guidelines": [80, 120],
+        "code_completion_prefixes": [".", "@"],
+        "indent_size": 4,
+        "indent_automatic_prefixes": ["if", "for"],
+        "auto_brace_completion_pairs": {"(": ")", "[": "]"},
+    }
+
+    await service.text_input_2d_get(
+        "/Main/Editor", scene_file="res://main.tscn", session_id="project@a1b2"
+    )
+    await service.text_input_2d_set(
+        "/Main/Editor",
+        properties,
+        scene_file="res://main.tscn",
+        session_id="project@a1b2",
+    )
+
+    assert bridge.calls == [
+        (
+            "text_input_2d_get",
+            {"path": "/Main/Editor", "scene_file": "res://main.tscn"},
+            "project@a1b2",
+        ),
+        (
+            "text_input_2d_set",
+            {
+                "path": "/Main/Editor",
+                "properties": properties,
+                "scene_file": "res://main.tscn",
+            },
+            "project@a1b2",
+        ),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_text_input_2d_tools_reject_invalid_payloads() -> None:
+    service = GodotService(SessionRegistry(), FakeBridge())
+
+    for properties, label in (
+        ({"max_length": -1}, "max_length"),
+        ({"caret_blink_interval": 0.01}, "caret_blink_interval"),
+        ({"secret_character": "**"}, "secret_character"),
+        ({"wrap_mode": "soft"}, "wrap_mode"),
+        ({"line_length_guidelines": [80, 80]}, "line_length_guidelines"),
+        ({"code_completion_prefixes": [1]}, "code_completion_prefixes"),
+        ({"auto_brace_completion_pairs": {"": ")"}}, "auto_brace_completion_pairs"),
+        ({"unknown": True}, "unsupported text input property"),
+    ):
+        with pytest.raises(ValueError, match=label):
+            await service.text_input_2d_set("/Main/Editor", properties)
+
+
+@pytest.mark.asyncio
 async def test_container_2d_tools_forward_validated_payloads() -> None:
     bridge = FakeBridge()
     service = GodotService(SessionRegistry(), bridge)
