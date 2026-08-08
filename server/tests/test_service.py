@@ -453,17 +453,10 @@ async def test_button_menu_item_tools_forward_validated_payloads() -> None:
             "text": "Open",
             "id": 10,
             "icon_path": "res://ui/open.svg",
-            "metadata": {"action": "open"},
             "disabled": False,
-            "tooltip": "Open a scene",
-            "indent": 1,
-            "text_direction": "ltr",
-            "auto_translate_mode": "always",
-            "icon_max_width": 32,
-            "icon_modulate": {"r": 1.0, "g": 0.8, "b": 0.2, "a": 1.0},
         },
         {"kind": "check", "text": "Grid", "checked": True},
-        {"kind": "multistate", "text": "Quality", "max_states": 3, "state": 1},
+        {"kind": "radio", "text": "Snap", "checked": True},
         {"kind": "separator", "text": "Advanced"},
     ]
 
@@ -513,7 +506,7 @@ async def test_button_menu_item_tools_reject_invalid_payloads() -> None:
         await service.button_menu_items_get("/Main/Actions", offset=-1)
     with pytest.raises(ValueError, match="items"):
         await service.button_menu_items_set("/Main/Actions", [])
-    with pytest.raises(ValueError, match="max_states"):
+    with pytest.raises(ValueError, match="kind"):
         await service.button_menu_items_set(
             "/Main/Actions", [{"kind": "multistate", "text": "Quality", "max_states": 1}]
         )
@@ -521,9 +514,17 @@ async def test_button_menu_item_tools_reject_invalid_payloads() -> None:
         await service.button_menu_items_set(
             "/Main/Actions", [{"kind": "separator", "text": "Tools", "disabled": True}]
         )
-    with pytest.raises(ValueError, match="JSON-compatible"):
+    with pytest.raises(ValueError, match="unsupported menu item field"):
         await service.button_menu_items_set(
             "/Main/Actions", [{"kind": "normal", "text": "Open", "metadata": {"bad": {1, 2}}}]
+        )
+    with pytest.raises(ValueError, match="unsupported menu item field"):
+        await service.button_menu_items_set(
+            "/Main/Actions", [{"kind": "normal", "text": "Open", "tooltip": "Open a scene"}]
+        )
+    with pytest.raises(ValueError, match="unsupported menu item field"):
+        await service.button_menu_items_set(
+            "/Main/Actions", [{"kind": "normal", "text": "Open", "accelerator": 79}]
         )
     with pytest.raises(ValueError, match="selected_index"):
         await service.button_menu_items_set(
